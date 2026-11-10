@@ -124,6 +124,22 @@ def test_fingerprint_is_stable_and_content_sensitive(counts: ad.AnnData, tmp_pat
     assert load(_write(other, tmp_path, "o.h5ad")).fingerprint != load(path).fingerprint
 
 
+def test_fingerprint_depends_on_how_the_matrix_is_read(counts: ad.AnnData, tmp_path: Path) -> None:
+    # The same file read as counts and as log-normalised values is preprocessed
+    # differently, so the two readings must never share a cache.
+    cpm = counts.copy()
+    sc.pp.normalize_total(cpm, target_sum=1e6)
+    path = _write(cpm, tmp_path)
+    as_counts, as_lognorm = load(path, "counts"), load(path, "lognorm")
+    assert (as_counts.x_kind, as_lognorm.x_kind) == ("counts", "lognorm")
+    assert as_counts.fingerprint != as_lognorm.fingerprint
+
+
+def test_unknown_x_is_value_is_rejected(counts: ad.AnnData, tmp_path: Path) -> None:
+    with pytest.raises(DatasetError, match="--x-is"):
+        load(_write(counts, tmp_path), "logged")  # type: ignore[arg-type]
+
+
 def test_loading_never_modifies_the_file(counts: ad.AnnData, tmp_path: Path) -> None:
     path = _write(counts, tmp_path)
     before = hashlib.sha256(path.read_bytes()).hexdigest()

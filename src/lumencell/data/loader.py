@@ -134,6 +134,8 @@ def load(path: Path, x_is: XKind | None = None) -> Dataset:
     path = Path(path)
     if not path.exists():
         raise DatasetError(f"{path} does not exist")
+    if x_is is not None and x_is not in ("counts", "lognorm", "scaled"):
+        raise DatasetError(f"--x-is must be counts or lognorm, not {x_is!r}")
     adata = ad.read_h5ad(path)
     if adata.n_obs == 0 or adata.n_vars == 0:
         raise DatasetError(f"{path} has no cells or no genes")
@@ -179,7 +181,12 @@ def load(path: Path, x_is: XKind | None = None) -> Dataset:
         embeddings=_display_embeddings(adata),
         uns_root=_uns_root(adata),
         fingerprint=fingerprint(
-            path, adata.obs_names.astype(str), var_names.astype(str), adata.n_obs, len(var_names)
+            path,
+            adata.obs_names.astype(str),
+            var_names.astype(str),
+            adata.n_obs,
+            len(var_names),
+            matrix=f"{source}:{kind}",
         ),
         original_x_kind=x_kind,
     )
