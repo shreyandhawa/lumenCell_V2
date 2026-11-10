@@ -1,42 +1,79 @@
 @import "tailwindcss";
 
-/* Design tokens. Dark is the default (scatter plots of glowing cells read best on
-   dark); the light palette applies when the OS asks for it. */
+/*
+ * Live imaging. The plot is a darkfield imaging stage; panels sit on it in two plies.
+ * Channel colours each own one job:
+ *   live (GFP green)    active, running, primary action, the playback window
+ *   focus (DAPI blue)   selection, keyboard focus, links
+ *   danger (mCherry)    errors
+ *   warn (amber)        warnings and the experimental flag
+ * Data keeps its own encodings (Okabe-Ito categories, viridis), defined in lib/colors.ts.
+ * Brightfield is the light variant, chosen with the toolbar toggle.
+ */
 @theme {
-  --color-surface: oklch(0.165 0.008 260);
-  --color-panel: oklch(0.2 0.01 260);
-  --color-panel-2: oklch(0.235 0.012 260);
-  --color-line: oklch(0.29 0.012 260);
-  --color-ink: oklch(0.94 0.005 260);
-  --color-ink-muted: oklch(0.72 0.01 260);
-  --color-ink-faint: oklch(0.55 0.01 260);
-  --color-accent: oklch(0.78 0.13 210);
-  --color-accent-ink: oklch(0.2 0.03 230);
-  --color-warning: oklch(0.8 0.14 80);
-  --color-danger: oklch(0.68 0.19 25);
-  --color-success: oklch(0.75 0.14 150);
+  --color-field: #06080b;
+  --color-panel: #0c0f14;
+  --color-raised: #151a21;
+  --color-control: #141920;
+  --color-control-hover: #1b212a;
+  --color-line: #1d242e;
+  --color-line-strong: #2b3440;
+  --color-ink: #e6eaf0;
+  --color-ink-2: #a3acbb;
+  --color-ink-3: #7f8899;
+  --color-live: #3ddc84;
+  --color-live-ink: #03140a;
+  --color-focus: #5b8cff;
+  --color-danger: #ff5a76;
+  --color-warn: #f2b544;
 
+  --font-sans: "Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* A tight product scale: 11 / 12 / 13 / 15 / 20 */
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-md: 0.9375rem;
+  --text-md--line-height: 1.375rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.625rem;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --shadow-ply: 0 12px 32px -8px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.35);
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --color-surface: oklch(0.985 0.002 260);
-    --color-panel: oklch(0.97 0.003 260);
-    --color-panel-2: oklch(0.94 0.005 260);
-    --color-line: oklch(0.88 0.006 260);
-    --color-ink: oklch(0.22 0.01 260);
-    --color-ink-muted: oklch(0.44 0.01 260);
-    --color-ink-faint: oklch(0.58 0.01 260);
-    --color-accent: oklch(0.55 0.14 230);
-    --color-accent-ink: oklch(0.98 0.01 230);
-    --color-warning: oklch(0.62 0.14 70);
-    --color-danger: oklch(0.56 0.2 25);
-    --color-success: oklch(0.52 0.13 150);
-  }
+:root {
+  color-scheme: dark;
+  --duration-press: 120ms;
+  --duration-ui: 180ms;
+  --duration-panel: 240ms;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-field: #f3f5f8;
+  --color-panel: #ffffff;
+  --color-raised: #ffffff;
+  --color-control: #f0f2f5;
+  --color-control-hover: #e6e9ee;
+  --color-line: #e2e6ec;
+  --color-line-strong: #cbd2dc;
+  --color-ink: #10141a;
+  --color-ink-2: #465061;
+  --color-ink-3: #636d7f;
+  --color-live: #12804a;
+  --color-live-ink: #ffffff;
+  --color-focus: #2f5fd9;
+  --color-danger: #c22e49;
+  --color-warn: #946000;
+  --shadow-ply: 0 12px 32px -10px rgb(16 20 26 / 0.18), 0 2px 6px rgb(16 20 26 / 0.08);
 }
 
 html,
@@ -47,48 +84,147 @@ body,
 }
 
 body {
-  background: var(--color-surface);
+  background: var(--color-field);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "tnum" 1;
+  caret-color: var(--color-focus);
+  overflow: hidden;
 }
 
-/* Native range inputs, restyled once for the pseudotime filter. */
-input[type="range"].range {
-  appearance: none;
-  background: transparent;
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  margin: 0;
-}
-input[type="range"].range::-webkit-slider-thumb {
-  appearance: none;
-  pointer-events: auto;
-  width: 14px;
-  height: 14px;
-  border-radius: 9999px;
-  background: var(--color-ink);
-  border: 2px solid var(--color-surface);
-  box-shadow: 0 0 0 1px var(--color-line);
-  cursor: grab;
-}
-input[type="range"].range::-moz-range-thumb {
-  pointer-events: auto;
-  width: 12px;
-  height: 12px;
-  border-radius: 9999px;
-  background: var(--color-ink);
-  border: 2px solid var(--color-surface);
-  cursor: grab;
+button,
+[role="button"],
+[role="tab"],
+input,
+label {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
+::selection {
+  background: color-mix(in oklab, var(--color-focus) 38%, transparent);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Scrollbars belong to the panels, not the browser. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+/* Numbers that change in place never shift the layout. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Press feedback for anything pressable; hover only for fine pointers. */
+.pressable {
+  transition:
+    transform var(--duration-press) var(--ease-out),
+    background-color var(--duration-ui) ease,
+    color var(--duration-ui) ease,
+    border-color var(--duration-ui) ease,
+    opacity var(--duration-ui) ease;
+}
+.pressable:active:not(:disabled):not([data-disabled]) {
+  transform: scale(0.97);
+}
+
+/* Base UI popups: scale from the trigger, fade, never from nothing. */
+.popup {
+  transform-origin: var(--transform-origin);
+  transition:
+    transform var(--duration-ui) var(--ease-out),
+    opacity var(--duration-ui) var(--ease-out);
+}
+.popup[data-starting-style],
+.popup[data-ending-style] {
+  opacity: 0;
+  transform: scale(0.97);
+}
+.popup[data-ending-style] {
+  transition-duration: 120ms;
+}
+.popup[data-instant] {
+  transition-duration: 0ms;
+}
+
+/* Collapsible panels animate their measured height. */
+.collapse {
+  height: var(--collapsible-panel-height);
+  overflow: hidden;
+  transition: height var(--duration-panel) var(--ease-out);
+}
+.collapse[data-starting-style],
+.collapse[data-ending-style] {
+  height: 0;
+}
+.collapse[hidden]:not([hidden="until-found"]) {
+  display: none;
+}
+
+/* A soft placeholder while data is on its way. */
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  border-radius: 6px;
+  background: linear-gradient(
+      90deg,
+      var(--color-control) 0%,
+      var(--color-control-hover) 50%,
+      var(--color-control) 100%
+    )
+    0 0 / 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+/* A trend line draws itself in once, when its gene is added (paths carry pathLength="1"). */
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.draw-on {
+  stroke-dasharray: 1;
+  animation: draw 640ms var(--ease-out) both;
+}
+
+/* Reduced motion is gentler motion: colour and opacity stay, movement goes. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition-duration: 0ms !important;
-    animation-duration: 0ms !important;
+  .pressable:active:not(:disabled) {
+    transform: none;
+  }
+  .popup[data-starting-style],
+  .popup[data-ending-style] {
+    transform: none;
+  }
+  .collapse {
+    transition-duration: 0ms;
+  }
+  .skeleton {
+    animation: none;
+  }
+  .draw-on {
+    animation: none;
   }
 }

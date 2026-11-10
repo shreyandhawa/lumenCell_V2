@@ -20,8 +20,10 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await expect(page.locator("canvas").first()).toBeVisible();
 
   // 2. Nothing runs until a root is chosen; pseudotime colouring is unavailable.
-  const colourBy = page.getByRole("combobox", { name: "Colour by" });
-  await expect(colourBy.locator('option[value="pseudotime"]')).toBeDisabled();
+  const colourBy = page.getByRole("combobox", { name: "Colour by", exact: true });
+  await colourBy.click();
+  await expect(page.getByRole("option", { name: /Pseudotime/ })).toHaveAttribute("aria-disabled", "true");
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: /Run PAGA/ })).toHaveCount(0);
 
   // 3. Use the root stored in the file (the first suggestion).
@@ -34,7 +36,7 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await page.getByRole("button", { name: /Run PAGA \+ DPT/ }).click();
   const lineages = page.getByRole("list", { name: "Lineages" });
   await expect(lineages.getByRole("listitem")).toHaveCount(2, { timeout: 120_000 });
-  await expect(colourBy).toHaveValue("pseudotime");
+  await expect(colourBy).toHaveText(/Pseudotime/);
   await expect(page.getByLabel("Legend").or(page.getByText("pseudotime", { exact: true })).first()).toBeVisible();
 
   // 5. Rename a lineage; the name sticks after a reload.
@@ -67,7 +69,7 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await expect(top.getByRole("listitem")).toHaveCount(30);
   const firstGene = (await top.getByRole("button").first().textContent())!.trim();
   await top.getByRole("button").first().click();
-  await expect(colourBy).toHaveValue(`gene:${firstGene}`);
+  await expect(colourBy).toHaveText(new RegExp(firstGene));
   await genes.getByRole("tab", { name: "Trends" }).click();
   await expect(genes.getByRole("figure", { name: `${firstGene} along pseudotime` })).toBeVisible();
 

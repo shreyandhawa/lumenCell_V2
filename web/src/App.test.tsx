@@ -62,7 +62,7 @@ describe("App", () => {
     renderApp();
     const stages = await screen.findByRole("list", { name: "Preprocessing stages" });
     expect(within(stages).getByText("PCA")).toBeInTheDocument();
-    expect(screen.getByText("preparing…")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Preparing: PCA");
     expect(screen.queryByText("Where does the trajectory start?")).not.toBeInTheDocument();
   });
 
@@ -75,11 +75,12 @@ describe("App", () => {
   });
 
   it("keeps pseudotime and lineage colouring disabled until there is a finished run", async () => {
+    const user = userEvent.setup();
     renderApp();
-    const colourBy = await screen.findByRole("combobox", { name: "Colour by" });
-    const option = within(colourBy).getByRole("option", { name: /Pseudotime/ }) as HTMLOptionElement;
-    expect(option.disabled).toBe(true);
-    expect(option.textContent).toContain("run a method first");
+    await user.click(await screen.findByRole("combobox", { name: "Colour by" }));
+    const option = await screen.findByRole("option", { name: /Pseudotime/ });
+    expect(option).toHaveAttribute("aria-disabled", "true");
+    expect(option).toHaveTextContent("after a run");
   });
 
   it("saves the root the user picks, then offers methods", async () => {
@@ -99,8 +100,8 @@ describe("App", () => {
     const trust = screen.getByRole("region", { name: "How far to trust this" });
     expect(within(trust).getByText("X_diffmap · 10 dims")).toBeInTheDocument();
     expect(within(trust).getByText("2 cells are not connected.")).toBeInTheDocument();
-    const colourBy = screen.getByRole("combobox", { name: "Colour by" });
-    expect((within(colourBy).getByRole("option", { name: "Pseudotime" }) as HTMLOptionElement).disabled).toBe(false);
+    await userEvent.setup().click(screen.getByRole("combobox", { name: "Colour by" }));
+    expect(await screen.findByRole("option", { name: "Pseudotime" })).not.toHaveAttribute("aria-disabled", "true");
   });
 
   it("explains how to start the server when the API is unreachable", async () => {

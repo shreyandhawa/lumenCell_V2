@@ -1,13 +1,12 @@
-import { Info, ShieldAlert, TriangleAlert } from "lucide-react";
 import type * as T from "@/api/generated";
 import { useCurves, useMethods } from "@/api/queries";
-import { Hint, Section } from "@/components/ui";
+import { cx, Disclosure, Hint, Note, Section } from "@/components/ui";
+import { embeddingLabel, LEIDEN } from "@/lib/colorBy";
 import { useUi } from "@/state/ui";
 
-const ICON = { info: Info, warning: TriangleAlert, error: ShieldAlert } as const;
-const TONE = { info: "text-ink-muted", warning: "text-warning", error: "text-danger" } as const;
+const FIDELITY_WARN = 0.8;
 
-/** Everything needed to judge a result: where it came from, and what may be wrong with it. */
+/** Everything needed to judge a result: what may be wrong with it first, then where it came from. */
 export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
   const embedding = useUi((s) => s.embedding);
   const curves = useCurves(run.run_id, embedding).data;
@@ -17,76 +16,86 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
 
   return (
     <Section title="How far to trust this">
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-2xs">
-        <dt className="text-ink-faint">method</dt>
+      <div className="space-y-2">
+        {method?.experimental && (
+          <Note tone="warning">
+            {method.label} is experimental. {method.experimental_note}
+          </Note>
+        )}
+        {notices.length > 0 ? (
+          <ul className="space-y-2" aria-label="Warnings">
+            {notices.map((w, i) => (
+              <li key={`${w.code}-${i}`}>
+                <Note tone={w.severity}>{w.message}</Note>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Hint>No warnings for this run.</Hint>
+        )}
+      </div>
+
+      {curves && embedding && (
+        <div className="mt-4">
+          <h3 className="mb-1.5 text-xs font-medium text-ink-2">Curve fidelity on {embeddingLabel(embedding)}</h3>
+          <ul className="space-y-1.5">
+            {curves.curves.map((c) => {
+              const lin = run.lineages[c.lineage];
+              const f = c.fidelity;
+              const low = f != null && f < FIDELITY_WARN;
+              return (
+                <li key={c.lineage} className="grid grid-cols-[1fr_4.5rem_2.5rem] items-center gap-2 text-xs">
+                  <span className="truncate text-ink-2">{lin?.name}</span>
+                  <span className="h-1 overflow-hidden rounded-full bg-control" aria-hidden>
+                    <span
+                      className={cx("block h-1 origin-left rounded-full", low ? "bg-warn" : "bg-ink-3")}
+                      style={{ transform: `scaleX(${Math.max(0, f ?? 0)})` }}
+                    />
+                  </span>
+                  <span className={cx("num text-right", low ? "text-warn" : "text-ink")}>
+                    {f == null ? "n/a" : f.toFixed(2)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+        <dt className="text-ink-3">Method</dt>
         <dd className="text-ink">
-          {method?.label ?? p.method} <span className="text-ink-faint">({p.method_version})</span>
+          {method?.label ?? p.method} <span className="num text-ink-3">{p.method_version}</span>
         </dd>
-        <dt className="text-ink-faint">root</dt>
+        <dt className="text-ink-3">Root</dt>
         <dd className="text-ink">
-          {p.root.cluster_key === "lumencell_leiden" ? `Cluster ${p.root.cluster_label}` : (p.root.cluster_label ?? p.root.obs_name)}
-          <span className="text-ink-faint"> · cell {p.root.obs_name}</span>
+          {p.root.cluster_key === LEIDEN ? `Cluster ${p.root.cluster_label}` : (p.root.cluster_label ?? p.root.obs_name)}
+          <span className="text-ink-3"> · cell </span>
+          <span className="num text-ink-3">{p.root.obs_name}</span>
         </dd>
-        <dt className="text-ink-faint">inferred in</dt>
-        <dd className="font-mono text-ink">
+        <dt className="text-ink-3">Inferred in</dt>
+        <dd className="num text-ink">
           {p.inference_rep} · {p.inference_dims} dims
         </dd>
-        <dt className="text-ink-faint">drawn on</dt>
+        <dt className="text-ink-3">Drawn on</dt>
         <dd className="text-ink">
-          {embedding} <span className="text-ink-faint">(projection, {curves?.curve_source ?? "…"})</span>
+          {embedding ? embeddingLabel(embedding) : "…"}{" "}
+          <span className="text-ink-3">(projection, {curves?.curve_source ?? "…"} curves)</span>
         </dd>
-        <dt className="text-ink-faint">params</dt>
-        <dd className="font-mono break-all text-ink">
-          {Object.entries(p.params)
-            .map(([k, v]) => `${k}=${String(v)}`)
-            .join(" ")}
+        <dt className="text-ink-3">Unassigned</dt>
+        <dd className="text-ink">
+          <span className="num">{run.n_unassigned.toLocaleString()}</span> cells
         </dd>
-        <dt className="text-ink-faint">unassigned</dt>
-        <dd className="text-ink">{run.n_unassigned.toLocaleString()} cells</dd>
       </dl>
-
-      {curves && (
-        <div className="mt-2">
-          <div className="mb-1 text-2xs text-ink-faint">curve fidelity on this embedding</div>
-          {curves.curves.map((c) => {
-            const lin = run.lineages[c.lineage];
-            const f = c.fidelity;
-            return (
-              <div key={c.lineage} className="flex items-center justify-between text-2xs">
-                <span className="truncate text-ink-muted">{lin?.name}</span>
-                <span className={`font-mono ${f != null && f < 0.8 ? "text-warning" : "text-ink"}`}>
-                  {f == null ? "n/a" : f.toFixed(2)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {method?.experimental && (
-        <p className="mt-2 flex gap-1.5 text-2xs text-warning">
-          <TriangleAlert size={12} className="mt-px shrink-0" />
-          {method.label} is experimental. {method.experimental_note}
-        </p>
-      )}
-
-      {notices.length > 0 ? (
-        <ul className="mt-2 space-y-1.5" aria-label="Warnings">
-          {notices.map((w, i) => {
-            const Icon = ICON[w.severity];
-            return (
-              <li key={`${w.code}-${i}`} className={`flex gap-1.5 text-2xs leading-relaxed ${TONE[w.severity]}`}>
-                <Icon size={12} className="mt-0.5 shrink-0" />
-                <span>{w.message}</span>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <div className="mt-2">
-          <Hint>No warnings for this run.</Hint>
-        </div>
-      )}
+      <div className="mt-2">
+        <Disclosure label="Parameters">
+          <p className="num text-xs break-all text-ink-2">
+            {Object.entries(p.params)
+              .map(([k, v]) => `${k}=${String(v)}`)
+              .join("  ") || "defaults"}
+          </p>
+        </Disclosure>
+      </div>
     </Section>
   );
 }

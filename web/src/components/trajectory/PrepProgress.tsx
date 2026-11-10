@@ -1,8 +1,8 @@
-import { Check, Circle, Loader2, TriangleAlert } from "lucide-react";
+import { Check, TriangleAlert } from "lucide-react";
 import { api } from "@/api/client";
 import { useJobEvents } from "@/api/events";
 import { useDataset, useStartPrepare } from "@/api/queries";
-import { Button, Hint, Section } from "@/components/ui";
+import { Button, cx, Hint, Section } from "@/components/ui";
 
 const LABELS: Record<string, string> = {
   normalize: "Normalise counts",
@@ -21,38 +21,46 @@ export function PrepProgress() {
   const prep = dataset?.prep;
   const live = useJobEvents(prep?.state === "running" ? prep.job_id : null);
   if (!prep) return null;
+  const done = prep.stages.filter((s) => s.state === "done" || s.state === "skipped").length;
 
   return (
     <Section title="Preparing the dataset">
-      <ol className="space-y-1" aria-label="Preprocessing stages">
+      <div className="mb-4 h-1 overflow-hidden rounded-full bg-control" aria-hidden>
+        <div
+          className="h-1 origin-left rounded-full bg-live transition-transform duration-500 ease-out"
+          style={{ transform: `scaleX(${done / Math.max(prep.stages.length, 1)})` }}
+        />
+      </div>
+      <ol className="space-y-0.5" aria-label="Preprocessing stages">
         {prep.stages.map((s) => {
           const running = s.state === "running" || (live?.stage === s.name && live.state === "running");
+          const finished = s.state === "done" || s.state === "skipped";
           return (
-            <li key={s.name} className="flex items-center gap-2 text-xs">
-              {s.state === "done" || s.state === "skipped" ? (
-                <Check size={13} className="text-success" />
-              ) : running ? (
-                <Loader2 size={13} className="animate-spin text-accent" />
-              ) : s.state === "failed" ? (
-                <TriangleAlert size={13} className="text-danger" />
-              ) : (
-                <Circle size={13} className="text-ink-faint" />
-              )}
-              <span className={s.state === "pending" ? "text-ink-faint" : "text-ink"}>
-                {LABELS[s.name] ?? s.name}
+            <li key={s.name} className="flex h-7 items-center gap-2.5 text-sm">
+              <span className="grid size-4 shrink-0 place-items-center" aria-hidden>
+                {finished ? (
+                  <Check size={14} className="text-live" />
+                ) : running ? (
+                  <span className="size-2 animate-pulse rounded-full bg-live" />
+                ) : s.state === "failed" ? (
+                  <TriangleAlert size={14} className="text-danger" />
+                ) : (
+                  <span className="size-1.5 rounded-full bg-line-strong" />
+                )}
               </span>
-              {s.state === "skipped" && <span className="text-2xs text-ink-faint">(file has one)</span>}
+              <span className={cx(finished || running ? "text-ink" : "text-ink-3")}>{LABELS[s.name] ?? s.name}</span>
+              {s.state === "skipped" && <span className="text-xs text-ink-3">the file has one</span>}
               {s.seconds != null && s.state === "done" && (
-                <span className="ml-auto font-mono text-2xs text-ink-faint">{s.seconds.toFixed(1)}s</span>
+                <span className="num ml-auto text-xs text-ink-3">{s.seconds.toFixed(1)} s</span>
               )}
             </li>
           );
         })}
       </ol>
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-4 flex items-center gap-3">
         {prep.state === "missing" || prep.state === "failed" ? (
           <Button tone="primary" onClick={() => start.mutate()} disabled={start.isPending}>
-            {prep.state === "failed" ? "Retry" : "Prepare now"}
+            {prep.state === "failed" ? "Retry preparation" : "Prepare the dataset"}
           </Button>
         ) : (
           prep.job_id && (

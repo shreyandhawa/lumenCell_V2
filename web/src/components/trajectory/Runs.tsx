@@ -1,8 +1,10 @@
-import { Loader2, Play, TriangleAlert } from "lucide-react";
+import { Play } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { useJobEvents } from "@/api/events";
 import { useCreateRun, useMethods, useRuns } from "@/api/queries";
-import { Badge, Button, Hint, Section, Select } from "@/components/ui";
+import { Button, cx, Hint, Note, Section, Select, Tag } from "@/components/ui";
+import { EASE_OUT } from "@/lib/motion";
 import { useUi } from "@/state/ui";
 
 export function MethodRunner() {
@@ -28,46 +30,70 @@ export function MethodRunner() {
       },
     );
   };
+  const running = live?.state === "running";
 
   return (
     <Section title="Method">
-      <Select aria-label="Method" value={chosen?.name ?? ""} onChange={(e) => setMethod(e.target.value)}>
-        {methods.map((m) => (
-          <option key={m.name} value={m.name} disabled={!m.available}>
-            {m.label}
-            {m.available ? "" : " (not installed)"}
-          </option>
-        ))}
-      </Select>
+      <Select
+        label="Method"
+        className="w-full"
+        value={chosen?.name ?? null}
+        onChange={setMethod}
+        groups={[
+          {
+            items: methods.map((m) => ({
+              value: m.name,
+              label: m.label,
+              disabled: !m.available,
+              note: m.available ? undefined : "not installed",
+            })),
+          },
+        ]}
+      />
       {chosen && (
-        <div className="mt-1.5 space-y-1">
+        <div className="mt-2 space-y-2">
           <Hint>{chosen.description}</Hint>
           {chosen.experimental && (
-            <p className="flex gap-1.5 text-2xs text-warning">
-              <TriangleAlert size={12} className="mt-px shrink-0" />
-              Experimental: misses some of lumenCell's accuracy gates. See the trust panel after running.
-            </p>
+            <Note tone="warning">Experimental: misses some of lumenCell's accuracy gates. The trust panel says which.</Note>
           )}
           {!chosen.available && chosen.install_hint && <Hint>{chosen.install_hint}</Hint>}
         </div>
       )}
-      <Button tone="primary" className="mt-2" onClick={run} disabled={!chosen?.available || create.isPending}>
-        <Play size={12} /> Run {chosen?.label ?? ""}
+      <Button tone="primary" className="mt-3 w-full" onClick={run} disabled={!chosen?.available || create.isPending || running}>
+        <Play size={13} fill="currentColor" /> Run {chosen?.label ?? ""}
       </Button>
-      {live && live.state === "running" && (
-        <div className="mt-2" aria-label="Run progress">
-          <div className="mb-1 flex items-center gap-1.5 text-2xs text-ink-muted">
-            <Loader2 size={12} className="animate-spin text-accent" /> {live.stage ?? "starting"}
-          </div>
-          <div className="h-1 rounded-full bg-line">
-            <div className="h-1 rounded-full bg-accent transition-[width]" style={{ width: `${live.fraction * 100}%` }} />
-          </div>
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {running && live && (
+          <motion.div
+            key="progress"
+            aria-label="Run progress"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2, ease: EASE_OUT }}
+            className="overflow-hidden"
+          >
+            <div className="pt-3">
+              <div className="mb-1.5 flex items-center justify-between text-xs text-ink-2" aria-live="polite">
+                <span>{live.stage ?? "starting"}</span>
+                <span className="num">{Math.round(live.fraction * 100)}%</span>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-control">
+                <div
+                  className="h-1 origin-left rounded-full bg-live transition-transform duration-300 ease-out"
+                  style={{ transform: `scaleX(${live.fraction})` }}
+                />
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {create.error && (
-        <p role="alert" className="mt-2 text-2xs text-danger">
-          {create.error.message}
-        </p>
+        <div className="mt-2">
+          <Note tone="error" role="alert">
+            {create.error.message}
+          </Note>
+        </div>
       )}
     </Section>
   );
@@ -77,35 +103,53 @@ export function RunList() {
   const runs = useRuns().data?.runs ?? [];
   const runId = useUi((s) => s.runId);
   const setRun = useUi((s) => s.setRun);
+  const seen = useUi((s) => s.seenRuns);
   if (runs.length === 0) return null;
   return (
     <Section title="Runs">
-      <ul className="space-y-1">
-        {runs.map((r) => (
-          <li key={r.run_id}>
-            <button
-              type="button"
-              onClick={() => setRun(r.run_id)}
-              aria-current={r.run_id === runId}
-              className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${
-                r.run_id === runId ? "border-accent/60 bg-accent/10" : "border-line hover:border-ink-faint"
-              }`}
-            >
-              <span className="font-medium text-ink">{r.method}</span>
-              <span className="font-mono text-2xs text-ink-faint">{r.run_id.slice(0, 6)}</span>
-              <span className="ml-auto">
-                {r.state === "done" ? (
-                  <Badge>{r.n_lineages} lineages</Badge>
-                ) : r.state === "failed" ? (
-                  <Badge tone="warning">failed</Badge>
-                ) : (
-                  <Badge tone="accent">{r.state}</Badge>
-                )}
-              </span>
-            </button>
-            {r.state === "failed" && r.error && <Hint>{r.error}</Hint>}
-          </li>
-        ))}
+      <ul className="-mx-2 space-y-0.5">
+        <AnimatePresence initial={false}>
+          {runs.map((r) => {
+            const active = r.run_id === runId;
+            const fresh = r.state === "done" && !active && !seen.includes(r.run_id);
+            return (
+              <motion.li
+                key={r.run_id}
+                layout="position"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.22, ease: EASE_OUT }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setRun(r.run_id)}
+                  aria-current={active}
+                  className={cx(
+                    "pressable flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-sm",
+                    active ? "bg-focus/12 text-ink" : "text-ink-2 [@media(hover:hover)]:hover:bg-control",
+                  )}
+                >
+                  <span className={cx("size-1.5 shrink-0 rounded-full", fresh ? "bg-focus" : "bg-transparent")} aria-hidden />
+                  <span className={cx("font-medium", active ? "text-ink" : "text-ink")}>{r.method}</span>
+                  <span className="num text-xs text-ink-3">{r.run_id.slice(0, 6)}</span>
+                  <span className="ml-auto">
+                    {r.state === "done" ? (
+                      <span className="num text-xs text-ink-3">
+                        {r.n_lineages} lineage{r.n_lineages === 1 ? "" : "s"}
+                      </span>
+                    ) : r.state === "failed" ? (
+                      <Tag tone="warn">failed</Tag>
+                    ) : (
+                      <Tag tone="live">{r.state}</Tag>
+                    )}
+                  </span>
+                  {fresh && <span className="sr-only">new, not opened yet</span>}
+                </button>
+                {r.state === "failed" && r.error && <Hint className="px-2 pb-1">{r.error}</Hint>}
+              </motion.li>
+            );
+          })}
+        </AnimatePresence>
       </ul>
     </Section>
   );

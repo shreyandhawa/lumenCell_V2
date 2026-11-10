@@ -1,110 +1,48 @@
 import { useMemo } from "react";
-import { useDataset, useObs, useRunCells, useDoneRunId } from "@/api/queries";
-import { GeneSearch } from "@/components/GeneSearch";
-import { Badge, fmt, Hint, Section, Select } from "@/components/ui";
-import { type ColorBy, useUi } from "@/state/ui";
+import { useDataset, useDoneRunId, useObs, useRunCells } from "@/api/queries";
+import { Legend } from "@/components/Legend";
+import { useCellColors } from "@/components/useCellColors";
+import { Button, fmt, Hint, Kbd, Section } from "@/components/ui";
+import { categoryLabel, LEIDEN } from "@/lib/colorBy";
+import { useUi } from "@/state/ui";
 
-const LEIDEN = "lumencell_leiden";
-
-function encode(c: ColorBy | null): string {
-  if (!c) return "";
-  if (c.kind === "obs") return `obs:${c.column}`;
-  if (c.kind === "gene") return `gene:${c.gene}`;
-  if (c.kind === "disagreement") return `disagreement:${c.a}:${c.b}`;
-  return c.kind;
-}
-
-function decode(v: string): ColorBy | null {
-  if (v.startsWith("obs:")) return { kind: "obs", column: v.slice(4) };
-  if (v.startsWith("gene:")) return { kind: "gene", gene: v.slice(5) };
-  if (v === "pseudotime" || v === "lineage") return { kind: v };
-  if (v.startsWith("disagreement:")) {
-    const [, a = "", b = ""] = v.split(":");
-    return { kind: "disagreement", a, b };
-  }
-  return null;
-}
-
+/** The Cells panel: what the colours mean, and what is selected. */
 export function Sidebar() {
   const dataset = useDataset().data;
-  const embedding = useUi((s) => s.embedding);
-  const setEmbedding = useUi((s) => s.setEmbedding);
-  const colorBy = useUi((s) => s.colorBy);
-  const setColorBy = useUi((s) => s.setColorBy);
-  const runId = useDoneRunId(useUi((s) => s.runId));
+  const { legend, loading } = useCellColors();
   if (!dataset) return null;
 
-  const columns = dataset.obs.filter((c) => c.kind !== "string");
-  const embeddingSource = dataset.embeddings.find((e) => e.name === embedding)?.source;
-
   return (
-    <aside className="flex w-64 shrink-0 flex-col overflow-y-auto border-r border-line bg-panel" aria-label="View controls">
-      <Section title="Embedding">
-        <Select aria-label="Embedding" value={embedding ?? ""} onChange={(e) => setEmbedding(e.target.value)}>
-          {dataset.embeddings.length === 0 && <option value="">waiting for preprocessing…</option>}
-          {dataset.embeddings.map((e) => (
-            <option key={e.name} value={e.name}>
-              {e.name === "dc12" ? "DC1 vs DC2 (diffusion)" : e.name.toUpperCase()}
-              {e.source === "computed" ? " · computed" : ""}
-            </option>
-          ))}
-        </Select>
-        <div className="mt-1.5">
-          <Hint>
-            {embeddingSource === "diffusion"
-              ? "The first two diffusion components: the space the trajectory is inferred in."
-              : "For display only. Trajectories are inferred in PCA / diffusion space and drawn here as a projection."}
-          </Hint>
-        </div>
+    <div className="flex h-full flex-col">
+      <Section title="Cells">
+        {loading ? (
+          <div className="space-y-2" aria-hidden>
+            <div className="skeleton h-3 w-24" />
+            <div className="skeleton h-3 w-36" />
+            <div className="skeleton h-3 w-28" />
+          </div>
+        ) : legend ? (
+          <Legend spec={legend} />
+        ) : (
+          <Hint>Choose what to colour by in the toolbar, or search for a gene.</Hint>
+        )}
       </Section>
-
-      <Section title="Colour by">
-        <Select aria-label="Colour by" value={encode(colorBy)} onChange={(e) => setColorBy(decode(e.target.value))}>
-          <option value="">nothing</option>
-          <optgroup label="Trajectory">
-            <option value="pseudotime" disabled={!runId}>
-              Pseudotime{runId ? "" : " (run a method first)"}
-            </option>
-            <option value="lineage" disabled={!runId}>
-              Lineage{runId ? "" : " (run a method first)"}
-            </option>
-          </optgroup>
-          <optgroup label="Annotations">
-            {columns.map((c) => (
-              <option key={c.name} value={`obs:${c.name}`}>
-                {c.name === LEIDEN ? "Leiden clusters (computed)" : c.name}
-              </option>
-            ))}
-          </optgroup>
-          {colorBy?.kind === "gene" && (
-            <optgroup label="Gene">
-              <option value={encode(colorBy)}>{colorBy.gene}</option>
-            </optgroup>
-          )}
-          {colorBy?.kind === "disagreement" && (
-            <optgroup label="Comparison">
-              <option value={encode(colorBy)}>Where the two runs disagree</option>
-            </optgroup>
-          )}
-        </Select>
-        <GeneSearch onPick={(gene) => setColorBy({ kind: "gene", gene })} />
-      </Section>
-
       <SelectionSummary />
-
-      <div className="mt-auto border-t border-line px-3 py-2">
+      <div className="mt-auto px-4 pt-3 pb-4">
         <Hint>
-          {fmt(dataset.n_obs)} cells · {fmt(dataset.n_vars)} genes · X holds{" "}
-          {dataset.x_kind === "counts" ? "raw counts" : "log-normalised values"}
+          <span className="num">{fmt(dataset.n_obs)}</span> cells · <span className="num">{fmt(dataset.n_vars)}</span>{" "}
+          genes · X holds {dataset.x_kind === "counts" ? "raw counts" : "log-normalised values"}
         </Hint>
       </div>
-    </aside>
+    </div>
   );
 }
 
 function SelectionSummary() {
   const selection = useUi((s) => s.selection);
   const count = useUi((s) => s.selectionCount);
+  const setSelection = useUi((s) => s.setSelection);
+  const setLasso = useUi((s) => s.setLasso);
   const runId = useDoneRunId(useUi((s) => s.runId));
   const dataset = useDataset().data;
   const groupKey = dataset?.label_key ?? LEIDEN;
@@ -135,26 +73,45 @@ function SelectionSummary() {
   if (!selection || !summary) {
     return (
       <Section title="Selection">
-        <Hint>Use the lasso (top left of the plot) to select cells.</Hint>
+        <Hint>
+          Draw around cells with the lasso <Kbd>L</Kbd> to see what they are.
+        </Hint>
+        <Button size="sm" tone="ghost" className="mt-2 -ml-2.5" onClick={() => setLasso(true)}>
+          Start a lasso
+        </Button>
       </Section>
     );
   }
   return (
-    <Section title="Selection" aside={<Badge tone="accent">{fmt(count)} cells</Badge>}>
-      {summary.meanPt !== null && (
-        <p className="mb-2 text-xs text-ink">
-          mean pseudotime <span className="font-mono">{summary.meanPt.toFixed(3)}</span>
-        </p>
-      )}
-      <ul className="space-y-1">
+    <Section
+      title="Selection"
+      aside={
+        <Button size="sm" tone="ghost" onClick={() => setSelection(null)}>
+          Clear
+        </Button>
+      }
+    >
+      <p className="mb-3 text-sm text-ink">
+        <span className="num">{fmt(count)}</span> cells
+        {summary.meanPt !== null && (
+          <span className="text-ink-2">
+            {" "}
+            · mean pseudotime <span className="num">{summary.meanPt.toFixed(3)}</span>
+          </span>
+        )}
+      </p>
+      <ul className="space-y-2">
         {summary.top.map(([label, k]) => (
-          <li key={label} className="text-2xs text-ink-muted">
-            <div className="flex justify-between">
-              <span className="truncate">{groupKey === LEIDEN ? `Cluster ${label}` : label}</span>
-              <span className="font-mono">{((100 * k) / count).toFixed(0)}%</span>
+          <li key={label} className="text-xs text-ink">
+            <div className="flex justify-between gap-2">
+              <span className="truncate">{categoryLabel(groupKey, label)}</span>
+              <span className="num text-ink-2">{((100 * k) / count).toFixed(0)}%</span>
             </div>
-            <div className="mt-0.5 h-1 rounded-full bg-line">
-              <div className="h-1 rounded-full bg-accent" style={{ width: `${(100 * k) / count}%` }} />
+            <div className="mt-1 h-1 overflow-hidden rounded-full bg-control">
+              <div
+                className="h-1 origin-left rounded-full bg-focus transition-transform duration-300 ease-out"
+                style={{ transform: `scaleX(${k / count})` }}
+              />
             </div>
           </li>
         ))}

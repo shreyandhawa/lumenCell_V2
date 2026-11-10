@@ -6,6 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type RootSpec } from "@/api/client";
 import type * as T from "@/api/generated";
+import { type Stage, toStage } from "@/lib/geometry";
 
 const forever = { staleTime: Infinity, gcTime: 30 * 60_000 } as const;
 
@@ -37,10 +38,14 @@ export function usePrepReady(): boolean {
   return useDataset().data?.prep.state === "ready";
 }
 
+/** An embedding placed on the shared stage (see lib/geometry.ts), ready for the GPU. */
 export function useEmbedding(name: string | null) {
   return useQuery({
     queryKey: keys.embedding(name ?? ""),
-    queryFn: async () => (await api.embedding(name!)).get("coords", "f32").data,
+    queryFn: async (): Promise<Stage> => {
+      const coords = (await api.embedding(name!)).get("coords", "f32");
+      return toStage(coords.data, coords.shape[1] ?? 2);
+    },
     enabled: name !== null,
     ...forever,
   });

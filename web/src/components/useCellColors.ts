@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useDataset, useDisagreement, useGeneExpression, useObs, useRun, useRunCells, useDoneRunId } from "@/api/queries";
+import { categoryLabel, columnLabel } from "@/lib/colorBy";
 import {
   categoryPalette,
   categorical,
@@ -14,23 +15,33 @@ import {
 } from "@/lib/colors";
 import { useUi } from "@/state/ui";
 
+export interface LegendItem {
+  label: string;
+  color: RGBA;
+  /** What hovering this item highlights on the field. */
+  highlight: { kind: "category"; column: string; value: string } | { kind: "lineage"; id: number } | null;
+}
+
 export type LegendSpec =
-  | { kind: "categorical"; title: string; items: { label: string; color: RGBA }[] }
+  | { kind: "categorical"; title: string; items: LegendItem[] }
   | { kind: "continuous"; title: string; domain: [number, number] };
 
 export interface CellColors {
   colors: Uint8Array | null;
   legend: LegendSpec | null;
-  /** Human-readable value of cell i for the tooltip. */
+  /** Human-readable value of cell i for the hover card. */
   describe: (i: number) => string | null;
   loading: boolean;
 }
 
-const DEFAULT: RGBA = [148, 163, 184, 200];
-const LEIDEN = "lumencell_leiden";
+const UNCOLOURED: Record<"dark" | "light", RGBA> = {
+  dark: [150, 162, 182, 190],
+  light: [92, 102, 120, 190],
+};
 
 export function useCellColors(): CellColors {
   const colorBy = useUi((s) => s.colorBy);
+  const theme = useUi((s) => s.theme);
   const runId = useDoneRunId(useUi((s) => s.runId));
   const dataset = useDataset().data;
   const n = dataset?.n_obs ?? 0;
@@ -48,7 +59,12 @@ export function useCellColors(): CellColors {
   );
 
   return useMemo<CellColors>(() => {
-    const none: CellColors = { colors: n ? uniform(n, DEFAULT) : null, legend: null, describe: () => null, loading: false };
+    const none: CellColors = {
+      colors: n ? uniform(n, UNCOLOURED[theme]) : null,
+      legend: null,
+      describe: () => null,
+      loading: false,
+    };
     if (!colorBy || !n) return none;
 
     if (colorBy.kind === "obs") {
@@ -67,16 +83,19 @@ export function useCellColors(): CellColors {
       const info = dataset?.obs.find((c) => c.name === colorBy.column);
       const palette = categoryPalette(v.categories.length, info?.colors);
       const codes = v.codes!;
-      const leiden = colorBy.column === LEIDEN;
-      const label = (c: string) => (leiden ? `Cluster ${c}` : c);
+      const column = colorBy.column;
       return {
         colors: colorsForCodes(codes, palette),
         legend: {
           kind: "categorical",
-          title: leiden ? "Leiden clusters" : colorBy.column,
-          items: v.categories.map((c, i) => ({ label: label(c), color: palette[i]! })),
+          title: columnLabel(column),
+          items: v.categories.map((c, i) => ({
+            label: categoryLabel(column, c),
+            color: palette[i]!,
+            highlight: { kind: "category", column, value: c },
+          })),
         },
-        describe: (i) => (codes[i]! >= 0 ? label(v.categories[codes[i]!]!) : "missing"),
+        describe: (i) => (codes[i]! >= 0 ? categoryLabel(column, v.categories[codes[i]!]!) : "missing"),
         loading: false,
       };
     }
@@ -87,8 +106,8 @@ export function useCellColors(): CellColors {
       const domain = robustDomain(values);
       return {
         colors: colorsForValues(values, domain),
-        legend: { kind: "continuous", title: `${colorBy.gene} (log-normalised)`, domain },
-        describe: (i) => values[i]!.toFixed(2),
+        legend: { kind: "continuous", title: `${colorBy.gene}, log-normalised`, domain },
+        describe: (i) => `${colorBy.gene} ${values[i]!.toFixed(2)}`,
         loading: false,
       };
     }
@@ -99,8 +118,9 @@ export function useCellColors(): CellColors {
       const domain = robustDomain(diff);
       return {
         colors: colorsForValues(diff, domain),
-        legend: { kind: "continuous", title: "rank difference between runs", domain },
-        describe: (i) => (Number.isFinite(diff[i]!) ? `ranks differ by ${(diff[i]! * 100).toFixed(1)}%` : "not in both runs"),
+        legend: { kind: "continuous", title: "Rank difference between runs", domain },
+        describe: (i) =>
+          Number.isFinite(diff[i]!) ? `ranks differ by ${(diff[i]! * 100).toFixed(1)}%` : "not in both runs",
         loading: false,
       };
     }
@@ -111,7 +131,7 @@ export function useCellColors(): CellColors {
       const pt = c.pseudotime;
       return {
         colors: colorsForValues(pt, [0, 1]),
-        legend: { kind: "continuous", title: "pseudotime", domain: [0, 1] },
+        legend: { kind: "continuous", title: "Pseudotime", domain: [0, 1] },
         describe: (i) => (Number.isFinite(pt[i]!) ? `pseudotime ${pt[i]!.toFixed(3)}` : "no pseudotime"),
         loading: false,
       };
@@ -122,11 +142,15 @@ export function useCellColors(): CellColors {
       colors: colorsForLineages(primary),
       legend: {
         kind: "categorical",
-        title: "lineage",
+        title: "Lineage",
         items: [
-          ...lineages.map((l) => ({ label: l.name, color: categorical(l.id) })),
-          { label: "shared trunk", color: SHARED },
-          { label: "unassigned", color: MISSING },
+          ...lineages.map((l) => ({
+            label: l.name,
+            color: categorical(l.id),
+            highlight: { kind: "lineage" as const, id: l.id },
+          })),
+          { label: "Shared trunk", color: SHARED, highlight: null },
+          { label: "Unassigned", color: MISSING, highlight: null },
         ],
       },
       describe: (i) => {
@@ -137,6 +161,7 @@ export function useCellColors(): CellColors {
     };
   }, [
     colorBy,
+    theme,
     n,
     obs.data,
     obs.isLoading,
@@ -151,12 +176,56 @@ export function useCellColors(): CellColors {
   ]);
 }
 
-/** Dim cells outside the selection, so the selection reads at a glance. */
-export function withSelection(colors: Uint8Array, selection: Uint8Array | null): Uint8Array {
-  if (!selection) return colors;
+/** Which cells the current hover highlight names (1 = named), or null when nothing is highlighted. */
+export function useHighlightMask(): Uint8Array | null {
+  const highlight = useUi((s) => s.highlight);
+  const runId = useDoneRunId(useUi((s) => s.runId));
+  const n = useDataset().data?.n_obs ?? 0;
+  const obs = useObs(highlight?.kind === "category" ? highlight.column : null);
+  const cells = useRunCells(highlight?.kind === "lineage" || highlight?.kind === "pseudotime" ? runId : null);
+
+  return useMemo(() => {
+    if (!highlight || !n) return null;
+    const mask = new Uint8Array(n);
+    if (highlight.kind === "category") {
+      const v = obs.data;
+      const code = v?.categories.indexOf(highlight.value) ?? -1;
+      if (!v?.codes || code < 0) return null;
+      for (let i = 0; i < n; i++) mask[i] = v.codes[i] === code ? 1 : 0;
+      return mask;
+    }
+    const c = cells.data;
+    if (!c) return null;
+    if (highlight.kind === "lineage") {
+      return c.membership.slice(highlight.id * n, highlight.id * n + n);
+    }
+    const half = 0.035;
+    for (let i = 0; i < n; i++) {
+      const pt = c.pseudotime[i]!;
+      mask[i] = Math.abs(pt - highlight.at) <= half ? 1 : 0;
+    }
+    return mask;
+  }, [highlight, n, obs.data, cells.data]);
+}
+
+/**
+ * Dim what is not in focus: cells outside the selection, and cells the hover highlight
+ * does not name. The colour attribute transitions on the GPU, so the dimming eases in.
+ */
+export function withEmphasis(
+  colors: Uint8Array,
+  selection: Uint8Array | null,
+  highlight: Uint8Array | null,
+): Uint8Array {
+  if (!selection && !highlight) return colors;
   const out = colors.slice();
-  for (let i = 0; i < selection.length; i++) {
-    if (!selection[i]) out[i * 4 + 3] = Math.round(out[i * 4 + 3]! * 0.18);
+  const n = out.length / 4;
+  for (let i = 0; i < n; i++) {
+    let a = out[i * 4 + 3]!;
+    if (selection && !selection[i]) a *= 0.16;
+    if (highlight && !highlight[i]) a *= 0.12;
+    out[i * 4 + 3] = Math.round(a);
   }
   return out;
 }
+

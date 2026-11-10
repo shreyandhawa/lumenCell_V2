@@ -19,40 +19,43 @@ export function Compare() {
 
   return (
     <Section title="Compare runs">
-      <Select aria-label="Compare with" value={b ?? ""} onChange={(e) => setOther(e.target.value)}>
-        {others.map((r) => (
-          <option key={r.run_id} value={r.run_id}>
-            {r.method} · {r.run_id.slice(0, 6)}
-          </option>
-        ))}
-      </Select>
+      <Select
+        label="Compare with"
+        className="w-full"
+        value={b}
+        onChange={setOther}
+        groups={[{ items: others.map((r) => ({ value: r.run_id, label: `${r.method} · ${r.run_id.slice(0, 6)}` })) }]}
+      />
       {cmp.data && runA && runB && (
-        <div className="mt-2 space-y-2">
-          <p className="text-xs text-ink">
+        <div className="mt-3 space-y-3">
+          <p className="text-sm text-ink">
             Pseudotime rank agreement{" "}
-            <span className="font-mono">{cmp.data.spearman === null ? "n/a" : cmp.data.spearman.toFixed(3)}</span>
-            <span className="text-ink-faint"> over {fmt(cmp.data.n_common)} cells in both</span>
+            <span className="num font-semibold">{cmp.data.spearman === null ? "n/a" : cmp.data.spearman.toFixed(3)}</span>
+            <span className="text-ink-3">
+              {" "}
+              over <span className="num">{fmt(cmp.data.n_common)}</span> cells in both
+            </span>
           </p>
-          <table className="w-full text-2xs" aria-label="Matched lineages">
+          <table className="w-full text-xs" aria-label="Matched lineages">
             <thead>
-              <tr className="text-left text-ink-faint">
-                <th className="font-normal">this run</th>
-                <th className="font-normal">{runB.provenance.method}</th>
-                <th className="text-right font-normal">overlap</th>
+              <tr className="text-left text-ink-3">
+                <th className="pb-1 font-medium">This run</th>
+                <th className="pb-1 font-medium">{runB.provenance.method}</th>
+                <th className="pb-1 text-right font-medium">Overlap</th>
               </tr>
             </thead>
             <tbody>
               {cmp.data.lineage_matches.map((m) => (
-                <tr key={`${m.a}-${m.b}`}>
-                  <td className="truncate text-ink">{runA.lineages[m.a]?.name}</td>
-                  <td className="truncate text-ink">{runB.lineages[m.b]?.name}</td>
-                  <td className="text-right font-mono text-ink">{(m.jaccard * 100).toFixed(0)}%</td>
+                <tr key={`${m.a}-${m.b}`} className="border-t border-line">
+                  <td className="truncate py-1 text-ink">{runA.lineages[m.a]?.name}</td>
+                  <td className="truncate py-1 text-ink">{runB.lineages[m.b]?.name}</td>
+                  <td className="num py-1 text-right text-ink">{(m.jaccard * 100).toFixed(0)}%</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <Button onClick={() => setColorBy({ kind: "disagreement", a: active, b: b! })}>
-            <GitCompareArrows size={12} /> Colour cells by disagreement
+          <Button size="sm" onClick={() => setColorBy({ kind: "disagreement", a: active, b: b! })}>
+            <GitCompareArrows size={13} /> Colour cells by disagreement
           </Button>
           <Hint>Lineages are paired by cell overlap, so names and order may differ between methods.</Hint>
         </div>
