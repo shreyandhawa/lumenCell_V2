@@ -14,6 +14,7 @@ Events sent back on the events queue (plain tuples, so they pickle cheaply)::
 """
 
 import os
+import sys
 import time
 import traceback
 from collections.abc import Callable
@@ -115,5 +116,9 @@ def worker_main(tasks: "Queue[Task | None]", events: "Queue[tuple[Any, ...]]") -
             handler = HANDLERS[task.kind]
             events.put(("done", task.job_id, handler(task.payload, emit)))
         except Exception as exc:
+            # The job keeps a one-line reason for the app; the full traceback goes to
+            # the terminal running lumencell, which is the only place to debug from.
+            print(f"lumencell: {task.kind} job {task.job_id} failed", file=sys.stderr)
+            traceback.print_exc()
             detail = "".join(traceback.format_exception_only(type(exc), exc)).strip()
             events.put(("failed", task.job_id, detail))

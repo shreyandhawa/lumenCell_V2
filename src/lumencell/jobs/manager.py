@@ -8,7 +8,8 @@
 * Submitting a job whose key matches a queued or running job returns that job
   instead of starting a second copy.
 * If the worker dies mid-job (a crash in compiled code), the job fails with a
-  clear message and a new worker is started.
+  clear message and a new worker is started. If it dies between jobs, a new
+  one is started before the next job is handed over.
 """
 
 import multiprocessing as mp
@@ -195,6 +196,10 @@ class JobManager:
         with self._lock:
             while not self._stopping:
                 if self._running is None and self._pending:
+                    if self._worker is None or not self._worker.is_alive():
+                        # It died between jobs (killed, or out of memory after the last
+                        # one). Nothing was running, so nobody noticed until now.
+                        self._spawn()
                     job_id = self._pending.popleft()
                     job = self._jobs[job_id]
                     self._running = job_id

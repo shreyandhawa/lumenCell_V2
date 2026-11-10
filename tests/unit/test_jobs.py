@@ -73,6 +73,28 @@ def test_cancel_running_job_restarts_the_worker(jobs: JobManager) -> None:
     assert jobs.wait(after.job_id, timeout=60).state == "done", "a fresh worker takes the next job"
 
 
+def test_a_worker_that_dies_mid_job_fails_the_job_and_is_replaced(jobs: JobManager) -> None:
+    job = jobs.submit("sleep", "long", {"steps": 100, "seconds": 0.1})
+    q = jobs.subscribe(job.job_id)
+    while q.get(timeout=30)["state"] != "running":
+        pass
+    jobs._worker.kill()
+    done = jobs.wait(job.job_id, timeout=30)
+    assert done.state == "failed"
+    assert done.error is not None and "stopped unexpectedly" in done.error
+    after = jobs.submit("sleep", "after", {"steps": 1, "seconds": 0.01})
+    assert jobs.wait(after.job_id, timeout=60).state == "done"
+
+
+def test_a_worker_that_died_while_idle_is_replaced_before_the_next_job(jobs: JobManager) -> None:
+    warm = jobs.submit("sleep", "warm", {"steps": 1, "seconds": 0.01})
+    assert jobs.wait(warm.job_id, timeout=60).state == "done"
+    jobs._worker.kill()
+    jobs._worker.join(10)
+    after = jobs.submit("sleep", "after", {"steps": 1, "seconds": 0.01})
+    assert jobs.wait(after.job_id, timeout=60).state == "done", "the first job after must not be lost"
+
+
 def test_prepare_then_infer_through_the_worker(jobs: JobManager, tmp_path: Path) -> None:
     path = tmp_path / "d.h5ad"
     generate("bifurcation", "realistic", n_cells=500, n_genes=300, seed=0).write_h5ad(path)
