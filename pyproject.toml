@@ -63,7 +63,7 @@ packages = ["lumencell"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["scanpy.*", "anndata.*", "igraph.*", "skmisc.*", "scipy.*"]
+module = ["scanpy.*", "anndata.*", "igraph.*", "skmisc.*", "scipy.*", "pandas.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -78,4 +78,6 @@ filterwarnings = [
     "error::DeprecationWarning:lumencell.*",
     # Starlette suggests a different HTTP client package for TestClient; httpx still works.
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+    # anndata still toggles pandas options that pandas 3 deprecated; not our code.
+    "ignore::pandas.errors.Pandas4Warning:anndata",
 ]

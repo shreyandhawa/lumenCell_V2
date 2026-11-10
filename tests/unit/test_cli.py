@@ -1,3 +1,6 @@
+from pathlib import Path
+
+import anndata as ad
 from typer.testing import CliRunner
 
 from lumencell import __version__
@@ -21,3 +24,19 @@ def test_version_prints_package_version() -> None:
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
     assert result.output.strip() == __version__
+
+
+def test_synth_writes_an_h5ad(tmp_path: Path) -> None:
+    out = tmp_path / "data" / "s.h5ad"
+    result = runner.invoke(
+        app, ["synth", str(out), "--n-cells", "200", "--n-genes", "50", "--topology", "binary2"]
+    )
+    assert result.exit_code == 0, result.output
+    adata = ad.read_h5ad(out)
+    assert adata.shape == (200, 50)
+    assert adata.uns["lumencell_truth"]["topology"] == "binary2"
+
+
+def test_synth_rejects_unknown_topology(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["synth", str(tmp_path / "x.h5ad"), "--topology", "spiral"])
+    assert result.exit_code != 0

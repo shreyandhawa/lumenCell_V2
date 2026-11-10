@@ -1,4 +1,4 @@
-.PHONY: install py-install web-install py-lint py-typecheck py-test py-ci web-lint web-typecheck web-test web-build web-ci ci fmt dev-web contract contract-check
+.PHONY: install py-install web-install py-lint py-typecheck py-test py-ci web-lint web-typecheck web-test web-build web-ci ci fmt dev-web contract contract-check py-test-all
 
 install: py-install web-install
 
@@ -19,6 +19,10 @@ py-typecheck:
 
 py-test:
 	uv run pytest -m "not real_data and not slow"
+
+# Everything that runs offline, including slow calibration and benchmark tests.
+py-test-all:
+	uv run pytest -m "not real_data"
 
 py-ci: py-lint py-typecheck py-test
 
