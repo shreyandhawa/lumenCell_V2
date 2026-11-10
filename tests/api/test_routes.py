@@ -3,8 +3,10 @@
 import json
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
@@ -298,6 +300,23 @@ def test_a_corrupt_state_file_is_set_aside(client: TestClient, session: Session)
         assert session.state_path.with_suffix(".corrupt").read_text(encoding="utf-8") == "{broken"
     finally:
         session.state_path.write_text(saved, encoding="utf-8")
+
+
+def test_nullable_boolean_columns_are_listed_and_served_alike(tmp_path: Path) -> None:
+    # pandas' nullable boolean is numeric to pandas; it used to be listed as
+    # continuous by /dataset while /obs served it as category codes.
+    adata = generate("linear", "easy", n_cells=120, n_genes=60, seed=0)
+    flags = pd.array(np.arange(adata.n_obs) % 2 == 0, dtype="boolean")
+    flags[0] = pd.NA
+    adata.obs["flag"] = flags
+    path = tmp_path / "flags.h5ad"
+    adata.write_h5ad(path)
+    session = Session(path, JobManager(), cache_root=tmp_path / "cache", state_dir=tmp_path / "state")
+    listed = {c.name: c for c in session.dataset_info().obs}["flag"]
+    served = binary.decode(session.obs_payload("flag"))
+    assert listed.kind == served.meta["kind"] == "boolean"
+    assert listed.categories == served.meta["categories"] == ["False", "True"]
+    assert served.arrays["codes"][:3].tolist() == [-1, 0, 1]
 
 
 def test_no_session_means_503() -> None:

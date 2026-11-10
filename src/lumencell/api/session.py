@@ -63,6 +63,11 @@ def _is_numeric(s: pd.Series) -> bool:
     return bool(pd.api.types.is_numeric_dtype(s) and not pd.api.types.is_bool_dtype(s))
 
 
+def _is_boolean(s: pd.Series) -> bool:
+    """Plain bool and pandas' nullable boolean alike (a categorical of booleans stays categorical)."""
+    return bool(not isinstance(s.dtype, pd.CategoricalDtype) and pd.api.types.is_bool_dtype(s))
+
+
 def default_state_dir() -> Path:
     override = os.environ.get("LUMENCELL_DATA_DIR")
     return Path(override) if override else Path(platformdirs.user_data_dir("lumencell")) / "state"
@@ -241,16 +246,13 @@ class Session:
         for name in self.ds.obs.columns:
             s = self.ds.obs[name]
             colors = self.ds_colors(str(name))
-            if (
-                isinstance(s.dtype, pd.CategoricalDtype)
-                or s.dtype == bool
-                or s.dtype == object
-                or s.dtype == "string"
-            ):
+            # The same test obs_payload() uses, so a column is never described one
+            # way here and served the other way there.
+            if not _is_numeric(s):
                 cats = self._categories(s)
                 kind = (
                     "boolean"
-                    if s.dtype == bool
+                    if _is_boolean(s)
                     else ("categorical" if len(cats) <= MAX_CATEGORIES_LISTED else "string")
                 )
                 out.append(
@@ -283,7 +285,7 @@ class Session:
     def _categories(s: pd.Series) -> list[str]:
         if isinstance(s.dtype, pd.CategoricalDtype):
             return [str(c) for c in s.cat.categories]
-        if s.dtype == bool:
+        if _is_boolean(s):
             return ["False", "True"]
         return sorted({str(v) for v in s.dropna().unique()})
 
@@ -366,7 +368,7 @@ class Session:
         lookup = {c: i for i, c in enumerate(cats)}
         codes = np.array([lookup.get(str(v), -1) if pd.notna(v) else -1 for v in s], dtype=np.int64)
         dtype = "i16" if len(cats) < 32767 else "i32"
-        kind = "boolean" if s.dtype == bool else "categorical"
+        kind = "boolean" if _is_boolean(s) else "categorical"
         return binary.encode({"codes": (dtype, codes)}, {"kind": kind, "categories": cats})
 
     def search_genes(self, q: str, limit: int) -> models.GeneSearchResult:
