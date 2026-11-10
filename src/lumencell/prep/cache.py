@@ -16,15 +16,20 @@ and nothing upstream.
 
 Each stage is written to a temporary directory and moved into place in one
 rename, so a crash or a cancelled job can never leave a half-written stage that
-later looks valid.
+later looks valid. A stage whose files go missing or cannot be read afterwards
+(a disk problem, a file removed by hand) counts as not cached: it is removed
+and computed again, never trusted.
 """
 
 import hashlib
 import json
 import os
 import shutil
+import sys
 import tempfile
 import time
+import uuid
+import zipfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -39,6 +44,28 @@ from lumencell.prep.stages import PIPELINE_VERSION, STAGES, PrepParams, Stage, S
 
 CACHE_LAYOUT = "v1"
 ProgressFn = Callable[[str, int, int], None]
+_SUFFIXES = (".npz", ".npy", ".json")
+# What reading a damaged artifact raises: truncated arrays (ValueError, EOFError),
+# broken or cut-short .npz archives (BadZipFile, KeyError), a missing file. Other
+# OSErrors (permissions, I/O on an external disk) say nothing about the file being
+# damaged, so they are raised as they are and the stage is kept.
+_UNREADABLE = (
+    FileNotFoundError,
+    IsADirectoryError,
+    NotADirectoryError,
+    ValueError,
+    EOFError,
+    KeyError,
+    zipfile.BadZipFile,
+)
+
+
+class CacheMiss(Exception):
+    """A stage is not in the cache, or its files cannot be read."""
+
+    def __init__(self, stage: str, reason: str) -> None:
+        super().__init__(f"the {stage} stage is not in the cache ({reason})")
+        self.stage = stage
 
 
 def default_cache_root() -> Path:
@@ -126,11 +153,45 @@ class PrepCache:
         return self.stages_dir / f"{stage.name}-{key}"
 
     def has(self, stage: Stage, key: str) -> bool:
-        return (self._stage_dir(stage, key) / ".complete").exists()
+        """The stage finished writing and every artifact it declares is there."""
+        try:
+            names = set(os.listdir(self._stage_dir(stage, key)))
+        except FileNotFoundError:
+            return False
+        return ".complete" in names and all(
+            any(f"{out}{suffix}" in names for suffix in _SUFFIXES) for out in stage.outputs
+        )
 
     def load(self, stage: Stage, key: str) -> dict[str, Any]:
+        """The stage's artifacts. One that cannot be read invalidates the stage and raises CacheMiss."""
         d = self._stage_dir(stage, key)
-        return {name: _load_artifact(d, name) for name in stage.outputs}
+        try:
+            return {name: _load_artifact(d, name) for name in stage.outputs}
+        except _UNREADABLE as exc:
+            reason = f"{type(exc).__name__}: {exc}"
+            self.invalidate(stage, key)
+            print(
+                f"lumencell: the cached {stage.name} stage at {d} cannot be read ({reason}); "
+                "it was taken out of the cache and will be recomputed",
+                file=sys.stderr,
+            )
+            raise CacheMiss(stage.name, reason) from exc
+
+    def invalidate(self, stage: Stage, key: str) -> None:
+        """Take a stage out of the cache, so the next run computes it again."""
+        d = self._stage_dir(stage, key)
+        # Out of the way in one rename (nobody can load it from then on), then deleted.
+        trash = d.with_name(f".{d.name}.damaged-{uuid.uuid4().hex[:8]}")
+        try:
+            d.rename(trash)
+        except FileNotFoundError:
+            return  # another process got there first
+        try:
+            shutil.rmtree(trash)
+        except OSError as exc:
+            # The stage is already out of the cache; only the disk space is left behind
+            # (`lumencell cache prune` removes it later).
+            print(f"lumencell: could not delete {trash} ({exc}); it can be removed by hand", file=sys.stderr)
 
     def save(self, stage: Stage, key: str, outputs: dict[str, Any]) -> None:
         self.stages_dir.mkdir(parents=True, exist_ok=True)
@@ -140,10 +201,18 @@ class PrepCache:
             for name, value in outputs.items():
                 _save_artifact(tmp, name, value)
             (tmp / ".complete").write_text(str(time.time()), encoding="utf-8")
-            if final.exists():  # a concurrent writer finished first; keep theirs
+            if self.has(stage, key):  # a concurrent writer finished first; keep theirs
                 shutil.rmtree(tmp)
                 return
-            tmp.rename(final)
+            if final.exists():  # an incomplete or damaged copy, which must not stay in the way
+                print(f"lumencell: replacing the incomplete {stage.name} stage at {final}", file=sys.stderr)
+                self.invalidate(stage, key)
+            try:
+                tmp.rename(final)
+            except OSError:
+                if not self.has(stage, key):
+                    raise
+                shutil.rmtree(tmp)  # a concurrent writer landed a complete copy just before us
         except BaseException:
             shutil.rmtree(tmp, ignore_errors=True)
             raise
@@ -198,8 +267,20 @@ class PrepCache:
         return out
 
     def run(self, params: PrepParams | None = None, progress: ProgressFn | None = None) -> PrepResult:
-        """Like :func:`run_pipeline`, but each stage is loaded from the cache when present."""
-        params = params or PrepParams()
+        """Like :func:`run_pipeline`, but each stage is loaded from the cache when present.
+
+        A stage that is missing, or whose files cannot be read, is computed.
+        """
+        return self._run(params or PrepParams(), progress, compute=True)
+
+    def load_all(self, params: PrepParams) -> PrepResult:
+        """Every stage from the cache, computing nothing: CacheMiss when one is not there.
+
+        The server uses this; computing belongs to the worker.
+        """
+        return self._run(params, None, compute=False)
+
+    def _run(self, params: PrepParams, progress: ProgressFn | None, compute: bool) -> PrepResult:
         keys = self.keys(params)
         artifacts: dict[str, Any] = {}
         records: list[StageRecord] = []
@@ -212,14 +293,21 @@ class PrepCache:
             key = keys[stage.name]
             if self.has(stage, key):
                 start = time.perf_counter()
-                artifacts.update(self.load(stage, key))
-                records.append(StageRecord(stage.name, "cached", time.perf_counter() - start))
-                continue
+                try:
+                    artifacts.update(self.load(stage, key))
+                    records.append(StageRecord(stage.name, "cached", time.perf_counter() - start))
+                    continue
+                except CacheMiss:
+                    if not compute:
+                        raise
+            elif not compute:
+                raise CacheMiss(stage.name, "missing or incomplete")
             out, seconds = run_stage(stage, self.ds, artifacts, params)
             self.save(stage, key, out)
             artifacts.update(out)
             records.append(StageRecord(stage.name, "done", seconds))
         if progress:
             progress("done", len(STAGES), len(STAGES))
-        self._write_manifest(records, keys, params)
+        if compute:  # the server, which only loads, never writes to the cache
+            self._write_manifest(records, keys, params)
         return PrepResult(artifacts=artifacts, stages=records)

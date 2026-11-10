@@ -46,7 +46,7 @@ class Session:
         self.ds: Dataset = load(self.path, x_is)  # type: ignore[arg-type]
         self.cache = PrepCache(self.ds, cache_root)
         self.state = StateStore((state_dir or default_state_dir()) / f"{self.ds.fingerprint}.json")
-        self.view = DatasetView(self.path, self.ds, self.cache, self.params)
+        self.view = DatasetView(self.path, self.ds, self.cache, self.params, on_cache_miss=self.start_prep)
         self.runs = Runs(
             self.view,
             RunStore(dataset_dir(self.ds.fingerprint, cache_root)),
@@ -117,7 +117,7 @@ class Session:
             obs=self.view.obs_columns(),
             embeddings=self.view.embeddings(),
             default_embedding=self.view.default_embedding(),
-            cluster_key=LEIDEN_KEY if self.prep_ready() else None,
+            cluster_key=LEIDEN_KEY if self.view.loaded_prep() is not None else None,
             label_key=self.view.label_key,
             prep=self.prep_status(),
             root=self.root_state().root,
@@ -156,7 +156,7 @@ class Session:
 
     def root_state(self) -> models.RootState:
         spec_text = self.state.read().get("root")
-        if not spec_text or not self.prep_ready():
+        if not spec_text or self.view.loaded_prep() is None:
             return models.RootState(root=None)
         try:
             return models.RootState(root=to_api_root(resolve_root(self.view.ctx(), parse_root(spec_text))))
