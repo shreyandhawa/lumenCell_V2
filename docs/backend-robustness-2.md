@@ -120,3 +120,63 @@ before the fix.
 
 **Fold into HANDOFF.** Root text forms: `cell:NAME`, `cluster:KEY=VALUE`, `file`,
 and `json:{...}` for names the plain form can't carry.
+
+## Issue 3: no job blocks the queue
+
+**Before.** The task queue pickles each task in a background thread. A payload
+that could not be pickled only printed a traceback there, so the job showed as
+`running` for ever and every job behind it stayed `queued`. That was reproduced
+before the fix: after 15 s, the job was still `running`, the next one was
+`queued`, and the worker sat idle. No job had a time limit either.
+
+**Now** (`jobs/manager.py`):
+
+- `JobManager.submit` pickles the task exactly as the queue would, before
+  queueing it. When that fails, it raises `PayloadError` ("the <kind> job cannot
+  be sent to the worker: its payload cannot be pickled (...)") and queues nothing.
+- Each job kind has a time limit: 3 h for `prepare` and `infer` (about twenty
+  times the 100k-cell budgets), 10 min for `sleep`, and 3 h for any other kind.
+  A running job past its limit fails with "timed out: the <kind> job ran longer
+  than its time limit of <n> and was stopped". The worker is ended and replaced,
+  as for a cancel, and the next job runs.
+- Configuring the limits: `JobManager(time_limits={...})` beats the
+  `LUMENCELL_JOB_TIME_LIMITS` environment variable, for example
+  `prepare=7200,infer=10800` in seconds, which beats the defaults. Both sources
+  are checked: the kind must be a real job kind, and the value a finite number of
+  seconds above 0. A bad value raises at startup, and `lumencell launch` reports
+  it as a one-line error instead of a traceback.
+- A timeout is also printed to the terminal. A worker that ignores SIGTERM is
+  killed after 5 s, on timeout, cancel or shutdown, so no second worker ever runs
+  beside a stuck one.
+
+**Verified by** `tests/unit/test_jobs.py`:
+
+- a sleep job with a 2 s limit fails with the timeout message, its worker is
+  gone, and a fresh worker runs the next job;
+- a worker that ignores SIGTERM is still stopped, on timeout and on cancel;
+- an unpicklable payload raises `PayloadError` at submit, nothing is queued, and
+  the next job runs;
+- the approved defaults: 3 h for prepare and infer, 10 min for sleep;
+- the env var and constructor overrides work, and typos, unknown kinds,
+  non-numbers, NaN and non-positive values are refused;
+- `launch` reports a bad env value without a traceback.
+
+All four failed before the fix (the constructor had no `time_limits`, and there
+was no `PayloadError` or `time_limit`).
+
+**Still open.**
+
+- If a job's own `done` event is already waiting when its limit is hit, the job
+  is reported as timed out although its run was saved. The run is still found
+  on disk the next time it is asked for.
+- Found while testing, older than this branch and not one of the six issues:
+  stopping `lumencell launch` with SIGTERM leaves its worker running for ever.
+  uvicorn re-raises the signal after shutting down, so `launch`'s
+  `finally: jobs.shutdown()` never runs, and the worker keeps waiting on its
+  queue. `tests/api/test_server.py` stops the server exactly this way, so every
+  test run leaves two orphaned process pairs behind. Those from the main checkout
+  and the frontend worktree were left alone, and the ones from this worktree
+  were stopped.
+
+**Fold into HANDOFF.** `LUMENCELL_JOB_TIME_LIMITS` sets the per-kind job time
+limits (seconds). The defaults are 3 h for prepare and infer.

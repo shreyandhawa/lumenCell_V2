@@ -1,4 +1,6 @@
 import queue
+import signal
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -7,7 +9,9 @@ import pytest
 from lumencell.bench.synth import generate
 from lumencell.data.loader import load
 from lumencell.engine.store import RunStore
+from lumencell.jobs import manager as jobs_mod
 from lumencell.jobs.manager import JobManager
+from lumencell.jobs.worker import HANDLERS
 from lumencell.prep.cache import PrepCache, dataset_dir
 from lumencell.prep.stages import STAGES, PrepParams
 
@@ -129,3 +133,86 @@ def test_prepare_then_infer_through_the_worker(jobs: JobManager, tmp_path: Path)
     store = RunStore(dataset_dir(ds.fingerprint, cache_root))
     assert store.exists("r1")
     store.load("r1").validate()
+
+
+# ---- time limits and payloads -------------------------------------------------------------
+
+
+class IgnoresSigterm:
+    """Unpickled in the worker, it makes the worker ignore SIGTERM (like a library with its own handler)."""
+
+    def __reduce__(self) -> tuple[object, tuple[object, ...]]:
+        return (signal.signal, (signal.SIGTERM, signal.SIG_IGN))
+
+
+def _running_worker(manager: JobManager, job_id: str) -> object:
+    q = manager.subscribe(job_id)
+    while q.get(timeout=30)["state"] != "running":
+        pass
+    return manager._worker
+
+
+def test_a_job_over_its_time_limit_fails_and_the_next_one_runs(capsys: pytest.CaptureFixture[str]) -> None:
+    manager = JobManager(time_limits={"sleep": 2.0}).start()
+    try:
+        job = manager.submit("sleep", "slow", {"steps": 1000, "seconds": 0.1})
+        old = _running_worker(manager, job.job_id)
+        done = manager.wait(job.job_id, timeout=30)
+        assert done.state == "failed"
+        assert done.error is not None and "timed out" in done.error and "time limit of 2 s" in done.error
+        assert not old.is_alive(), "the worker running it was stopped"  # type: ignore[attr-defined]
+        assert manager._worker.pid != old.pid  # type: ignore[attr-defined]
+        assert "timed out" in capsys.readouterr().err, "the terminal says so too"
+        after = manager.submit("sleep", "after", {"steps": 1, "seconds": 0.01})
+        assert manager.wait(after.job_id, timeout=60).state == "done", "a fresh worker takes the next job"
+    finally:
+        manager.shutdown()
+
+
+@pytest.mark.parametrize("stop", ["time limit", "cancel"])
+def test_a_worker_that_ignores_sigterm_is_still_stopped(stop: str) -> None:
+    manager = JobManager(time_limits={"sleep": 2.0 if stop == "time limit" else 600}).start()
+    try:
+        job = manager.submit("sleep", "stubborn", {"steps": 1000, "seconds": 0.1, "x": IgnoresSigterm()})
+        old = _running_worker(manager, job.job_id)
+        if stop == "cancel":
+            manager.cancel(job.job_id)
+        manager.wait(job.job_id, timeout=60)
+        assert not old.is_alive(), "no second worker runs beside a stuck one"  # type: ignore[attr-defined]
+    finally:
+        manager.shutdown()
+
+
+def test_an_unsendable_payload_fails_at_submit_and_the_queue_keeps_moving(jobs: JobManager) -> None:
+    with pytest.raises(jobs_mod.PayloadError, match="cannot be sent"):
+        jobs.submit("sleep", "bad", {"steps": 1, "lock": threading.Lock()})
+    assert jobs.of_kind("sleep") == [], "nothing was queued"
+    after = jobs.submit("sleep", "after", {"steps": 1, "seconds": 0.01})
+    assert jobs.wait(after.job_id, timeout=30).state == "done"
+
+
+def test_every_job_kind_has_a_generous_default_time_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LUMENCELL_JOB_TIME_LIMITS", raising=False)
+    manager = JobManager()
+    assert manager.time_limit("prepare") == manager.time_limit("infer") == 3 * 3600
+    assert manager.time_limit("sleep") == 10 * 60
+    assert all(manager.time_limit(kind) >= 600 for kind in HANDLERS)
+
+
+def test_time_limits_can_be_set_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LUMENCELL_JOB_TIME_LIMITS", "prepare=60, infer=90")
+    assert JobManager().time_limit("prepare") == 60
+    assert JobManager().time_limit("infer") == 90
+    assert JobManager(time_limits={"prepare": 5}).time_limit("prepare") == 5, "the argument wins"
+    for bad in ("prepare=soon", "prepare", "prepare=-1", "prepar=60", "prepare=nan"):
+        monkeypatch.setenv("LUMENCELL_JOB_TIME_LIMITS", bad)
+        with pytest.raises(ValueError, match="LUMENCELL_JOB_TIME_LIMITS"):
+            JobManager()
+
+
+@pytest.mark.parametrize(
+    "limits", [{"prepare": float("nan")}, {"prepare": "60"}, {"prepare": 0}, {"prepare": True}, {"nope": 5}]
+)
+def test_time_limits_given_in_code_are_checked(limits: dict[str, object]) -> None:
+    with pytest.raises(ValueError, match="time limit"):
+        JobManager(time_limits=limits)  # type: ignore[arg-type]
