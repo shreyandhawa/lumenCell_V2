@@ -1,4 +1,4 @@
-.PHONY: install py-install web-install py-lint py-typecheck py-test py-ci web-lint web-typecheck web-test web-build web-ci ci fmt dev-web contract contract-check py-test-all
+.PHONY: install py-install web-install py-lint py-typecheck py-test py-ci web-lint web-typecheck web-test web-build web-ci ci fmt dev-web contract contract-check py-test-all bench-synth bench-baseline
 
 install: py-install web-install
 
@@ -58,6 +58,16 @@ contract-check:
 	(cd web && npx openapi-ts -i ../contracts/openapi.json -o $$tmp/generated -p @hey-api/typescript --no-log-file -s) && \
 	diff -ru web/src/api/generated $$tmp/generated > /dev/null || { echo "web/src/api/generated is stale: run make contract"; exit 1; }; \
 	rm -rf $$tmp; echo "API contract is up to date"
+
+# ---- Benchmarks -----------------------------------------------------------
+
+# Full synthetic matrix: reports gates, fails on regressions against the baseline.
+bench-synth:
+	uv run lumencell bench synth
+
+# Re-measure and replace benchmarks/baseline.json (commit the result deliberately).
+bench-baseline:
+	uv run lumencell bench synth --write-baseline
 
 # ---- Everything -----------------------------------------------------------
 
