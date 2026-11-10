@@ -1,4 +1,4 @@
-"""Draw an inferred trajectory on a 2-D display embedding.
+"""Draw an inferred trajectory on a 2-D (or 3-D diffusion) display embedding.
 
 Inference happens in PCA / diffusion space; UMAP and friends are only for
 looking at it. Everything drawn here is therefore a *projection* of the
@@ -28,16 +28,25 @@ N_BINS = 40
 FIDELITY_WARN = 0.8
 
 
+Coords = tuple[float, float] | tuple[float, float, float]
+
+
+def _coords(row: npt.NDArray[np.float64]) -> Coords:
+    if len(row) == 3:
+        return (float(row[0]), float(row[1]), float(row[2]))
+    return (float(row[0]), float(row[1]))
+
+
 @dataclass(frozen=True)
 class LineageCurve:
     lineage: int
-    points: list[tuple[float, float]]
+    points: list[Coords]
     fidelity: float | None
 
 
 @dataclass(frozen=True)
 class Projection:
-    milestones: dict[int, tuple[float, float]]
+    milestones: dict[int, Coords]
     curves: list[LineageCurve]
     curve_source: str = "binned"
     warnings: list[Notice] = field(default_factory=list)
@@ -78,15 +87,12 @@ def _arc_position(cells: npt.NDArray[np.float64], curve: npt.NDArray[np.float64]
 
 
 def project(result: TrajectoryResult, coords: npt.NDArray[np.floating], embedding: str) -> Projection:
-    xy = np.asarray(coords, dtype=np.float64)[:, :2]
+    """Project onto a 2-D or 3-D embedding; extra columns beyond the third are ignored."""
+    xy = np.asarray(coords, dtype=np.float64)[:, :3]
     w = result.milestone_weights.tocsc()
     col_sum = np.asarray(w.sum(axis=0)).ravel()
     milestone_xy = (w.T @ xy) / np.maximum(col_sum, 1e-12)[:, None]
-    milestones = {
-        m.id: (float(milestone_xy[i, 0]), float(milestone_xy[i, 1]))
-        for i, m in enumerate(result.milestones)
-        if col_sum[i] > 0
-    }
+    milestones = {m.id: _coords(milestone_xy[i]) for i, m in enumerate(result.milestones) if col_sum[i] > 0}
     root_id = next(m.id for m in result.milestones if m.kind == "root")
 
     pt = result.pseudotime.astype(np.float64)
@@ -127,7 +133,7 @@ def project(result: TrajectoryResult, coords: npt.NDArray[np.floating], embeddin
                     "positions along the curve do not follow pseudotime well. Try the diffusion (DC) view.",
                 )
             )
-        curves.append(LineageCurve(lin.id, [(float(x), float(y)) for x, y in curve], fid))
+        curves.append(LineageCurve(lin.id, [_coords(p) for p in curve], fid))
     return Projection(
         milestones=milestones, curves=curves, curve_source="fitted" if fitted else "binned", warnings=warnings
     )

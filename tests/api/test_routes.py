@@ -72,7 +72,8 @@ def test_prepare_job_runs_and_reports_ready(client: TestClient, session: Session
 def test_dataset_after_prep(client: TestClient) -> None:
     info = client.get("/api/v1/dataset").json()
     names = {e["name"]: e["source"] for e in info["embeddings"]}
-    assert names == {"umap": "computed", "dc12": "diffusion"}
+    assert names == {"umap": "computed", "dc12": "diffusion", "dc123": "diffusion"}
+    assert {e["name"]: e["dims"] for e in info["embeddings"]}["dc123"] == 3
     assert info["default_embedding"] == "umap"
     cols = {c["name"]: c for c in info["obs"]}
     assert cols["true_label"]["kind"] == "categorical"
@@ -183,6 +184,15 @@ def test_curves(client: TestClient, run: dict[str, object]) -> None:
     curves = client.get(f"/api/v1/trajectories/{run['run_id']}/curves", params={"embedding": "umap"}).json()
     assert curves["curve_source"] == "binned"
     assert all(len(c["points"]) > 10 for c in curves["curves"])
+    assert all(m["z"] is None for m in curves["milestones"])
+
+
+def test_curves_and_coords_in_three_diffusion_components(client: TestClient, run: dict[str, object]) -> None:
+    coords = _lcb(client.get("/api/v1/embeddings/dc123")).arrays["coords"]
+    assert coords.shape == (800, 3)
+    curves = client.get(f"/api/v1/trajectories/{run['run_id']}/curves", params={"embedding": "dc123"}).json()
+    assert all(len(p) == 3 for c in curves["curves"] for p in c["points"])
+    assert all(m["z"] is not None for m in curves["milestones"])
 
 
 def test_rename_lineage(client: TestClient, run: dict[str, object]) -> None:

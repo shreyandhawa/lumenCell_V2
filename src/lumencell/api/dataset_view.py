@@ -164,6 +164,8 @@ class DatasetView:
             if "umap" in art and "umap" not in self.ds.embeddings:
                 out.append(models.Embedding(name="umap", dims=2, source="computed"))
             out.append(models.Embedding(name="dc12", dims=2, source="diffusion"))
+            if np.asarray(art["diffmap"]).shape[1] >= 4:
+                out.append(models.Embedding(name="dc123", dims=3, source="diffusion"))
         return out
 
     def embedding(self, name: str) -> npt.NDArray[np.float32]:
@@ -175,6 +177,8 @@ class DatasetView:
                 return np.asarray(art["umap"], dtype=np.float32)
             if name == "dc12":
                 return np.ascontiguousarray(np.asarray(art["diffmap"])[:, 1:3], dtype=np.float32)
+            if name == "dc123" and np.asarray(art["diffmap"]).shape[1] >= 4:
+                return np.ascontiguousarray(np.asarray(art["diffmap"])[:, 1:4], dtype=np.float32)
         raise ApiError(HTTPStatus.NOT_FOUND, "not_found", f"no embedding named {name!r}")
 
     def default_embedding(self) -> str | None:

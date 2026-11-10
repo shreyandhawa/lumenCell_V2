@@ -32,6 +32,17 @@ def test_milestones_and_curves_on_umap(result: TrajectoryResult, bifurcation: Pr
     assert proj.curve_source == "binned"
 
 
+def test_curves_on_three_diffusion_components(result: TrajectoryResult, bifurcation: Prepared) -> None:
+    dc123 = np.asarray(bifurcation.prep.artifacts["diffmap"])[:, 1:4]
+    proj = project(result, dc123, "dc123")
+    root_id = next(m.id for m in result.milestones if m.kind == "root")
+    assert all(len(p) == 3 for p in proj.milestones.values())
+    for curve in proj.curves:
+        assert all(len(p) == 3 for p in curve.points)
+        assert curve.points[0] == pytest.approx(proj.milestones[root_id])
+        assert curve.fidelity is not None and curve.fidelity > 0.8
+
+
 def test_scrambled_embedding_triggers_the_fidelity_warning(result: TrajectoryResult) -> None:
     noise = np.random.default_rng(0).random((result.n_obs, 2))
     proj = project(result, noise, "noise")

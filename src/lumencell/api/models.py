@@ -69,7 +69,10 @@ class Embedding(Model):
     name: str
     dims: int
     source: Literal["file", "computed", "diffusion"] = Field(
-        description="file: read from obsm; computed: made by lumenCell's prep; diffusion: DC1 vs DC2."
+        description=(
+            "file: read from obsm; computed: made by lumenCell's prep; "
+            "diffusion: diffusion components (DC1 vs DC2, or DC1-DC3 when dims is 3)."
+        )
     )
 
 
@@ -287,7 +290,9 @@ class TrajectoryRun(Model):
 
 class LineageCurve(Model):
     lineage: int
-    points: list[tuple[float, float]]
+    points: list[tuple[float, float] | tuple[float, float, float]] = Field(
+        description="Curve points in the embedding's own dimensions (2 or 3 coordinates each)."
+    )
     fidelity: float | None = Field(
         None, description="Spearman of pseudotime against position along the drawn curve."
     )
@@ -297,6 +302,7 @@ class MilestonePosition(Model):
     id: int
     x: float
     y: float
+    z: float | None = Field(None, description="Set on 3-D embeddings only.")
 
 
 class Curves(Model):

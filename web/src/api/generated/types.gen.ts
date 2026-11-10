@@ -188,7 +188,7 @@ export type Embedding = {
     /**
      * Source
      *
-     * file: read from obsm; computed: made by lumenCell's prep; diffusion: DC1 vs DC2.
+     * file: read from obsm; computed: made by lumenCell's prep; diffusion: diffusion components (DC1 vs DC2, or DC1-DC3 when dims is 3).
      */
     source: 'file' | 'computed' | 'diffusion';
 };
@@ -400,8 +400,14 @@ export type LineageCurve = {
     lineage: number;
     /**
      * Points
+     *
+     * Curve points in the embedding's own dimensions (2 or 3 coordinates each).
      */
     points: Array<[
+        number,
+        number
+    ] | [
+        number,
         number,
         number
     ]>;
@@ -539,6 +545,12 @@ export type MilestonePosition = {
      * Y
      */
     y: number;
+    /**
+     * Z
+     *
+     * Set on 3-D embeddings only.
+     */
+    z: number | null;
 };
 
 /**

@@ -223,7 +223,10 @@ class Runs:
                 models.LineageCurve(lineage=c.lineage, points=c.points, fidelity=c.fidelity)
                 for c in proj.curves
             ],
-            milestones=[models.MilestonePosition(id=k, x=v[0], y=v[1]) for k, v in proj.milestones.items()],
+            milestones=[
+                models.MilestonePosition(id=k, x=v[0], y=v[1], z=v[2] if len(v) == 3 else None)
+                for k, v in proj.milestones.items()
+            ],
             warnings=[models.Notice(**w.__dict__) for w in proj.warnings],
         )
 

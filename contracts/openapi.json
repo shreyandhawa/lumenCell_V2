@@ -312,7 +312,7 @@
             "type": "string"
           },
           "source": {
-            "description": "file: read from obsm; computed: made by lumenCell's prep; diffusion: DC1 vs DC2.",
+            "description": "file: read from obsm; computed: made by lumenCell's prep; diffusion: diffusion components (DC1 vs DC2, or DC1-DC3 when dims is 3).",
             "enum": [
               "file",
               "computed",
@@ -693,18 +693,39 @@
             "type": "integer"
           },
           "points": {
+            "description": "Curve points in the embedding's own dimensions (2 or 3 coordinates each).",
             "items": {
-              "maxItems": 2,
-              "minItems": 2,
-              "prefixItems": [
+              "anyOf": [
                 {
-                  "type": "number"
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
                 },
                 {
-                  "type": "number"
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
                 }
-              ],
-              "type": "array"
+              ]
             },
             "title": "Points",
             "type": "array"
@@ -905,12 +926,25 @@
           "y": {
             "title": "Y",
             "type": "number"
+          },
+          "z": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set on 3-D embeddings only.",
+            "title": "Z"
           }
         },
         "required": [
           "id",
           "x",
-          "y"
+          "y",
+          "z"
         ],
         "title": "MilestonePosition",
         "type": "object"
