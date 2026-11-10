@@ -2,8 +2,9 @@
 
 Layout, under ``<cache root>/v1/<dataset fingerprint>/``::
 
-    manifest.json                 stage name -> {key, seconds, state}; used for ETAs.
-                                  seconds is the time to compute the stage, kept across cache hits
+    manifest.json                 the dataset's name and path, and stage name -> {key, seconds,
+                                  state}; used for ETAs and `lumencell cache list`. seconds is
+                                  the time to compute the stage, kept across cache hits
     stages/<stage>-<key>/         one directory per computed stage
         <artifact>.npy            numpy arrays
         <artifact>.npz            scipy CSR matrices
@@ -43,6 +44,7 @@ from lumencell.prep.pipeline import PrepResult
 from lumencell.prep.stages import PIPELINE_VERSION, STAGES, PrepParams, Stage, StageRecord, run_stage
 
 CACHE_LAYOUT = "v1"
+LAST_USED = "last-used"  # in a dataset's folder; its modification time is when the cache was last used
 ProgressFn = Callable[[str, int, int], None]
 _SUFFIXES = (".npz", ".npy", ".json")
 # What reading a damaged artifact raises: truncated arrays (ValueError, EOFError),
@@ -233,7 +235,12 @@ class PrepCache:
                     stages[r.name] = {"key": keys[r.name], "state": "cached", "seconds": None}
             else:
                 stages[r.name] = {"key": keys[r.name], "state": r.state, "seconds": round(r.seconds, 3)}
-        manifest = {"pipeline": PIPELINE_VERSION, "params": params.to_dict(), "stages": stages}
+        manifest = {
+            "pipeline": PIPELINE_VERSION,
+            "dataset": {"name": self.ds.name, "path": str(Path(self.ds.path).resolve())},
+            "params": params.to_dict(),
+            "stages": stages,
+        }
         if manifest == previous:
             return  # nothing new to record; the server and the worker both load the cache often
         # Its own temporary file: the server and the worker can both be writing.
@@ -281,6 +288,8 @@ class PrepCache:
         return self._run(params, None, compute=False)
 
     def _run(self, params: PrepParams, progress: ProgressFn | None, compute: bool) -> PrepResult:
+        if compute:
+            self._mark_used()  # before the long work, so a prune meanwhile sees the dataset as in use
         keys = self.keys(params)
         artifacts: dict[str, Any] = {}
         records: list[StageRecord] = []
@@ -308,6 +317,19 @@ class PrepCache:
             records.append(StageRecord(stage.name, "done", seconds))
         if progress:
             progress("done", len(STAGES), len(STAGES))
-        if compute:  # the server, which only loads, never writes to the cache
+        if compute:  # the server only reads the cache, apart from marking it as used
             self._write_manifest(records, keys, params)
+        self._mark_used()
         return PrepResult(artifacts=artifacts, stages=records)
+
+    def _mark_used(self) -> None:
+        """Record that the cache was used now (`lumencell cache prune --older-than` goes by it).
+
+        A file of its own, so cleaning up inside the folder (or the OS dropping a
+        .DS_Store there) is never mistaken for use.
+        """
+        try:
+            self.dir.mkdir(parents=True, exist_ok=True)
+            (self.dir / LAST_USED).touch()
+        except OSError as exc:
+            print(f"lumencell: could not mark {self.dir} as used ({exc})", file=sys.stderr)

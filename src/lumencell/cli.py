@@ -237,6 +237,104 @@ def launch(
         jobs.shutdown()
 
 
+cache_app = typer.Typer(help="See what the cache holds, and clean it up.", no_args_is_help=True)
+app.add_typer(cache_app, name="cache")
+
+
+@cache_app.command("list")
+def cache_list() -> None:
+    """List the datasets in the cache, with their size and when each was last used."""
+    import time
+    from datetime import datetime
+
+    from lumencell.prep.cache import default_cache_root
+    from lumencell.prep.housekeeping import format_ago, format_size, list_cache
+
+    root = default_cache_root()
+    entries = list_cache(root)
+    if not entries:
+        typer.echo(f"the cache at {root} is empty")
+        return
+    now = time.time()
+    typer.echo(f"cache at {root}")
+    for e in entries:
+        when = datetime.fromtimestamp(e.last_used).strftime("%Y-%m-%d")
+        where = "(a symbolic link, never pruned)" if e.is_link else e.source or ""
+        typer.echo(
+            f"  {e.name or e.fingerprint:24s} {format_size(e.size):>9s}  "
+            f"last used {when} ({format_ago(e.last_used, now)})  {e.fingerprint}  {where}".rstrip()
+        )
+    typer.echo(f"  {len(entries)} datasets, {format_size(sum(e.size for e in entries))} in all")
+
+
+@cache_app.command("prune")
+def cache_prune(
+    older_than: Annotated[
+        str | None, typer.Option(help="Remove datasets not used for this long: 12h, 30d or 2w.")
+    ] = None,
+    everything: Annotated[bool, typer.Option("--all", help="Remove every dataset in the cache.")] = False,
+    dry_run: Annotated[bool, typer.Option(help="Only say what would be removed.")] = False,
+) -> None:
+    """Remove datasets from the cache, and leftovers of interrupted jobs.
+
+    Only dataset folders and what is inside them are ever removed. Downloaded benchmark
+    data and the saved roots (the state directory) are never touched.
+    """
+    from lumencell.prep.cache import default_cache_root
+    from lumencell.prep.housekeeping import (
+        Removal,
+        UnsafePath,
+        apply_prune,
+        check_prune,
+        format_size,
+        list_cache,
+        parse_age,
+        plan_prune,
+    )
+
+    if (older_than is not None) == everything:
+        raise typer.BadParameter("give either --older-than or --all", param_hint="--older-than / --all")
+    try:
+        age = parse_age(older_than) if older_than is not None else None
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--older-than") from exc
+    root = default_cache_root()
+    entries = list_cache(root)
+    if not entries:
+        typer.echo(f"the cache at {root} is empty")
+        return
+    for e in entries:
+        if e.is_link:
+            typer.echo(
+                f"skipped {e.path}: a symbolic link, which may lead outside the cache; it is never removed"
+            )
+    removals = plan_prune(root, older_than=age, everything=everything)
+    try:
+        if dry_run:
+            check_prune(root, removals)
+            outcomes: list[tuple[Removal, str | None]] = [(r, None) for r in removals]
+        else:
+            outcomes = apply_prune(root, removals)
+    except UnsafePath as exc:
+        typer.echo(f"lumencell: {exc}; nothing was removed", err=True)
+        raise typer.Exit(1) from None
+    if not outcomes:
+        typer.echo("nothing to remove")
+        return
+    verb = "would remove" if dry_run else "removed"
+    for r, problem in outcomes:
+        if problem is None:
+            typer.echo(f"{verb} {r.reason} ({format_size(r.size)}): {r.path}")
+        else:
+            typer.echo(
+                f"{problem.split(':')[0]} {r.reason}: {r.path} ({problem})", err=problem != "already gone"
+            )
+    freed = sum(r.size for r, problem in outcomes if problem is None)
+    typer.echo(f"{'would free' if dry_run else 'freed'} {format_size(freed)}")
+    if any(problem not in (None, "already gone") for _r, problem in outcomes):
+        raise typer.Exit(1)
+
+
 bench_app = typer.Typer(help="Accuracy benchmarks against known trajectories.", no_args_is_help=True)
 app.add_typer(bench_app, name="bench")
 

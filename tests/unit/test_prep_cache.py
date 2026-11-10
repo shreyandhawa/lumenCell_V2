@@ -1,3 +1,4 @@
+import os
 import shutil
 import time
 from pathlib import Path
@@ -258,3 +259,53 @@ def test_a_writer_that_loses_the_race_keeps_the_winners_copy(ds: Dataset, tmp_pa
     assert {r.name: r.state for r in res.stages}["pca"] == "done"
     assert (final / "pca.npy").exists()
     assert not [p.name for p in cache.stages_dir.iterdir() if p.name.startswith(".")]
+
+
+# ---- what `lumencell cache list` reads -----------------------------------------------------
+
+
+def test_the_manifest_names_the_dataset(ds: Dataset, tmp_path: Path) -> None:
+    cache = PrepCache(ds, tmp_path)
+    cache.run()
+    manifest = cache.manifest()
+    assert manifest is not None
+    assert manifest["dataset"] == {"name": ds.name, "path": str(ds.path.resolve())}
+
+
+def _last_used(cache: PrepCache, root: Path) -> float:
+    from lumencell.prep.housekeeping import list_cache
+
+    (entry,) = [e for e in list_cache(root) if e.fingerprint == cache.ds.fingerprint]
+    return entry.last_used
+
+
+def test_using_the_cache_marks_it_as_used(ds: Dataset, tmp_path: Path) -> None:
+    cache = PrepCache(ds, tmp_path)
+    cache.run()
+    ten_days_ago = time.time() - 10 * 86400
+    for use in (
+        lambda: PrepCache(ds, tmp_path).run(),
+        lambda: PrepCache(ds, tmp_path).load_all(PrepParams()),
+    ):
+        for p in (cache.dir, *cache.dir.iterdir()):
+            os.utime(p, (ten_days_ago, ten_days_ago))
+        use()
+        assert time.time() - _last_used(cache, tmp_path) < 60
+
+
+def test_a_dataset_being_prepared_counts_as_in_use(ds: Dataset, tmp_path: Path) -> None:
+    PrepCache(ds, tmp_path).run()
+    cache = PrepCache(ds, tmp_path)
+    ten_days_ago = time.time() - 10 * 86400
+    for p in (cache.dir, *cache.dir.iterdir()):
+        os.utime(p, (ten_days_ago, ten_days_ago))
+    seen: list[float] = []
+    real = cache_mod.run_stage
+
+    def watching(*args: object, **kw: object) -> object:
+        seen.append(_last_used(cache, tmp_path))
+        return real(*args, **kw)  # type: ignore[arg-type]
+
+    with mock.patch.object(cache_mod, "run_stage", watching):
+        cache.run(PrepParams(n_top_genes=300))  # recomputes hvg and everything after it
+    assert seen and time.time() - seen[0] < 60, "marked before the long work starts, not after"
