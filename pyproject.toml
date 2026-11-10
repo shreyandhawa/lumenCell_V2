@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lumencell"
+description = "Interactive explorer for single-cell pseudotime and lineage trajectories."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dynamic = ["version"]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+    "anndata>=0.12",
+    "scanpy>=1.12,<1.13",
+    "igraph>=0.11",
+    "scikit-misc>=0.5",
+    "numpy>=2.0",
+    "scipy>=1.13",
+    "pandas>=2.2",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "pydantic>=2.9",
+    "typer>=0.15",
+    "platformdirs>=4.3",
+]
+
+[project.scripts]
+lumencell = "lumencell.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "hypothesis>=6.120",
+    "ruff>=0.9",
+    "mypy>=1.15",
+]
+
+[tool.hatch.version]
+path = "src/lumencell/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lumencell"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "NPY", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["lumencell"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["scanpy.*", "anndata.*", "igraph.*", "skmisc.*", "scipy.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "golden: synthetic accuracy benchmark with thresholds (runs in CI)",
+    "real_data: needs a downloaded real dataset; skipped when it is not cached",
+    "slow: takes more than a few seconds",
+]
+filterwarnings = ["error::DeprecationWarning:lumencell.*"]

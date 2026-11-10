@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+dist/
+build/
+*.egg-info/
+
+# Web
+web/node_modules/
+web/dist/
+web/coverage/
+web/test-results/
+web/playwright-report/
+src/lumencell/web_dist/
+
+# Data and local caches
+*.h5ad
+!tests/fixtures/*.h5ad
+.lumencell/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
