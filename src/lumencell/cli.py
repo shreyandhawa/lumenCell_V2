@@ -168,6 +168,7 @@ def launch(
     """Start the local server and open the explorer."""
     import uvicorn
 
+    from lumencell.api.errors import ApiError
     from lumencell.api.models import TrajectoryRequest
     from lumencell.api.session import Session, to_api_spec
     from lumencell.data.loader import DatasetError
@@ -196,10 +197,20 @@ def launch(
         def run_when_prepared() -> None:
             job = jobs.find(f"prepare:{session.prep_key}")
             if job is not None:
-                jobs.wait(job.job_id, timeout=24 * 3600)
-            spec = to_api_spec(parse_root(root))
-            session.set_root(spec)
-            created, _ = session.create_run(TrajectoryRequest(method=method, root=spec))
+                job = jobs.wait(job.job_id, timeout=24 * 3600)
+                if job.state != "done":
+                    reason = f": {job.error}" if job.error else ""
+                    typer.echo(f"preparing {data.name} {job.state}{reason}; --root was not applied", err=True)
+                    return
+            try:
+                spec = to_api_spec(parse_root(root))
+                session.set_root(spec)
+                created, _ = session.create_run(TrajectoryRequest(method=method, root=spec))
+            except ApiError as exc:
+                # e.g. a cluster name that is not in the file. The server keeps
+                # running; the root can still be picked in the app.
+                typer.echo(f"could not start {method} from --root {root}: {exc.message}", err=True)
+                return
             typer.echo(f"running {method} from {root} (run {created.run_id})")
 
         threading.Thread(target=run_when_prepared, daemon=True).start()

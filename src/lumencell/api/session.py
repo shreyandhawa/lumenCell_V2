@@ -663,6 +663,10 @@ class Session:
         current = self._renames(rid)
         taken = {current.get(str(i), lin["name"]) for i, lin in lineages.items() if i != lineage_id}
         clean = name.strip()
+        if not clean:
+            raise ApiError(
+                HTTPStatus.UNPROCESSABLE_ENTITY, "invalid_request", "a lineage name cannot be blank"
+            )
         if clean in taken:
             raise ApiError(HTTPStatus.CONFLICT, "name_taken", f"another lineage is already called {clean!r}")
 

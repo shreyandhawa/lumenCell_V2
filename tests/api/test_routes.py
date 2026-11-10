@@ -192,6 +192,8 @@ def test_rename_lineage(client: TestClient, run: dict[str, object]) -> None:
     assert client.get(url).json()["lineages"][0]["name"] == "Erythroid"
     clash = client.patch(f"{url}/lineages/1", json={"name": "Erythroid"})
     assert clash.status_code == 409 and clash.json()["error"]["code"] == "name_taken"
+    blank = client.patch(f"{url}/lineages/1", json={"name": "   "})
+    assert blank.status_code == 422 and blank.json()["error"]["code"] == "invalid_request"
 
 
 def test_job_routes(client: TestClient, run: dict[str, object]) -> None:
