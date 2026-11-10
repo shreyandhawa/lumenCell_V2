@@ -30,6 +30,13 @@ dependencies = [
     "platformdirs>=4.3",
 ]
 
+[project.optional-dependencies]
+# Optional trajectory methods. These pull in GPL-licensed dependencies (mellon,
+# elpigraph) and heavier stacks (JAX); lumenCell itself stays MIT and only imports them.
+palantir = ["palantir>=1.4,<1.5"]
+scfates = ["scfates>=1.2,<1.3"]
+all = ["lumencell[palantir,scfates]"]
+
 [project.scripts]
 lumencell = "lumencell.cli:app"
 
@@ -64,7 +71,7 @@ packages = ["lumencell"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["scanpy.*", "anndata.*", "igraph.*", "skmisc.*", "scipy.*", "pandas.*", "h5py.*"]
+module = ["scanpy.*", "anndata.*", "igraph.*", "skmisc.*", "scipy.*", "pandas.*", "h5py.*", "palantir.*", "scFates.*", "scfates.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

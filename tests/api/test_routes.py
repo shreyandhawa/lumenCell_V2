@@ -113,9 +113,11 @@ def test_expression(client: TestClient, session: Session) -> None:
 
 
 def test_methods(client: TestClient) -> None:
-    [m] = client.get("/api/v1/methods").json()["methods"]
-    assert m["name"] == "paga_dpt" and m["available"] is True and m["experimental"] is True
+    methods = {m["name"]: m for m in client.get("/api/v1/methods").json()["methods"]}
+    m = methods["paga_dpt"]
+    assert m["available"] is True and m["experimental"] is True
     assert "n_dcs" in m["params_schema"]["properties"]
+    assert "palantir" in methods
 
 
 # ---- root and runs ---------------------------------------------------------------------

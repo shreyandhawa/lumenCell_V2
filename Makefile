@@ -3,7 +3,7 @@
 install: py-install web-install
 
 py-install:
-	uv sync
+	uv sync --all-extras
 
 web-install:
 	cd web && npm ci

@@ -7,10 +7,11 @@ from lumencell.engine.context import InferenceContext
 from lumencell.engine.lineages import divergence, name_lineages
 from lumencell.engine.methods.base import ProgressFn, TrajectoryMethod, no_progress
 from lumencell.engine.methods.paga_dpt import PagaDpt
+from lumencell.engine.methods.palantir_adapter import Palantir
 from lumencell.engine.roots import RootSpec, interior_root_warning, resolve_root
 from lumencell.engine.schema import TrajectoryResult
 
-METHODS: dict[str, TrajectoryMethod] = {m.name: m for m in (PagaDpt(),)}
+METHODS: dict[str, TrajectoryMethod] = {m.name: m for m in (PagaDpt(), Palantir())}
 
 
 class UnknownMethodError(KeyError):
@@ -47,7 +48,9 @@ def run_method(
     start = time.perf_counter()
     result = impl.run(ctx, resolved, terminals, parsed, progress)
 
-    name_lineages(ctx, result, label_key)
+    # When you name terminals in a column, lineages are named in that column too.
+    named_key = getattr(parsed, "cluster_key", None) if terminals else None
+    name_lineages(ctx, result, label_key or named_key)
     result.divergence = divergence(result.membership, result.pseudotime)
     result.warnings = [*resolved.warnings, *result.warnings]
     interior = interior_root_warning(ctx, resolved, result.pseudotime)
