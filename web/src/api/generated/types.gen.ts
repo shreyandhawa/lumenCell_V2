@@ -448,6 +448,12 @@ export type MethodInfo = {
      */
     experimental: boolean;
     /**
+     * Experimental Note
+     *
+     * Why the method is experimental, from the benchmark.
+     */
+    experimental_note: string | null;
+    /**
      * Family
      */
     family: string;

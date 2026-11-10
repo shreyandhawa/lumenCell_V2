@@ -23,6 +23,8 @@ benchmark (2026-11-10):
 import contextlib
 import io
 import time
+import warnings
+from collections.abc import Iterator
 from typing import Any, ClassVar, Literal
 
 import numpy as np
@@ -56,6 +58,14 @@ class PalantirParams(MethodParams):
     seed: int = 20
 
 
+@contextlib.contextmanager
+def _quiet() -> Iterator[None]:
+    """Palantir prints progress and trips scipy efficiency warnings internally; keep logs clean."""
+    with warnings.catch_warnings(), contextlib.redirect_stdout(io.StringIO()):
+        warnings.simplefilter("ignore", sparse.SparseEfficiencyWarning)
+        yield
+
+
 def _neighbour_weights(ctx: InferenceContext, cells: list[int]) -> sparse.csr_matrix:
     """(n_obs, len(cells)) weights: each anchor cell plus its kNN neighbours."""
     conn = sparse.csr_matrix(ctx.artifacts["connectivities"])
@@ -80,6 +90,10 @@ class Palantir:
     # bifurcation seeds (0.177, 0.158 > 0.10); Palantir's pseudotime is compressed
     # near the start. Branch accuracy >= 0.90 and recall 1.0 on every case.
     experimental: ClassVar[bool] = True
+    experimental_note: ClassVar[str | None] = (
+        "On the synthetic benchmark its pseudotime is compressed near the start on 2 of 12 cases (root "
+        "excess 0.16-0.18 against 0.10). Branch accuracy 0.90-0.99 and every lineage found on all cases."
+    )
 
     def available(self) -> Availability:
         try:
@@ -111,10 +125,9 @@ class Palantir:
 
         view = ad.AnnData(obs=pd.DataFrame(index=pd.Index(names)))
         view.obsm["X_pca"] = np.asarray(ctx.artifacts["pca"])
-        quiet = contextlib.redirect_stdout(io.StringIO())  # Palantir prints progress
 
         progress("diffusion map", 0, 4)
-        with quiet:
+        with _quiet():
             palantir.utils.run_diffusion_maps(view, n_components=params.n_components, knn=params.knn, seed=0)
             palantir.utils.determine_multiscale_space(view, n_eigs=params.n_eigs)
         multiscale: pd.DataFrame = view.obsm["DM_EigenVectors_multiscaled"]
@@ -129,7 +142,7 @@ class Palantir:
             if missing:
                 raise ValueError(f"terminal clusters not found in {params.cluster_key}: {', '.join(missing)}")
             view.obs["_terminal_groups"] = pd.Categorical(labels)
-            with quiet:
+            with _quiet():
                 found = palantir.utils.find_terminal_states(
                     view, terminals, celltype_column="_terminal_groups"
                 )
@@ -152,7 +165,7 @@ class Palantir:
             "n_jobs": 1,
             "use_early_cell_as_start": True,
         }
-        with quiet:
+        with _quiet():
             palantir.core.run_palantir(view, terminal_states=terminal_cells, **run_kw)
             fates_found: pd.DataFrame = view.obsm["palantir_fate_probabilities"]
             if fates_found.shape[1] == 0:

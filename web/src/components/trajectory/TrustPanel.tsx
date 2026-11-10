@@ -66,8 +66,7 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
       {method?.experimental && (
         <p className="mt-2 flex gap-1.5 text-2xs text-warning">
           <TriangleAlert size={12} className="mt-px shrink-0" />
-          {method.label} is experimental: on lumenCell's synthetic benchmark it misses some accuracy gates
-          (branch assignment near forks, cross-lineage timing). Pseudotime within each lineage scored 0.95+.
+          {method.label} is experimental. {method.experimental_note}
         </p>
       )}
 

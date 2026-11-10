@@ -765,6 +765,18 @@
             "title": "Experimental",
             "type": "boolean"
           },
+          "experimental_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the method is experimental, from the benchmark.",
+            "title": "Experimental Note"
+          },
           "family": {
             "title": "Family",
             "type": "string"
@@ -811,6 +823,7 @@
           "available",
           "install_hint",
           "experimental",
+          "experimental_note",
           "params_schema",
           "reference_scores"
         ],

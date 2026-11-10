@@ -36,6 +36,8 @@ class TrajectoryMethod(Protocol):
     # True while the method misses any gate in benchmarks/thresholds.toml.
     # tests/golden checks that this matches the measured results.
     experimental: ClassVar[bool]
+    # One sentence on which gates it misses, shown in the UI when experimental.
+    experimental_note: ClassVar[str | None]
 
     def available(self) -> Availability: ...
 

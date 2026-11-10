@@ -178,6 +178,9 @@ class MethodInfo(Model):
     available: bool
     install_hint: str | None = None
     experimental: bool = False
+    experimental_note: str | None = Field(
+        None, description="Why the method is experimental, from the benchmark."
+    )
     params_schema: dict[str, Any] = Field(description="JSON Schema of the method's parameters.")
     reference_scores: dict[str, float] = Field(
         default_factory=dict, description="Benchmark scores of the current defaults, by metric."

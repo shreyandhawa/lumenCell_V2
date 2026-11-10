@@ -68,6 +68,7 @@ export const methods: T.MethodList = {
       available: true,
       install_hint: null,
       experimental: true,
+      experimental_note: "It misses some gates.",
       params_schema: { properties: {} },
       reference_scores: {},
     },

@@ -397,6 +397,7 @@ class Session:
                     available=avail.ok,
                     install_hint=avail.install_hint,
                     experimental=m.experimental,
+                    experimental_note=m.experimental_note,
                     params_schema=m.Params.model_json_schema(),
                     reference_scores={},
                 )

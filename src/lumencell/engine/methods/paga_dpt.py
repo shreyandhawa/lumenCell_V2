@@ -63,6 +63,11 @@ class PagaDpt:
     # speeds on branches of different length) and root excess once (0.105).
     # Pseudotime within each lineage is 0.95-0.99 everywhere.
     experimental: ClassVar[bool] = True
+    experimental_note: ClassVar[str | None] = (
+        "On the synthetic benchmark it places cells near forks less reliably (branch accuracy 0.81-0.92 "
+        "on three-way splits) and runs at different speeds on branches of different length (global "
+        "Spearman 0.86-0.88). Pseudotime within each lineage scored 0.95-0.99."
+    )
 
     def available(self) -> Availability:
         return Availability(ok=True, version=package_version("scanpy"))
