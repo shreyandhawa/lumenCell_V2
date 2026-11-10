@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pytest
@@ -274,6 +275,29 @@ def test_compare_two_methods(client: TestClient, session: Session, run: dict[str
     assert res["lineage_matches"]
     cells = _lcb(client.get("/api/v1/compare/cells", params={"a": run["run_id"], "b": other["run_id"]}))
     assert cells.arrays["rank_difference"].shape == (800,)
+
+
+def test_state_changes_from_many_threads_are_all_kept(session: Session) -> None:
+    def add(i: int) -> None:
+        session._update_state(lambda state: state.setdefault("probe", {}).update({str(i): i}))
+
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(add, range(40)))
+    assert len(session._state()["probe"]) == 40
+    session._update_state(lambda state: state.pop("probe"))
+    leftovers = [p.name for p in session.state_path.parent.iterdir() if p.suffix == ".tmp"]
+    assert leftovers == [], "no temporary files are left behind"
+
+
+def test_a_corrupt_state_file_is_set_aside(client: TestClient, session: Session) -> None:
+    saved = session.state_path.read_text(encoding="utf-8")
+    try:
+        session.state_path.write_text("{broken", encoding="utf-8")
+        assert client.get("/api/v1/root").json() == {"root": None}
+        assert client.get("/api/v1/dataset").status_code == 200
+        assert session.state_path.with_suffix(".corrupt").read_text(encoding="utf-8") == "{broken"
+    finally:
+        session.state_path.write_text(saved, encoding="utf-8")
 
 
 def test_no_session_means_503() -> None:

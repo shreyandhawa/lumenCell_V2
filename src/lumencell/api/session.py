@@ -6,10 +6,13 @@ inference) goes to the job worker. User choices (the root, lineage renames) live
 in a small state file outside the cache, so they survive cache eviction.
 """
 
+import contextlib
 import json
 import os
 import re
+import tempfile
 import threading
+from collections.abc import Callable
 from datetime import datetime
 from http import HTTPStatus
 from pathlib import Path
@@ -119,6 +122,7 @@ class Session:
         self.state_path = (state_dir or default_state_dir()) / f"{self.ds.fingerprint}.json"
         self.label_key = detect_label_key(self.ds.obs)
         self._lock = threading.RLock()
+        self._state_lock = threading.Lock()
         self._prep: PrepResult | None = None
         self._ctx: InferenceContext | None = None
         self._expr: sparse.csc_matrix | None = None
@@ -127,16 +131,42 @@ class Session:
     # ---- persisted user state --------------------------------------------------------
 
     def _state(self) -> dict[str, Any]:
-        if self.state_path.exists():
-            data: dict[str, Any] = json.loads(self.state_path.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError):
+            data = None
+        if isinstance(data, dict):
             return data
+        # Unreadable or not the expected shape. Set it aside (for inspection) and
+        # start clean, rather than failing every route that reads the root.
+        with contextlib.suppress(OSError):
+            self.state_path.replace(self.state_path.with_suffix(".corrupt"))
         return {}
 
-    def _save_state(self, state: dict[str, Any]) -> None:
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.state_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
-        tmp.replace(self.state_path)
+    def _update_state(self, change: Callable[[dict[str, Any]], None]) -> None:
+        """Read, change and write the state file as one step.
+
+        Requests run on several threads; without the lock two of them could each
+        read the old state and the second write would drop the first one's change.
+        The temporary file has its own name so writers never share one either.
+        """
+        with self._state_lock:
+            state = self._state()
+            change(state)
+            self.state_path.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp_name = tempfile.mkstemp(
+                prefix=f".{self.state_path.stem}-", suffix=".tmp", dir=self.state_path.parent
+            )
+            tmp = Path(tmp_name)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(state, indent=2))
+                tmp.replace(self.state_path)
+            except BaseException:
+                tmp.unlink(missing_ok=True)
+                raise
 
     # ---- prep --------------------------------------------------------------------------
 
@@ -435,9 +465,11 @@ class Session:
 
     def set_root(self, spec: models.CellRoot | models.ClusterRoot | models.FileRoot) -> models.ResolvedRoot:
         resolved = self._resolve(from_api_spec(spec))
-        state = self._state()
-        state["root"] = resolved.spec
-        self._save_state(state)
+
+        def change(state: dict[str, Any]) -> None:
+            state["root"] = resolved.spec
+
+        self._update_state(change)
         return to_api_root(resolved)
 
     def root_suggestions(self) -> models.RootSuggestions:
@@ -630,9 +662,11 @@ class Session:
         clean = name.strip()
         if clean in taken:
             raise ApiError(HTTPStatus.CONFLICT, "name_taken", f"another lineage is already called {clean!r}")
-        state = self._state()
-        state.setdefault("lineage_names", {}).setdefault(rid, {})[str(lineage_id)] = clean
-        self._save_state(state)
+
+        def change(state: dict[str, Any]) -> None:
+            state.setdefault("lineage_names", {}).setdefault(rid, {})[str(lineage_id)] = clean
+
+        self._update_state(change)
         return models.Lineage(**{**lineages[lineage_id], "name": clean})
 
     # ---- trends, heatmap, comparison --------------------------------------------------------
