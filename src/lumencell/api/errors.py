@@ -54,3 +54,16 @@ def install_error_handlers(app: FastAPI) -> None:
     async def _http(_request: Request, exc: StarletteHTTPException) -> JSONResponse:
         code = {404: "not_found", 405: "method_not_allowed"}.get(exc.status_code, "http_error")
         return JSONResponse(_body(code, str(exc.detail)), status_code=exc.status_code)
+
+    @app.exception_handler(Exception)
+    async def _unexpected(_request: Request, _exc: Exception) -> JSONResponse:
+        # Anything a route did not anticipate. The message stays generic (the
+        # exception text may hold paths); the server re-raises after this
+        # response is sent, so the traceback is in the terminal running lumencell.
+        return JSONResponse(
+            _body(
+                "internal_error",
+                "Something went wrong on the server. The terminal running lumencell has the details.",
+            ),
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+        )

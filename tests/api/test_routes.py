@@ -216,6 +216,34 @@ def test_validation_errors_use_the_error_body(client: TestClient) -> None:
     assert body["error"]["detail"]["errors"]
 
 
+def test_invalid_method_params_are_a_422_not_a_500(client: TestClient) -> None:
+    for params in ({"n_dcs": "many"}, {"no_such_param": 1}):
+        res = client.post("/api/v1/trajectories", json={"method": "paga_dpt", "root": ROOT, "params": params})
+        assert res.status_code == 422, res.text
+        body = res.json()
+        assert body["error"]["code"] == "invalid_params"
+        assert body["error"]["detail"]["errors"]
+
+
+def test_a_root_that_cannot_be_written_as_text_is_a_422(client: TestClient) -> None:
+    for root in ({"kind": "cell", "obs_name": ""}, {"kind": "cluster", "key": "", "value": "x"}):
+        res = client.post("/api/v1/trajectories", json={"method": "paga_dpt", "root": root})
+        assert res.status_code == 422, res.text
+        assert res.json()["error"]["code"] == "invalid_root"
+
+
+def test_unexpected_errors_use_the_error_body() -> None:
+    class Broken:
+        def dataset_info(self) -> None:
+            raise RuntimeError("secret detail")
+
+    client = TestClient(create_app(Broken()), raise_server_exceptions=False)  # type: ignore[arg-type]
+    res = client.get("/api/v1/dataset")
+    assert res.status_code == 500
+    assert res.json()["error"]["code"] == "internal_error"
+    assert "secret detail" not in res.text
+
+
 def test_trends(client: TestClient, run: dict[str, object]) -> None:
     url = f"/api/v1/trajectories/{run['run_id']}/trends"
     res = client.get(url, params={"lineage": 0, "genes": "G00001,G00002"}).json()

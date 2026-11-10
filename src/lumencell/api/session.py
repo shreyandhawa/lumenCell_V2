@@ -18,6 +18,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import platformdirs
+from pydantic import ValidationError
 from scipy import sparse
 
 from lumencell import __version__
@@ -472,8 +473,25 @@ class Session:
             spec_text = self._state().get("root") or ""
             if not spec_text:
                 raise root_required()
-        params = method.Params.model_validate(req.params).model_dump()
-        self._resolve(parse_root(spec_text))  # fail fast on a bad root
+        try:
+            params = method.Params.model_validate(req.params).model_dump()
+        except ValidationError as exc:
+            errors = [
+                {"loc": [str(part) for part in e["loc"]], "msg": str(e["msg"])}
+                for e in exc.errors(include_url=False, include_context=False, include_input=False)
+            ]
+            raise ApiError(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                "invalid_params",
+                f"The parameters for {method.label} are not valid.",
+                {"errors": errors},
+            ) from exc
+        try:
+            # The root travels to the worker as text, so it has to survive the round trip.
+            spec = parse_root(spec_text)
+        except RootError as exc:
+            raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "invalid_root", str(exc)) from exc
+        self._resolve(spec)  # fail fast on a bad root
         rid = run_id(req.method, params, spec_text, req.terminals, self.prep_key)
         if self.store.exists(rid):
             return models.RunCreated(run_id=rid, job_id=None, state="done"), False
