@@ -2,7 +2,8 @@
 
 Layout, under ``<cache root>/v1/<dataset fingerprint>/``::
 
-    manifest.json                 stage name -> {key, seconds, state}; used for ETAs
+    manifest.json                 stage name -> {key, seconds, state}; used for ETAs.
+                                  seconds is the time to compute the stage, kept across cache hits
     stages/<stage>-<key>/         one directory per computed stage
         <artifact>.npy            numpy arrays
         <artifact>.npz            scipy CSR matrices
@@ -142,24 +143,41 @@ class PrepCache:
 
     def _write_manifest(self, records: list[StageRecord], keys: dict[str, str], params: PrepParams) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
-        manifest = {
-            "pipeline": PIPELINE_VERSION,
-            "params": params.to_dict(),
-            "stages": {
-                r.name: {"key": keys[r.name], "state": r.state, "seconds": round(r.seconds, 3)}
-                for r in records
-            },
-        }
-        tmp = self.dir / ".manifest.json.tmp"
-        tmp.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-        tmp.replace(self.dir / "manifest.json")
+        previous = self.manifest()
+        known = previous.get("stages", {}) if previous else {}
+        stages: dict[str, dict[str, Any]] = {}
+        for r in records:
+            before = known.get(r.name) if isinstance(known, dict) else None
+            if r.state == "cached":
+                if isinstance(before, dict) and before.get("key") == keys[r.name]:
+                    # A cache hit: keep how long the stage took to compute. The time
+                    # it took to load says nothing useful and would overwrite it.
+                    stages[r.name] = before
+                else:
+                    stages[r.name] = {"key": keys[r.name], "state": "cached", "seconds": None}
+            else:
+                stages[r.name] = {"key": keys[r.name], "state": r.state, "seconds": round(r.seconds, 3)}
+        manifest = {"pipeline": PIPELINE_VERSION, "params": params.to_dict(), "stages": stages}
+        if manifest == previous:
+            return  # nothing new to record; the server and the worker both load the cache often
+        # Its own temporary file: the server and the worker can both be writing.
+        fd, tmp_name = tempfile.mkstemp(prefix=".manifest-", suffix=".tmp", dir=self.dir)
+        tmp = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(json.dumps(manifest, indent=2))
+            tmp.replace(self.dir / "manifest.json")
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
 
     def manifest(self) -> dict[str, Any] | None:
-        p = self.dir / "manifest.json"
-        if not p.exists():
+        """The manifest, or None when there is none or it cannot be read (it only holds timings)."""
+        try:
+            data = json.loads((self.dir / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
             return None
-        data: dict[str, Any] = json.loads(p.read_text(encoding="utf-8"))
-        return data
+        return data if isinstance(data, dict) else None
 
     def status(self, params: PrepParams) -> dict[str, str]:
         """Per stage: 'done' (cached), 'skipped' (does not apply) or 'pending'."""

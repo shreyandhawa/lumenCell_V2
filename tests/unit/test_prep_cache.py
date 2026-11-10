@@ -67,6 +67,28 @@ def test_status_reports_cached_and_pending_stages(ds: Dataset, tmp_path: Path) -
     assert cache.manifest() is not None
 
 
+def test_cache_hits_keep_the_compute_timings(ds: Dataset, tmp_path: Path) -> None:
+    cache = PrepCache(ds, tmp_path)
+    cache.run()
+    computed = cache.manifest()
+    assert computed is not None
+    assert all(s["state"] == "done" for s in computed["stages"].values())
+    PrepCache(ds, tmp_path).run()  # every stage is now a cache hit
+    assert cache.manifest() == computed, "loading from the cache must not overwrite the timings"
+    assert not [p.name for p in cache.dir.iterdir() if p.suffix == ".tmp"]
+
+
+def test_an_unreadable_manifest_is_ignored_and_rewritten(ds: Dataset, tmp_path: Path) -> None:
+    cache = PrepCache(ds, tmp_path)
+    cache.run()
+    (cache.dir / "manifest.json").write_text("{broken", encoding="utf-8")
+    assert cache.manifest() is None
+    cache.run()
+    rewritten = cache.manifest()
+    assert rewritten is not None
+    assert {s["seconds"] for s in rewritten["stages"].values()} == {None}, "load times are not recorded"
+
+
 def test_a_failed_stage_leaves_no_partial_artifacts(ds: Dataset, tmp_path: Path) -> None:
     cache = PrepCache(ds, tmp_path)
     boom = RuntimeError("disk full")
