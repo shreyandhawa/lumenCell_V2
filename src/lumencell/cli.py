@@ -253,6 +253,79 @@ def bench_fetch(
         typer.echo(f"  done, sha256 {sha256_of(path)}")
 
 
+@bench_app.command("real")
+def bench_real(
+    methods: Annotated[
+        str, typer.Option(help="Comma-separated method names.")
+    ] = "paga_dpt,palantir,scfates_ppt",
+    datasets: Annotated[str, typer.Option(help="Comma-separated dataset ids; default all downloaded.")] = "",
+    out: Annotated[
+        Path | None, typer.Option(help="Results JSON (default benchmarks/results/real-<date>.json).")
+    ] = None,
+) -> None:
+    """Run methods on the downloaded real datasets and check the release gates."""
+    import json
+    import subprocess
+    from datetime import UTC, datetime
+
+    from lumencell.bench.datasets import DATASETS, is_cached
+    from lumencell.bench.gates import REPO, check_gates, load_thresholds
+    from lumencell.bench.runner import run_real_case
+    from lumencell.engine.registry import METHODS
+
+    cfg = load_thresholds()["real"]
+    ids = [d for d in (datasets.split(",") if datasets else DATASETS) if d]
+    missing = [d for d in ids if d not in DATASETS or not is_cached(DATASETS[d])]
+    if missing:
+        raise typer.BadParameter(f"not downloaded: {', '.join(missing)} (lumencell bench fetch ...)")
+    rows: dict[str, dict[str, object]] = {}
+    failures = []
+    for d in ids:
+        for method in methods.split(","):
+            if not METHODS[method].available().ok:
+                typer.echo(f"{d:24s} {method:12s} skipped (not installed)")
+                continue
+            row = run_real_case(d, method).row()
+            rows.setdefault(method, {})[d] = row
+            failed = check_gates(row, cfg[d]["gates"])
+            failures += [(method, f) for f in failed]
+            verdict = "PASS" if not failed else "FAIL"
+            typer.echo(
+                f"{d:24s} {method:12s} sp={row['pt_spearman_global']:.3f} "
+                f"sp_lin={row['pt_spearman_lineage']:.3f} branch={row['branch_accuracy']:.3f} "
+                f"recall={row['lineage_recall']:.2f} terminal={row['terminal_share']:.3f} "
+                f"{verdict} ({row['runtime_seconds']}s)"
+            )
+    for method, f in failures:
+        typer.echo(f"gate     {method}: {f}")
+    sha = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True
+    ).stdout.strip()
+    date = datetime.now(UTC).date().isoformat()
+    target = out or REPO / "benchmarks" / "results" / f"real-{date}.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps({"generated": date, "commit": sha, "methods": rows}, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    typer.echo(f"wrote {target}")
+
+
+@bench_app.command("report")
+def bench_report(
+    readme: Annotated[bool, typer.Option(help="Rewrite the results section of README.md.")] = False,
+) -> None:
+    """Markdown tables of the latest synthetic baseline and real-data results."""
+    from lumencell.bench.report import render, update_readme
+
+    text = render()
+    if readme:
+        update_readme(text)
+        typer.echo("README.md updated")
+    else:
+        typer.echo(text)
+
+
 @bench_app.command("synth")
 def bench_synth(
     methods: Annotated[str, typer.Option(help="Comma-separated method names.")] = "paga_dpt",

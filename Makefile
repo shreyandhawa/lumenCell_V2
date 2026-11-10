@@ -1,4 +1,4 @@
-.PHONY: install py-install web-install py-lint py-typecheck py-test py-ci web-lint web-typecheck web-test web-build web-ci web-e2e ci fmt dev-web web-dist dev-server contract contract-check py-test-all bench-synth bench-baseline
+.PHONY: install py-install web-install py-lint py-typecheck py-test py-ci web-lint web-typecheck web-test web-build web-ci web-e2e ci fmt dev-web web-dist dev-server contract contract-check py-test-all bench-synth bench-baseline bench-real
 
 install: py-install web-install
 
@@ -72,6 +72,11 @@ bench-synth:
 # Re-measure and replace benchmarks/baseline.json (commit the result deliberately).
 bench-baseline:
 	uv run lumencell bench synth --write-baseline
+
+# Real datasets (download first: uv run lumencell bench fetch all). A release gate, not CI.
+bench-real:
+	uv run pytest -m real_data -q
+	uv run lumencell bench real
 
 # ---- Everything -----------------------------------------------------------
 
