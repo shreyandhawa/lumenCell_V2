@@ -1,0 +1,79 @@
+"""The terminal commands: prepare, roots, run, export."""
+
+from pathlib import Path
+
+import anndata as ad
+import numpy as np
+import pytest
+from typer.testing import CliRunner
+
+from lumencell.bench.synth import generate
+from lumencell.cli import app
+
+runner = CliRunner()
+
+
+@pytest.fixture
+def data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("LUMENCELL_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("LUMENCELL_DATA_DIR", str(tmp_path / "state"))
+    path = tmp_path / "d.h5ad"
+    generate("bifurcation", "realistic", n_cells=600, n_genes=300, seed=0, store_root=True).write_h5ad(path)
+    return path
+
+
+def test_prepare_then_cached(data: Path) -> None:
+    first = runner.invoke(app, ["prepare", str(data)])
+    assert first.exit_code == 0, first.output
+    assert "pca" in first.output and "done" in first.output
+    second = runner.invoke(app, ["prepare", str(data)])
+    assert "cached" in second.output
+
+
+def test_roots_prints_suggestions(data: Path) -> None:
+    result = runner.invoke(app, ["roots", str(data)])
+    assert result.exit_code == 0, result.output
+    assert "file" in result.output and "[gene_count]" in result.output
+
+
+def test_run_and_export(data: Path, tmp_path: Path) -> None:
+    result = runner.invoke(app, ["run", str(data), "--root", "cluster:true_label=trunk_early"])
+    assert result.exit_code == 0, result.output
+    run_id = result.output.split("run ")[1].split(":")[0]
+    out = tmp_path / "exported.h5ad"
+    exported = runner.invoke(app, ["export", str(data), run_id, str(out)])
+    assert exported.exit_code == 0, exported.output
+    adata = ad.read_h5ad(out)
+    pt = adata.obs["lumencell_pseudotime"].to_numpy()
+    assert np.isfinite(pt).mean() > 0.9
+    assert "shared" in adata.obs["lumencell_lineage"].cat.categories
+    assert adata.uns["lumencell_run"]["root"] == "cluster:true_label=trunk_early"
+    assert "X_umap" in adata.obsm
+    assert "lumencell_pseudotime" not in ad.read_h5ad(data).obs, "the input is untouched"
+
+
+def test_export_refuses_to_overwrite_the_input(data: Path) -> None:
+    result = runner.invoke(app, ["run", str(data), "--root", "file"])
+    run_id = result.output.split("run ")[1].split(":")[0]
+    refused = runner.invoke(app, ["export", str(data), run_id, str(data)])
+    assert refused.exit_code != 0
+    assert "refusing to overwrite" in refused.output
+
+
+def test_run_rejects_a_bad_root(data: Path) -> None:
+    result = runner.invoke(app, ["run", str(data), "--root", "auto"])
+    assert result.exit_code != 0
+    assert "cannot parse root" in result.output
+
+
+def test_unusable_file_is_reported_clearly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LUMENCELL_CACHE_DIR", str(tmp_path / "cache"))
+    import scanpy as sc
+
+    adata = generate("linear", "easy", n_cells=100, n_genes=50, seed=0)
+    sc.pp.normalize_total(adata, target_sum=1e6)
+    path = tmp_path / "cpm.h5ad"
+    adata.write_h5ad(path)
+    result = runner.invoke(app, ["prepare", str(path)])
+    assert result.exit_code != 0
+    assert "--x-is" in result.output

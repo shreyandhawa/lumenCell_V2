@@ -1,4 +1,4 @@
-.PHONY: install py-install web-install py-lint py-typecheck py-test py-ci web-lint web-typecheck web-test web-build web-ci ci fmt dev-web contract contract-check py-test-all bench-synth bench-baseline
+.PHONY: install py-install web-install py-lint py-typecheck py-test py-ci web-lint web-typecheck web-test web-build web-ci ci fmt dev-web web-dist dev-server contract contract-check py-test-all bench-synth bench-baseline
 
 install: py-install web-install
 
@@ -79,3 +79,13 @@ fmt:
 
 dev-web:
 	cd web && npm run dev
+
+# Build the web app and bundle it into the Python package, so `lumencell launch` serves it.
+web-dist: web-build
+	rm -rf src/lumencell/web_dist
+	cp -R web/dist src/lumencell/web_dist
+
+# Run the server on a synthetic dataset for development (web: make dev-web in another shell).
+dev-server:
+	uv run lumencell synth .lumencell/dev.h5ad --store-root
+	uv run lumencell launch .lumencell/dev.h5ad --no-browser

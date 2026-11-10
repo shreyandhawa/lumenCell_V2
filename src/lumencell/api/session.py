@@ -6,7 +6,6 @@ inference) goes to the job worker. User choices (the root, lineage renames) live
 in a small state file outside the cache, so they survive cache eviction.
 """
 
-import hashlib
 import json
 import os
 import threading
@@ -42,7 +41,7 @@ from lumencell.engine.roots import (
 from lumencell.engine.schema import ResolvedRoot
 from lumencell.engine.store import RunStore, run_id
 from lumencell.jobs.manager import Job, JobManager
-from lumencell.prep.cache import PrepCache, dataset_dir, stage_keys
+from lumencell.prep.cache import PrepCache, dataset_dir, prep_key
 from lumencell.prep.pipeline import PrepResult
 from lumencell.prep.stages import STAGES, PrepParams
 
@@ -136,8 +135,7 @@ class Session:
 
     @property
     def prep_key(self) -> str:
-        keys = stage_keys(self.ds, self.params)
-        return hashlib.sha256(json.dumps(keys, sort_keys=True).encode()).hexdigest()[:16]
+        return prep_key(self.ds, self.params)
 
     def _job_payload(self) -> dict[str, Any]:
         return {

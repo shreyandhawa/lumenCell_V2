@@ -99,6 +99,12 @@ def stage_keys(ds: Dataset, params: PrepParams) -> dict[str, str]:
     return keys
 
 
+def prep_key(ds: Dataset, params: PrepParams) -> str:
+    """One key for the whole prep: changes whenever any stage would."""
+    keys = stage_keys(ds, params)
+    return hashlib.sha256(json.dumps(keys, sort_keys=True).encode()).hexdigest()[:16]
+
+
 # ---- the cache -------------------------------------------------------------------------
 
 
