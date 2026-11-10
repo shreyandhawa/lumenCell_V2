@@ -1,8 +1,11 @@
+import contextlib
 from dataclasses import replace
 
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import assume, example, given
+from hypothesis import strategies as st
 from scipy import sparse
 
 from lumencell.engine.context import LEIDEN_KEY, InferenceContext
@@ -11,6 +14,7 @@ from lumencell.engine.roots import (
     ClusterRoot,
     FileRoot,
     RootError,
+    RootSpec,
     format_root,
     interior_root_warning,
     parse_root,
@@ -38,6 +42,127 @@ def test_parse_and_format_round_trip(text: str, spec: object) -> None:
 
 @pytest.mark.parametrize("text", ["", "cell:", "cluster:noequals", "cluster:=x", "tip", "auto"])
 def test_unparseable_roots(text: str) -> None:
+    with pytest.raises(RootError, match="cannot parse"):
+        parse_root(text)
+
+
+# ---- text form: every root survives the round trip --------------------------------------
+
+# Today's text form, frozen as the reference: whatever it accepts must keep its meaning,
+# and wherever it already round-trips its text must not change.
+
+
+def _legacy_parse(text: str) -> RootSpec:
+    text = text.strip()
+    if text == "file":
+        return FileRoot()
+    kind, sep, rest = text.partition(":")
+    if sep and kind == "cell" and rest:
+        return CellRoot(rest)
+    if sep and kind == "cluster":
+        key, eq, value = rest.partition("=")
+        if eq and key and value:
+            return ClusterRoot(key, value)
+    raise RootError(f"cannot parse root {text!r}")
+
+
+def _legacy_format(spec: RootSpec) -> str:
+    if isinstance(spec, CellRoot):
+        return f"cell:{spec.obs_name}"
+    if isinstance(spec, ClusterRoot):
+        return f"cluster:{spec.key}={spec.value}"
+    return "file"
+
+
+def _legacy_round_trips(spec: RootSpec) -> bool:
+    try:
+        return _legacy_parse(_legacy_format(spec)) == spec
+    except RootError:
+        return False
+
+
+ROOT_SPECS = st.one_of(
+    st.builds(CellRoot, st.text()),
+    st.builds(ClusterRoot, st.text(), st.text()),
+    st.just(FileRoot()),
+)
+
+
+@given(ROOT_SPECS)
+@example(ClusterRoot("batch=1", "A"))
+@example(CellRoot(" AAAC-1 "))
+@example(CellRoot(""))
+@example(ClusterRoot("", ""))
+@example(CellRoot('json:{"kind": "file"}'))
+def test_every_root_survives_being_written_as_text(spec: RootSpec) -> None:
+    assert parse_root(format_root(spec)) == spec
+
+
+@pytest.mark.parametrize(
+    ("spec", "text"),
+    [
+        (CellRoot("cell000012"), "cell:cell000012"),
+        (CellRoot("AAACCTGAGAAACCAT-1"), "cell:AAACCTGAGAAACCAT-1"),
+        (CellRoot(" lead"), "cell: lead"),
+        (CellRoot("a:b"), "cell:a:b"),
+        (CellRoot("Zellé"), "cell:Zellé"),
+        (ClusterRoot("clusters", "Ductal"), "cluster:clusters=Ductal"),
+        (ClusterRoot("stage", "E7.5=early"), "cluster:stage=E7.5=early"),
+        (ClusterRoot("cell type", "Beta cells"), "cluster:cell type=Beta cells"),
+        (ClusterRoot("cell type ", "Beta"), "cluster:cell type =Beta"),
+        (ClusterRoot(" batch", " 1"), "cluster: batch= 1"),
+        (ClusterRoot("lumencell_leiden", "3"), "cluster:lumencell_leiden=3"),
+        (FileRoot(), "file"),
+    ],
+)
+def test_ordinary_roots_keep_todays_text_byte_for_byte(spec: RootSpec, text: str) -> None:
+    assert format_root(spec).encode("utf-8") == text.encode("utf-8")
+    assert parse_root(text) == spec
+
+
+@given(ROOT_SPECS)
+@example(ClusterRoot("\r", "0"))
+@example(ClusterRoot("cell type ", "Beta"))
+def test_where_todays_text_round_trips_it_is_kept(spec: RootSpec) -> None:
+    assume(_legacy_round_trips(spec))  # most generated specs do
+    assert format_root(spec) == _legacy_format(spec)
+
+
+@given(st.one_of(st.text(), st.text().map(lambda s: "json:" + s)))
+@example("json:" + "[" * 200_000)
+def test_any_text_is_a_root_or_a_root_error(text: str) -> None:
+    with contextlib.suppress(RootError):  # anything else escaping fails the test
+        parse_root(text)
+
+
+@given(st.one_of(ROOT_SPECS.map(_legacy_format), st.text(), st.text().map(lambda s: "json:" + s)))
+def test_text_accepted_today_still_means_the_same_root(text: str) -> None:
+    try:
+        expected = _legacy_parse(text)
+    except RootError:
+        if not text.strip().startswith("json:"):  # the escaped form is new; everything else stays refused
+            with pytest.raises(RootError):
+                parse_root(text)
+        return
+    assert parse_root(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "json:",
+        "json:{",
+        "json:[]",
+        'json:{"kind": "cell"}',
+        'json:{"kind": "cell", "obs_name": 3}',
+        'json:{"kind": "cell", "obs_name": "a", "extra": 1}',
+        'json:{"kind": "cluster", "key": "k"}',
+        'json:{"kind": "file"}',
+        'json:{"kind": "tip", "obs_name": "a"}',
+        "json:" + "[" * 200_000,
+    ],
+)
+def test_malformed_escaped_roots_are_refused(text: str) -> None:
     with pytest.raises(RootError, match="cannot parse"):
         parse_root(text)
 

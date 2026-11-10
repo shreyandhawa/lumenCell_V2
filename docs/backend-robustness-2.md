@@ -79,3 +79,44 @@ the routes answered 500.
   `/prepare` shows `failed`, which is what the app displays.
 - Once the server has loaded prep into memory, damage on disk only matters to the
   worker, which heals it on its next run.
+
+## Issue 5: every root survives being written as text
+
+**Before.** `format_root` wrote `cell:<name>` and `cluster:<key>=<value>`, and
+`parse_root` stripped the text and split at the first `=`. So
+`ClusterRoot("batch=1", "A")` came back as key `batch` and value `1=A`, and
+`CellRoot(" AAAC-1 ")` lost its trailing space. Through the API, a cluster value
+with a trailing space started a run from a different cluster without saying so.
+
+**Now** (`engine/roots.py`). `format_root` keeps today's plain text whenever that
+text already round-trips. That is: cell names and cluster values that are not
+empty and don't end in whitespace, and cluster columns that are not empty and have
+no `=`. Whitespace around a column name survives, because it sits mid-text. Everything else is written as `json:` followed by the API's
+own shape, for example `json:{"kind": "cluster", "key": "batch=1", "value": "A"}`.
+`parse_root` reads that form strictly: exactly those keys, string values, kind
+`cell` or `cluster`. Today's parser rejects every text that starts with `json:`, so
+no saved root, run id or CLI argument that worked before changes meaning. An
+empty name now round-trips too, and is refused when it is resolved (still 422
+`invalid_root`).
+
+**Verified by** `tests/unit/test_roots.py`:
+
+- hypothesis: `parse_root(format_root(spec)) == spec` for arbitrary text, with the
+  reported cases pinned as examples (soaked once at 20,000 examples);
+- today's ordinary forms are unchanged byte for byte;
+- wherever today's form round-trips, the new text is identical;
+- any text today's parser accepts parses to the same root;
+- malformed `json:` texts are refused, absurdly deep JSON included, and any text
+  gives a root or a `RootError`, nothing else.
+
+A reviewer caught a first version that escaped cluster columns ending in a space,
+which would have changed their run ids. The property now checks against today's
+real parser instead of a copy of the new rule.
+
+And by `tests/api/test_routes.py`: a cluster value with a trailing space is a 422
+from resolving it, not a run from another cluster, and a root the plain text cannot
+carry reaches the worker's payload unchanged. The round-trip property and the API test failed
+before the fix.
+
+**Fold into HANDOFF.** Root text forms: `cell:NAME`, `cluster:KEY=VALUE`, `file`,
+and `json:{...}` for names the plain form can't carry.

@@ -241,6 +241,44 @@ def test_a_root_that_cannot_be_written_as_text_is_a_422(client: TestClient) -> N
         assert res.json()["error"]["code"] == "invalid_root"
 
 
+def test_a_root_is_never_changed_on_its_way_to_the_worker(client: TestClient) -> None:
+    # The trailing space used to be stripped on the way, so this started a run from "trunk_early".
+    root = {"kind": "cluster", "key": "true_label", "value": "trunk_early "}
+    res = client.post("/api/v1/trajectories", json={"method": "paga_dpt", "root": root})
+    assert res.status_code == 422, res.text
+    assert res.json()["error"]["code"] == "invalid_root"
+    assert "no cell has true_label = 'trunk_early '" in res.json()["error"]["message"], "refused at resolve"
+
+
+def test_a_root_the_plain_text_cannot_carry_reaches_the_worker_unchanged() -> None:
+    from types import SimpleNamespace
+
+    from lumencell.api import models
+    from lumencell.api.runs import Runs
+    from lumencell.engine.roots import ClusterRoot, parse_root
+
+    submitted: list[dict[str, object]] = []
+    resolved: list[object] = []
+
+    def submit(kind: str, key: str, payload: dict[str, object]) -> SimpleNamespace:
+        submitted.append(payload)
+        return SimpleNamespace(job_id="j", state="queued")
+
+    jobs = SimpleNamespace(submit=submit)
+    runs = Runs(
+        SimpleNamespace(prep_key="p", label_key="l"),  # type: ignore[arg-type]
+        SimpleNamespace(exists=lambda rid: False),  # type: ignore[arg-type]
+        jobs,  # type: ignore[arg-type]
+        SimpleNamespace(read=lambda: {}),  # type: ignore[arg-type]
+        dict,
+        resolved.append,  # type: ignore[arg-type]
+    )
+    root = models.ClusterRoot(kind="cluster", key="batch=1", value="A ")
+    runs.create_run(models.TrajectoryRequest(method="paga_dpt", root=root))
+    assert resolved == [ClusterRoot("batch=1", "A ")]
+    assert parse_root(str(submitted[0]["root"])) == ClusterRoot("batch=1", "A ")
+
+
 def test_unexpected_errors_use_the_error_body() -> None:
     class Broken:
         def dataset_info(self) -> None:
