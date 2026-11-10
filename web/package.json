@@ -17,8 +17,17 @@
     "gen:api": "openapi-ts -i ../contracts/openapi.json -o src/api/generated -p @hey-api/typescript --no-log-file -s"
   },
   "dependencies": {
+    "@deck.gl/core": "^9.4.1",
+    "@deck.gl/extensions": "^9.4.1",
+    "@deck.gl/layers": "^9.4.1",
+    "@deck.gl/react": "^9.4.1",
+    "@tanstack/react-query": "^5.107.1",
+    "d3-scale": "^4.0.3",
+    "d3-shape": "^3.2.1",
+    "lucide-react": "^1.71.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -27,6 +36,8 @@
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
+    "@types/d3-scale": "^4.0.9",
+    "@types/d3-shape": "^3.2.0",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -35,6 +46,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.14.0",
     "jsdom": "^31.0.0",
+    "msw": "^3.0.4",
     "tailwindcss": "^4.3.5",
     "typescript": "~6.0",
     "typescript-eslint": "^8.72.2",
