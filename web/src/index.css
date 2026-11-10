@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+/* Design tokens. Dark is the default; the light palette applies when the OS asks for it. */
+@theme {
+  --color-surface: oklch(0.17 0.01 260);
+  --color-panel: oklch(0.21 0.012 260);
+  --color-line: oklch(0.3 0.012 260);
+  --color-ink: oklch(0.93 0.005 260);
+  --color-ink-muted: oklch(0.7 0.01 260);
+  --color-accent: oklch(0.78 0.14 200);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-surface: oklch(0.985 0.002 260);
+    --color-panel: oklch(0.96 0.004 260);
+    --color-line: oklch(0.88 0.006 260);
+    --color-ink: oklch(0.22 0.01 260);
+    --color-ink-muted: oklch(0.45 0.01 260);
+    --color-accent: oklch(0.55 0.14 220);
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-surface);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
