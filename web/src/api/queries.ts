@@ -191,3 +191,54 @@ export function useStartPrepare() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.dataset }),
   });
 }
+
+export function useTrends(runId: string | null, lineage: number, genes: string[]) {
+  return useQuery({
+    queryKey: ["trends", runId ?? "", lineage, genes.join(",")],
+    queryFn: () => api.trends(runId!, lineage, genes),
+    enabled: runId !== null && genes.length > 0,
+    ...forever,
+  });
+}
+
+export interface HeatmapData {
+  genes: string[];
+  r2: number[];
+  bins: number[];
+  values: Float32Array; // row-major (genes, bins)
+}
+
+export function useHeatmap(runId: string | null, lineage: number | null, topN = 30) {
+  return useQuery({
+    queryKey: ["heatmap", runId ?? "", lineage, topN],
+    queryFn: async (): Promise<HeatmapData> => {
+      const c = await api.heatmap(runId!, { lineage: lineage!, top_n: topN });
+      return {
+        genes: c.meta.genes as string[],
+        r2: c.meta.r2 as number[],
+        bins: c.meta.bins as number[],
+        values: c.get("heatmap", "f32").data,
+      };
+    },
+    enabled: runId !== null && lineage !== null,
+    ...forever,
+  });
+}
+
+export function useComparison(a: string | null, b: string | null) {
+  return useQuery({
+    queryKey: ["compare", a ?? "", b ?? ""],
+    queryFn: () => api.compare(a!, b!),
+    enabled: a !== null && b !== null && a !== b,
+    ...forever,
+  });
+}
+
+export function useDisagreement(a: string | null, b: string | null) {
+  return useQuery({
+    queryKey: ["compare-cells", a ?? "", b ?? ""],
+    queryFn: async () => (await api.compareCells(a!, b!)).get("rank_difference", "f32").data,
+    enabled: a !== null && b !== null && a !== b,
+    ...forever,
+  });
+}

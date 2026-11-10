@@ -82,6 +82,20 @@ export const api = {
     getJson<T.Curves>(`/trajectories/${enc(id)}/curves?embedding=${enc(embedding)}`),
   renameLineage: (id: string, lineage: number, name: string) =>
     sendJson<T.Lineage>("PATCH", `/trajectories/${enc(id)}/lineages/${lineage}`, { name }),
+  trends: (id: string, lineage: number, genes: string[]) =>
+    getJson<T.Trends>(`/trajectories/${enc(id)}/trends?lineage=${lineage}&genes=${enc(genes.join(","))}`),
+  heatmap: async (id: string, body: T.HeatmapRequest) =>
+    decodeLcb(
+      await (
+        await request(`/trajectories/${enc(id)}/heatmap`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        })
+      ).arrayBuffer(),
+    ),
+  compare: (a: string, b: string) => getJson<T.Comparison>(`/compare?a=${enc(a)}&b=${enc(b)}`),
+  compareCells: (a: string, b: string) => getLcb(`/compare/cells?a=${enc(a)}&b=${enc(b)}`),
   job: (id: string) => getJson<T.JobInfo>(`/jobs/${enc(id)}`),
   cancelJob: (id: string) => sendJson<T.JobInfo>("DELETE", `/jobs/${enc(id)}`),
 };

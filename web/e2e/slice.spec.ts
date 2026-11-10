@@ -60,6 +60,17 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await expect(trust).toContainText("X_diffmap");
   await expect(trust).toContainText("experimental");
 
+  // 8. Genes along pseudotime: rank the top temporal genes, then plot one.
+  const genes = page.getByRole("region", { name: "Genes along pseudotime" });
+  await genes.getByRole("tab", { name: "Top temporal genes" }).click();
+  const top = genes.getByRole("list", { name: "Top temporal genes" });
+  await expect(top.getByRole("listitem")).toHaveCount(30);
+  const firstGene = (await top.getByRole("button").first().textContent())!.trim();
+  await top.getByRole("button").first().click();
+  await expect(colourBy).toHaveValue(`gene:${firstGene}`);
+  await genes.getByRole("tab", { name: "Trends" }).click();
+  await expect(genes.getByRole("figure", { name: `${firstGene} along pseudotime` })).toBeVisible();
+
   await page.reload();
   await expect(page.getByRole("list", { name: "Lineages" })).toContainText("Branch one");
 

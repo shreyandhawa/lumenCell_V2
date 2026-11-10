@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { useDataset, useRuns } from "@/api/queries";
+import { GenePanel } from "@/components/GenePanel";
 import { Header } from "@/components/Header";
 import { Scatter } from "@/components/Scatter";
 import { Sidebar } from "@/components/Sidebar";
@@ -67,8 +68,11 @@ export default function App() {
       <Header />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <main className="min-w-0 flex-1">
-          <Scatter />
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1">
+            <Scatter />
+          </div>
+          <GenePanel />
         </main>
         <TrajectoryPanel />
       </div>

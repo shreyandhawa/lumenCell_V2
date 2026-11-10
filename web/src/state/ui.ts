@@ -5,7 +5,8 @@ export type ColorBy =
   | { kind: "obs"; column: string }
   | { kind: "gene"; gene: string }
   | { kind: "pseudotime" }
-  | { kind: "lineage" };
+  | { kind: "lineage" }
+  | { kind: "disagreement"; a: string; b: string };
 
 export interface UiState {
   embedding: string | null;
@@ -19,6 +20,8 @@ export interface UiState {
   selectionCount: number;
   lassoActive: boolean;
   hovered: number | null;
+  /** Genes shown in the trends panel. */
+  trendGenes: string[];
 
   setEmbedding: (name: string) => void;
   setColorBy: (c: ColorBy | null) => void;
@@ -28,7 +31,11 @@ export interface UiState {
   setSelection: (mask: Uint8Array | null) => void;
   setLasso: (on: boolean) => void;
   setHovered: (i: number | null) => void;
+  addTrendGene: (gene: string) => void;
+  removeTrendGene: (gene: string) => void;
 }
+
+export const MAX_TREND_GENES = 6;
 
 export const useUi = create<UiState>((set) => ({
   embedding: null,
@@ -40,6 +47,7 @@ export const useUi = create<UiState>((set) => ({
   selectionCount: 0,
   lassoActive: false,
   hovered: null,
+  trendGenes: [],
 
   setEmbedding: (embedding) => set({ embedding }),
   setColorBy: (colorBy) => set({ colorBy }),
@@ -53,4 +61,7 @@ export const useUi = create<UiState>((set) => ({
   },
   setLasso: (lassoActive) => set({ lassoActive }),
   setHovered: (hovered) => set({ hovered }),
+  addTrendGene: (gene) =>
+    set((s) => (s.trendGenes.includes(gene) ? s : { trendGenes: [...s.trendGenes, gene].slice(-MAX_TREND_GENES) })),
+  removeTrendGene: (gene) => set((s) => ({ trendGenes: s.trendGenes.filter((g) => g !== gene) })),
 }));

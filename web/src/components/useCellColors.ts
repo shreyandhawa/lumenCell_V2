@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useDataset, useGeneExpression, useObs, useRun, useRunCells, useDoneRunId } from "@/api/queries";
+import { useDataset, useDisagreement, useGeneExpression, useObs, useRun, useRunCells, useDoneRunId } from "@/api/queries";
 import {
   categoryPalette,
   categorical,
@@ -42,6 +42,10 @@ export function useCellColors(): CellColors {
   const expr = useGeneExpression(gene);
   const cells = useRunCells(needsRun ? runId : null);
   const run = useRun(colorBy?.kind === "lineage" ? runId : null);
+  const disagreement = useDisagreement(
+    colorBy?.kind === "disagreement" ? colorBy.a : null,
+    colorBy?.kind === "disagreement" ? colorBy.b : null,
+  );
 
   return useMemo<CellColors>(() => {
     const none: CellColors = { colors: n ? uniform(n, DEFAULT) : null, legend: null, describe: () => null, loading: false };
@@ -89,6 +93,18 @@ export function useCellColors(): CellColors {
       };
     }
 
+    if (colorBy.kind === "disagreement") {
+      const diff = disagreement.data;
+      if (!diff) return { ...none, loading: disagreement.isLoading };
+      const domain = robustDomain(diff);
+      return {
+        colors: colorsForValues(diff, domain),
+        legend: { kind: "continuous", title: "rank difference between runs", domain },
+        describe: (i) => (Number.isFinite(diff[i]!) ? `ranks differ by ${(diff[i]! * 100).toFixed(1)}%` : "not in both runs"),
+        loading: false,
+      };
+    }
+
     const c = cells.data;
     if (!c) return { ...none, loading: cells.isLoading };
     if (colorBy.kind === "pseudotime") {
@@ -119,7 +135,20 @@ export function useCellColors(): CellColors {
       },
       loading: false,
     };
-  }, [colorBy, n, obs.data, obs.isLoading, expr.data, expr.isLoading, cells.data, cells.isLoading, run.data, dataset]);
+  }, [
+    colorBy,
+    n,
+    obs.data,
+    obs.isLoading,
+    expr.data,
+    expr.isLoading,
+    cells.data,
+    cells.isLoading,
+    run.data,
+    dataset,
+    disagreement.data,
+    disagreement.isLoading,
+  ]);
 }
 
 /** Dim cells outside the selection, so the selection reads at a glance. */

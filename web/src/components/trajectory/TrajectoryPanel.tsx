@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useDataset, useRoot, useRun, useDoneRunId } from "@/api/queries";
+import { Compare } from "@/components/trajectory/Compare";
 import { LineageTree } from "@/components/trajectory/LineageTree";
 import { PrepProgress } from "@/components/trajectory/PrepProgress";
 import { PseudotimeFilter } from "@/components/trajectory/PseudotimeFilter";
@@ -27,6 +28,7 @@ export function TrajectoryPanel() {
           <RootSummary root={root} onChange={() => setChangingRoot(true)} />
           <MethodRunner />
           <RunList />
+          <Compare />
           {run && (
             <>
               <LineageTree run={run} />
