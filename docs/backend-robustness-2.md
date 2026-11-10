@@ -180,3 +180,100 @@ was no `PayloadError` or `time_limit`).
 
 **Fold into HANDOFF.** `LUMENCELL_JOB_TIME_LIMITS` sets the per-kind job time
 limits (seconds). The defaults are 3 h for prepare and infer.
+
+## Issue 4: `lumencell cache list` and `lumencell cache prune`
+
+**Before.** Nothing ever removed anything from `<cache root>/v1/`. Cancelled jobs
+left their temporary folders behind, and the cache could not tell which dataset a
+folder belonged to.
+
+**Now:**
+
+- `prep/cache.py`: the manifest records the dataset's name and path. A
+  `last-used` stamp file in the dataset folder is touched when a `run()` starts
+  (so a long prepare counts as use) and when a `run()` or `load_all()` succeeds.
+  A stamp file is used rather than the folder's mtime, so cleaning up inside the
+  folder, or macOS dropping a `.DS_Store` there, never counts as use. Caches
+  from before this branch fall back to the folder's mtime. The stamp is the only
+  thing the server writes to the cache, and a failure there is reported, not
+  raised.
+- New `prep/housekeeping.py`:
+  - `list_cache()`: entries, newest first, each with its fingerprint, name,
+    source, size and last-used time.
+  - `plan_prune()` works out what to remove: whole datasets with `--all` or past
+    `--older-than`, and in the datasets that stay, leftovers of interrupted jobs
+    that have been untouched for over an hour.
+  - `check_prune()` and `apply_prune()`: every removal is checked before any is
+    deleted. Each one is then removed on its own, and the outcome is reported
+    (`removed`, `already gone`, `could not remove: <error>`, the last with exit
+    code 1). Datasets keep their times when only leftovers are removed from them.
+- `lumencell cache list` prints the root, then a row per dataset with its name,
+  size, last-used date ("40 days ago"), fingerprint and source file, then a total.
+  Caches written before this branch show their fingerprint, because their
+  manifest has no name.
+- `lumencell cache prune (--older-than 12h|30d|2w | --all) [--dry-run]` needs
+  exactly one of the two selectors, prints what it removed or would remove and
+  the space freed, and refuses unsafe paths with exit code 1 before anything is
+  removed.
+
+**Safety rules.**
+
+- Only real folders directly under `<root>/v1/` are ever removed, and only when
+  they have a 24-hex fingerprint name and something the cache wrote (a
+  manifest, `stages/` or `runs/`). Things inside those folders can be removed
+  too.
+- A symbolic link put there by hand is listed but never removed, with a
+  message. It doesn't block the rest of the prune.
+- Anything whose resolved path is outside `<root>/v1/` is refused before anything
+  is deleted. `datasets/` (benchmark downloads) and anything else under the root
+  are never candidates.
+- Nothing that contains the state directory, or is inside it, is ever removed. A
+  state directory equal to the cache root is fine.
+- Leftovers are matched by the exact temporary names the cache and the run store
+  use, so unrelated dotfiles are never removed.
+- Prune never ran against this machine's real cache.
+
+**Verified by** `tests/unit/test_cache_admin.py`, on a fake cache under
+`tmp_path` with three datasets: one 40 days old, one in use with old and fresh
+temps, and one with an old-style manifest. The tests cover:
+
+- what `list` reports;
+- what `--older-than 30d` removes (the old dataset and the old temps, not the
+  fresh temp);
+- `--dry-run` changes nothing;
+- `--all` leaves `datasets/` and the state file;
+- a symlinked entry is refused and nothing is removed;
+- `apply_prune` refuses anything outside the dataset folders;
+- the flags and ages that are accepted;
+- a missing cache root.
+
+The review added these tests:
+
+- removing a leftover keeps its dataset's last-used time;
+- a failed removal is reported while the rest go ahead;
+- the state directory is protected, whether it is the cache root or inside a
+  dataset;
+- `.DS_Store` files and a bare 24-hex folder survive;
+- listing survives a file vanishing mid-walk;
+- the dry-run snapshot includes mtimes.
+
+`tests/unit/test_prep_cache.py` checks:
+
+- the manifest names the dataset;
+- `run()` and `load_all()` mark the cache as used;
+- a dataset being prepared counts as in use before its first stage starts. All of these failed first:
+`No such command 'cache'`, no `dataset` in the manifest, and an mtime that never
+moved.
+
+**Still open.**
+
+- `--all` also removes a dataset that a running server is showing. The server
+  keeps its prep in memory, but its runs are read from disk.
+- The check and the delete are separate steps. `rmtree` refuses to follow links,
+  but a parent folder swapped for a link between the two steps isn't guarded
+  against.
+- Sizes are file bytes, not disk blocks.
+
+**Fold into HANDOFF.** `lumencell cache list` and `lumencell cache prune` exist.
+Prune only touches `<cache root>/v1/<fingerprint>` folders. Don't prune with
+`--all` while `lumencell launch` is running on one of those datasets.
