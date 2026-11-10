@@ -9,9 +9,11 @@ from fastapi import FastAPI
 from lumencell import __version__
 from lumencell.api.errors import install_error_handlers
 from lumencell.api.routes import router
+from lumencell.api.session import Session
 
 
-def create_app() -> FastAPI:
+def create_app(session: Session | None = None) -> FastAPI:
+    """The API app. Without a session every dataset route answers 503 (used for the contract)."""
     app = FastAPI(
         title="lumenCell",
         version=__version__,
@@ -22,6 +24,7 @@ def create_app() -> FastAPI:
     )
     install_error_handlers(app)
     app.include_router(router)
+    app.state.session = session
     return app
 
 

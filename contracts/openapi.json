@@ -1912,7 +1912,7 @@
                 }
               }
             },
-            "description": "LCB1 buffer. Array `expression` f32[n_genes, n_obs], log-normalised, rows in request order."
+            "description": "LCB1 buffer. Array `expression` f32[n_genes, n_obs], log-normalised, rows in request order; meta `genes` holds the resolved symbols."
           },
           "404": {
             "content": {
@@ -2247,7 +2247,7 @@
                 }
               }
             },
-            "description": "LCB1 buffer. Categorical/boolean columns: `codes` (u8/u16/i32 by category count, -1 = missing); continuous columns: `values` f32[n_obs] (NaN = missing)."
+            "description": "LCB1 buffer. Categorical/boolean columns: `codes` i16[n_obs] (i32 above 32,766 categories), -1 = missing, with `kind` and `categories` in meta; continuous columns: `values` f32[n_obs] (NaN = missing)."
           },
           "404": {
             "content": {

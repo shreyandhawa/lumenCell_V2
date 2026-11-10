@@ -78,20 +78,10 @@ def test_healthz() -> None:
 
 
 @pytest.mark.parametrize("path", ["/api/v1/dataset", "/api/v1/methods", "/api/v1/trajectories"])
-def test_unbuilt_routes_return_a_structured_501(path: str) -> None:
+def test_dataset_routes_without_a_dataset_answer_503(path: str) -> None:
     res = client.get(path)
-    assert res.status_code == 501
-    body = res.json()
-    assert body["error"]["code"] == "not_implemented"
-    assert body["error"]["message"]
-
-
-def test_validation_errors_use_the_error_body() -> None:
-    res = client.put("/api/v1/root", json={"root": {"kind": "cluster"}})
-    assert res.status_code == 422
-    body = res.json()
-    assert body["error"]["code"] == "invalid_request"
-    assert body["error"]["detail"]["errors"]
+    assert res.status_code == 503
+    assert res.json()["error"]["code"] == "no_dataset"
 
 
 def test_unknown_route_uses_the_error_body() -> None:

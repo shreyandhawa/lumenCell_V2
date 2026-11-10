@@ -59,11 +59,12 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "NPY", "RUF"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+plugins = ["pydantic.mypy"]
 packages = ["lumencell"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["scanpy.*", "anndata.*", "igraph.*", "skmisc.*", "scipy.*", "pandas.*"]
+module = ["scanpy.*", "anndata.*", "igraph.*", "skmisc.*", "scipy.*", "pandas.*", "h5py.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -1110,7 +1110,7 @@ export type GetExpressionApiV1ExpressionGetError = GetExpressionApiV1ExpressionG
 
 export type GetExpressionApiV1ExpressionGetResponses = {
     /**
-     * LCB1 buffer. Array `expression` f32[n_genes, n_obs], log-normalised, rows in request order.
+     * LCB1 buffer. Array `expression` f32[n_genes, n_obs], log-normalised, rows in request order; meta `genes` holds the resolved symbols.
      */
     200: Blob | File;
 };
@@ -1329,7 +1329,7 @@ export type GetObsApiV1ObsColumnGetError = GetObsApiV1ObsColumnGetErrors[keyof G
 
 export type GetObsApiV1ObsColumnGetResponses = {
     /**
-     * LCB1 buffer. Categorical/boolean columns: `codes` (u8/u16/i32 by category count, -1 = missing); continuous columns: `values` f32[n_obs] (NaN = missing).
+     * LCB1 buffer. Categorical/boolean columns: `codes` i16[n_obs] (i32 above 32,766 categories), -1 = missing, with `kind` and `categories` in meta; continuous columns: `values` f32[n_obs] (NaN = missing).
      */
     200: Blob | File;
 };
