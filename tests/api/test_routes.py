@@ -109,7 +109,7 @@ def test_expression(client: TestClient, session: Session) -> None:
     expr = decoded.arrays["expression"]
     assert expr.shape == (2, 800)
     assert decoded.meta["genes"] == ["G00001", "G00002"]
-    lognorm = session.prep().artifacts["lognorm"]
+    lognorm = session.view.prep().artifacts["lognorm"]
     np.testing.assert_allclose(expr[0], lognorm[:, 1].toarray().ravel(), rtol=1e-6)
     unknown = client.get("/api/v1/expression", params={"genes": "NOPE"})
     assert unknown.status_code == 404 and unknown.json()["error"]["code"] == "unknown_gene"
@@ -283,25 +283,25 @@ def test_compare_two_methods(client: TestClient, session: Session, run: dict[str
 
 def test_state_changes_from_many_threads_are_all_kept(session: Session) -> None:
     def add(i: int) -> None:
-        session._update_state(lambda state: state.setdefault("probe", {}).update({str(i): i}))
+        session.state.update(lambda state: state.setdefault("probe", {}).update({str(i): i}))
 
     with ThreadPoolExecutor(8) as pool:
         list(pool.map(add, range(40)))
-    assert len(session._state()["probe"]) == 40
-    session._update_state(lambda state: state.pop("probe"))
-    leftovers = [p.name for p in session.state_path.parent.iterdir() if p.suffix == ".tmp"]
+    assert len(session.state.read()["probe"]) == 40
+    session.state.update(lambda state: state.pop("probe"))
+    leftovers = [p.name for p in session.state.path.parent.iterdir() if p.suffix == ".tmp"]
     assert leftovers == [], "no temporary files are left behind"
 
 
 def test_a_corrupt_state_file_is_set_aside(client: TestClient, session: Session) -> None:
-    saved = session.state_path.read_text(encoding="utf-8")
+    saved = session.state.path.read_text(encoding="utf-8")
     try:
-        session.state_path.write_text("{broken", encoding="utf-8")
+        session.state.path.write_text("{broken", encoding="utf-8")
         assert client.get("/api/v1/root").json() == {"root": None}
         assert client.get("/api/v1/dataset").status_code == 200
-        assert session.state_path.with_suffix(".corrupt").read_text(encoding="utf-8") == "{broken"
+        assert session.state.path.with_suffix(".corrupt").read_text(encoding="utf-8") == "{broken"
     finally:
-        session.state_path.write_text(saved, encoding="utf-8")
+        session.state.path.write_text(saved, encoding="utf-8")
 
 
 def test_nullable_boolean_columns_are_listed_and_served_alike(tmp_path: Path) -> None:
@@ -315,7 +315,7 @@ def test_nullable_boolean_columns_are_listed_and_served_alike(tmp_path: Path) ->
     adata.write_h5ad(path)
     session = Session(path, JobManager(), cache_root=tmp_path / "cache", state_dir=tmp_path / "state")
     listed = {c.name: c for c in session.dataset_info().obs}["flag"]
-    served = binary.decode(session.obs_payload("flag"))
+    served = binary.decode(session.view.obs_payload("flag"))
     assert listed.kind == served.meta["kind"] == "boolean"
     assert listed.categories == served.meta["categories"] == ["False", "True"]
     assert served.arrays["codes"][:3].tolist() == [-1, 0, 1]
@@ -324,3 +324,54 @@ def test_nullable_boolean_columns_are_listed_and_served_alike(tmp_path: Path) ->
 def test_no_session_means_503() -> None:
     res = TestClient(create_app()).get("/api/v1/dataset")
     assert res.status_code == 503 and res.json()["error"]["code"] == "no_dataset"
+
+
+def test_a_finished_run_is_read_from_disk_once(
+    session: Session, run: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rid = str(run["run_id"])
+    embedding = session.view.default_embedding()
+    assert embedding is not None
+    session.runs._loaded.clear()
+    reads: list[str] = []
+    real = session.runs.store.load
+    monkeypatch.setattr(session.runs.store, "load", lambda r: (reads.append(r), real(r))[1])
+    session.runs.run_curves(rid, embedding)
+    session.runs.trends(rid, 0, ["G00001"])
+    session.runs.compare_cells(rid, rid)
+    assert reads == [rid]
+
+
+def test_only_the_most_recent_runs_are_kept_in_memory(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lumencell.api.runs import MAX_RUNS_IN_MEMORY
+
+    monkeypatch.setattr(session.runs.store, "load", lambda r: object())
+    session.runs._loaded.clear()
+    try:
+        ids = [f"r{i}" for i in range(MAX_RUNS_IN_MEMORY + 3)]
+        for rid in ids:
+            session.runs._load(rid)
+        session.runs._load(ids[-2])  # used again, so it is now the newest
+        assert list(session.runs._loaded) == [*ids[-MAX_RUNS_IN_MEMORY:-2], ids[-1], ids[-2]]
+    finally:
+        session.runs._loaded.clear()
+
+
+def test_what_depends_only_on_the_file_is_worked_out_once(
+    client: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert session.view.prep_ready()
+    first, again = session.view.obs_columns(), session.view.obs_columns()
+    # Every column from the file is the same object; only the Leiden column is added per call.
+    assert len(first) > 1 and all(a is b for a, b in zip(first[:-1], again[:-1], strict=True))
+    assert session.view._gene_lookup is session.view._gene_lookup
+
+    # Once prep is ready the answer is kept, so later requests do not go back to the cache on disk.
+    def no_more_checks(_params: object) -> dict[str, str]:
+        raise AssertionError("the cache was checked again")
+
+    monkeypatch.setattr(session.view.cache, "status", no_more_checks)
+    assert session.view.prep_ready()
+    assert client.get("/api/v1/embeddings/dc12").status_code == 200

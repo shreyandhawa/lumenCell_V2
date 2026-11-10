@@ -132,6 +132,11 @@ class JobManager:
             matches = [j for j in self._jobs.values() if j.key == key]
             return max(matches, key=lambda j: j.created) if matches else None
 
+    def of_kind(self, kind: str) -> list[Job]:
+        """Every job of this kind, in the order they were submitted."""
+        with self._lock:
+            return [j for j in self._jobs.values() if j.kind == kind]
+
     def cancel(self, job_id: str) -> Job | None:
         with self._lock:
             job = self._jobs.get(job_id)

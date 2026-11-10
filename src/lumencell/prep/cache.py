@@ -114,6 +114,13 @@ class PrepCache:
         self.ds = ds
         self.dir = dataset_dir(ds.fingerprint, root)
         self.stages_dir = self.dir / "stages"
+        self._keys: dict[PrepParams, dict[str, str]] = {}
+
+    def keys(self, params: PrepParams) -> dict[str, str]:
+        """:func:`stage_keys` for this dataset, worked out once per set of parameters."""
+        if params not in self._keys:
+            self._keys[params] = stage_keys(self.ds, params)
+        return self._keys[params]
 
     def _stage_dir(self, stage: Stage, key: str) -> Path:
         return self.stages_dir / f"{stage.name}-{key}"
@@ -181,7 +188,7 @@ class PrepCache:
 
     def status(self, params: PrepParams) -> dict[str, str]:
         """Per stage: 'done' (cached), 'skipped' (does not apply) or 'pending'."""
-        keys = stage_keys(self.ds, params)
+        keys = self.keys(params)
         out: dict[str, str] = {}
         for stage in STAGES:
             if not stage.applies(self.ds, params):
@@ -193,7 +200,7 @@ class PrepCache:
     def run(self, params: PrepParams | None = None, progress: ProgressFn | None = None) -> PrepResult:
         """Like :func:`run_pipeline`, but each stage is loaded from the cache when present."""
         params = params or PrepParams()
-        keys = stage_keys(self.ds, params)
+        keys = self.keys(params)
         artifacts: dict[str, Any] = {}
         records: list[StageRecord] = []
         for i, stage in enumerate(STAGES):

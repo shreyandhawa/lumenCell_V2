@@ -106,7 +106,7 @@ def get_dataset(session: S) -> DatasetInfo:
 def get_embedding(name: str, session: S) -> Response:
     from lumencell.api import binary
 
-    return lcb1(binary.encode({"coords": ("f32", session.embedding(name))}, {"name": name}))
+    return lcb1(binary.encode({"coords": ("f32", session.view.embedding(name))}, {"name": name}))
 
 
 @router.get(
@@ -119,7 +119,7 @@ def get_embedding(name: str, session: S) -> Response:
     ),
 )
 def get_obs(column: str, session: S) -> Response:
-    return lcb1(session.obs_payload(column))
+    return lcb1(session.view.obs_payload(column))
 
 
 @router.get("/genes", tags=["dataset"], responses=_ERRORS)
@@ -128,7 +128,7 @@ def search_genes(
     q: Annotated[str, Query(max_length=100)] = "",
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
 ) -> GeneSearchResult:
-    return session.search_genes(q, limit)
+    return session.view.search_genes(q, limit)
 
 
 @router.get(
@@ -143,7 +143,7 @@ def search_genes(
 def get_expression(
     session: S, genes: Annotated[str, Query(description="Comma-separated gene symbols.")]
 ) -> Response:
-    return lcb1(session.expression_payload(_csv(genes)))
+    return lcb1(session.view.expression_payload(_csv(genes)))
 
 
 # ---- prep -------------------------------------------------------------------------
@@ -204,7 +204,7 @@ def root_suggestions(session: S) -> RootSuggestions:
     },
 )
 def create_trajectory(body: TrajectoryRequest, session: S, response: Response) -> RunCreated:
-    created, is_new = session.create_run(body)
+    created, is_new = session.runs.create_run(body)
     if not is_new:
         response.status_code = HTTPStatus.OK
     return created
@@ -212,12 +212,12 @@ def create_trajectory(body: TrajectoryRequest, session: S, response: Response) -
 
 @router.get("/trajectories", tags=["trajectories"], responses=_ERRORS)
 def list_trajectories(session: S) -> RunList:
-    return session.list_runs()
+    return session.runs.list_runs()
 
 
 @router.get("/trajectories/{run_id}", tags=["trajectories"], responses=_ERRORS)
 def get_trajectory(run_id: str, session: S) -> TrajectoryRun:
-    return session.get_run(run_id)
+    return session.runs.get_run(run_id)
 
 
 @router.get(
@@ -231,17 +231,17 @@ def get_trajectory(run_id: str, session: S) -> TrajectoryRun:
     ),
 )
 def get_trajectory_cells(run_id: str, session: S) -> Response:
-    return lcb1(session.run_cells(run_id))
+    return lcb1(session.runs.run_cells(run_id))
 
 
 @router.get("/trajectories/{run_id}/curves", tags=["trajectories"], responses=_ERRORS)
 def get_trajectory_curves(run_id: str, embedding: str, session: S) -> Curves:
-    return session.run_curves(run_id, embedding)
+    return session.runs.run_curves(run_id, embedding)
 
 
 @router.patch("/trajectories/{run_id}/lineages/{lineage_id}", tags=["trajectories"], responses=_ERRORS)
 def rename_lineage(run_id: str, lineage_id: int, body: LineageRename, session: S) -> Lineage:
-    return session.rename_lineage(run_id, lineage_id, body.name)
+    return session.runs.rename_lineage(run_id, lineage_id, body.name)
 
 
 @router.get("/trajectories/{run_id}/trends", tags=["trajectories"], responses=_ERRORS)
@@ -251,7 +251,7 @@ def get_trends(
     genes: Annotated[str, Query(description="Comma-separated gene symbols.")],
     session: S,
 ) -> Trends:
-    return session.trends(run_id, lineage, _csv(genes))
+    return session.runs.trends(run_id, lineage, _csv(genes))
 
 
 @router.post(
@@ -264,12 +264,12 @@ def get_trends(
     ),
 )
 def get_heatmap(run_id: str, body: HeatmapRequest, session: S) -> Response:
-    return lcb1(session.heatmap_payload(run_id, body))
+    return lcb1(session.runs.heatmap_payload(run_id, body))
 
 
 @router.get("/compare", tags=["trajectories"], responses=_ERRORS)
 def compare_runs(a: str, b: str, session: S) -> Comparison:
-    return session.compare(a, b)
+    return session.runs.compare(a, b)
 
 
 @router.get(
@@ -281,7 +281,7 @@ def compare_runs(a: str, b: str, session: S) -> Comparison:
     ),
 )
 def compare_cells(a: str, b: str, session: S) -> Response:
-    return lcb1(session.compare_cells(a, b))
+    return lcb1(session.runs.compare_cells(a, b))
 
 
 # ---- jobs -------------------------------------------------------------------------

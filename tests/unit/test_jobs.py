@@ -73,6 +73,13 @@ def test_cancel_running_job_restarts_the_worker(jobs: JobManager) -> None:
     assert jobs.wait(after.job_id, timeout=60).state == "done", "a fresh worker takes the next job"
 
 
+def test_jobs_can_be_listed_by_kind(jobs: JobManager) -> None:
+    first = jobs.submit("sleep", "one", {"steps": 1, "seconds": 0.01})
+    second = jobs.submit("sleep", "two", {"steps": 1, "seconds": 0.01})
+    assert [j.job_id for j in jobs.of_kind("sleep")] == [first.job_id, second.job_id]
+    assert jobs.of_kind("infer") == []
+
+
 def test_a_worker_that_dies_mid_job_fails_the_job_and_is_replaced(jobs: JobManager) -> None:
     job = jobs.submit("sleep", "long", {"steps": 100, "seconds": 0.1})
     q = jobs.subscribe(job.job_id)

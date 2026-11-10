@@ -168,9 +168,10 @@ def launch(
     """Start the local server and open the explorer."""
     import uvicorn
 
+    from lumencell.api.convert import to_api_spec
     from lumencell.api.errors import ApiError
     from lumencell.api.models import TrajectoryRequest
-    from lumencell.api.session import Session, to_api_spec
+    from lumencell.api.session import Session
     from lumencell.data.loader import DatasetError
     from lumencell.engine.roots import RootError, parse_root
     from lumencell.jobs.manager import JobManager
@@ -205,7 +206,7 @@ def launch(
             try:
                 spec = to_api_spec(parse_root(root))
                 session.set_root(spec)
-                created, _ = session.create_run(TrajectoryRequest(method=method, root=spec))
+                created, _ = session.runs.create_run(TrajectoryRequest(method=method, root=spec))
             except ApiError as exc:
                 # e.g. a cluster name that is not in the file. The server keeps
                 # running; the root can still be picked in the app.
