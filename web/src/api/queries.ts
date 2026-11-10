@@ -121,6 +121,15 @@ export function useRuns() {
   });
 }
 
+/**
+ * The active run's id once it has finished, else null. Run details, cells and
+ * curves only exist for finished runs, so every per-run query keys off this.
+ */
+export function useDoneRunId(runId: string | null): string | null {
+  const runs = useRuns().data?.runs;
+  return runId !== null && runs?.some((r) => r.run_id === runId && r.state === "done") ? runId : null;
+}
+
 export function useCreateRun() {
   const qc = useQueryClient();
   return useMutation({

@@ -27,3 +27,6 @@ src/lumencell/web_dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Local tooling
+.claude/

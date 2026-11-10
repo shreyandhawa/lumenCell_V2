@@ -19,8 +19,13 @@ export class ApiError extends Error {
   }
 }
 
+/** Absolute same-origin URL (absolute so it also works under Node in tests). */
+export function apiUrl(path: string): string {
+  return `${globalThis.location?.origin ?? ""}${API_BASE}${path}`;
+}
+
 async function request(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  const res = await fetch(apiUrl(path), init);
   if (!res.ok) {
     let body: T.ErrorBody | undefined;
     try {
@@ -82,5 +87,5 @@ export const api = {
 };
 
 export function jobEventsUrl(jobId: string): string {
-  return `${API_BASE}/jobs/${enc(jobId)}/events`;
+  return apiUrl(`/jobs/${enc(jobId)}/events`);
 }

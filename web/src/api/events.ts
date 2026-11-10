@@ -20,7 +20,8 @@ const TERMINAL = new Set(["done", "failed", "cancelled"]);
 export function useJobEvents(jobId: string | null | undefined): JobEvent | null {
   const [event, setEvent] = useState<JobEvent | null>(null);
   useEffect(() => {
-    if (!jobId) return;
+    // EventSource is missing in some environments (jsdom); callers fall back to polled status.
+    if (!jobId || typeof EventSource === "undefined") return;
     const source = new EventSource(jobEventsUrl(jobId));
     source.onmessage = (msg: MessageEvent<string>) => {
       const next = JSON.parse(msg.data) as JobEvent;
