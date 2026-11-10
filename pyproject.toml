@@ -39,6 +39,7 @@ dev = [
     "hypothesis>=6.120",
     "ruff>=0.9",
     "mypy>=1.15",
+    "httpx>=0.28.1",
 ]
 
 [tool.hatch.version]
@@ -73,4 +74,8 @@ markers = [
     "real_data: needs a downloaded real dataset; skipped when it is not cached",
     "slow: takes more than a few seconds",
 ]
-filterwarnings = ["error::DeprecationWarning:lumencell.*"]
+filterwarnings = [
+    "error::DeprecationWarning:lumencell.*",
+    # Starlette suggests a different HTTP client package for TestClient; httpx still works.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]

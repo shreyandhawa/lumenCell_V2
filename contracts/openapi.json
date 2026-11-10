@@ -1,0 +1,3024 @@
+{
+  "components": {
+    "schemas": {
+      "CellRoot": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "cell",
+            "title": "Kind",
+            "type": "string"
+          },
+          "obs_name": {
+            "title": "Obs Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "obs_name"
+        ],
+        "title": "CellRoot",
+        "type": "object"
+      },
+      "ClusterRoot": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "description": "obs column holding the clusters.",
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "const": "cluster",
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "description": "The cluster label to start from.",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "value"
+        ],
+        "title": "ClusterRoot",
+        "type": "object"
+      },
+      "Comparison": {
+        "additionalProperties": false,
+        "properties": {
+          "lineage_matches": {
+            "items": {
+              "$ref": "#/components/schemas/LineageMatch"
+            },
+            "title": "Lineage Matches",
+            "type": "array"
+          },
+          "n_common": {
+            "title": "N Common",
+            "type": "integer"
+          },
+          "runs": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Runs",
+            "type": "array"
+          },
+          "spearman": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spearman"
+          }
+        },
+        "required": [
+          "runs",
+          "n_common",
+          "spearman",
+          "lineage_matches"
+        ],
+        "title": "Comparison",
+        "type": "object"
+      },
+      "Curves": {
+        "additionalProperties": false,
+        "properties": {
+          "curve_source": {
+            "enum": [
+              "fitted",
+              "binned"
+            ],
+            "title": "Curve Source",
+            "type": "string"
+          },
+          "curves": {
+            "items": {
+              "$ref": "#/components/schemas/LineageCurve"
+            },
+            "title": "Curves",
+            "type": "array"
+          },
+          "embedding": {
+            "title": "Embedding",
+            "type": "string"
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/MilestonePosition"
+            },
+            "title": "Milestones",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "embedding",
+          "curve_source",
+          "curves",
+          "milestones",
+          "warnings"
+        ],
+        "title": "Curves",
+        "type": "object"
+      },
+      "DatasetInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "cluster_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster Key"
+          },
+          "default_embedding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Embedding"
+          },
+          "embeddings": {
+            "items": {
+              "$ref": "#/components/schemas/Embedding"
+            },
+            "title": "Embeddings",
+            "type": "array"
+          },
+          "gene_symbol_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gene Symbol Column"
+          },
+          "label_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Key"
+          },
+          "n_obs": {
+            "title": "N Obs",
+            "type": "integer"
+          },
+          "n_vars": {
+            "title": "N Vars",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "obs": {
+            "items": {
+              "$ref": "#/components/schemas/ObsColumn"
+            },
+            "title": "Obs",
+            "type": "array"
+          },
+          "prep": {
+            "$ref": "#/components/schemas/PrepStatus"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedRoot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Versions",
+            "type": "object"
+          },
+          "x_kind": {
+            "enum": [
+              "counts",
+              "lognorm",
+              "scaled"
+            ],
+            "title": "X Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "name",
+          "n_obs",
+          "n_vars",
+          "x_kind",
+          "gene_symbol_column",
+          "obs",
+          "embeddings",
+          "default_embedding",
+          "cluster_key",
+          "label_key",
+          "prep",
+          "root",
+          "versions"
+        ],
+        "title": "DatasetInfo",
+        "type": "object"
+      },
+      "Divergence": {
+        "additionalProperties": false,
+        "description": "The pseudotime at which lineages ``a`` and ``b`` stop sharing cells.",
+        "properties": {
+          "a": {
+            "title": "A",
+            "type": "integer"
+          },
+          "b": {
+            "title": "B",
+            "type": "integer"
+          },
+          "pseudotime": {
+            "title": "Pseudotime",
+            "type": "number"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "pseudotime"
+        ],
+        "title": "Divergence",
+        "type": "object"
+      },
+      "Embedding": {
+        "additionalProperties": false,
+        "properties": {
+          "dims": {
+            "title": "Dims",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "description": "file: read from obsm; computed: made by lumenCell's prep; diffusion: DC1 vs DC2.",
+            "enum": [
+              "file",
+              "computed",
+              "diffusion"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "dims",
+          "source"
+        ],
+        "title": "Embedding",
+        "type": "object"
+      },
+      "ErrorBody": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorInfo"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
+      "ErrorInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable code, e.g. root_required.",
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "message": {
+            "description": "Human-readable explanation, safe to show in the UI.",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "detail"
+        ],
+        "title": "ErrorInfo",
+        "type": "object"
+      },
+      "FileRoot": {
+        "additionalProperties": false,
+        "description": "Use the root stored in the .h5ad (uns['iroot'] or a boolean obs 'root' column).",
+        "properties": {
+          "kind": {
+            "const": "file",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "FileRoot",
+        "type": "object"
+      },
+      "GeneSearchResult": {
+        "additionalProperties": false,
+        "properties": {
+          "genes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Genes",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "genes",
+          "total",
+          "truncated"
+        ],
+        "title": "GeneSearchResult",
+        "type": "object"
+      },
+      "GeneTrend": {
+        "additionalProperties": false,
+        "properties": {
+          "gene": {
+            "title": "Gene",
+            "type": "string"
+          },
+          "r2": {
+            "title": "R2",
+            "type": "number"
+          },
+          "y": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Y",
+            "type": "array"
+          }
+        },
+        "required": [
+          "gene",
+          "y",
+          "r2"
+        ],
+        "title": "GeneTrend",
+        "type": "object"
+      },
+      "Health": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "HeatmapRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "genes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genes"
+          },
+          "lineage": {
+            "title": "Lineage",
+            "type": "integer"
+          },
+          "top_n": {
+            "default": 50,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Top N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lineage"
+        ],
+        "title": "HeatmapRequest",
+        "type": "object"
+      },
+      "JobInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fraction"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "prepare",
+              "infer",
+              "heatmap"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "result_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Id"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "kind",
+          "state",
+          "stage",
+          "fraction",
+          "message",
+          "error",
+          "result_id"
+        ],
+        "title": "JobInfo",
+        "type": "object"
+      },
+      "Lineage": {
+        "additionalProperties": false,
+        "properties": {
+          "auto_name": {
+            "title": "Auto Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "n_cells": {
+            "title": "N Cells",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "segments": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Segments",
+            "type": "array"
+          },
+          "terminal_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Label"
+          },
+          "terminal_milestone": {
+            "title": "Terminal Milestone",
+            "type": "integer"
+          },
+          "terminal_purity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Purity"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "auto_name",
+          "terminal_milestone",
+          "terminal_label",
+          "terminal_purity",
+          "n_cells",
+          "segments"
+        ],
+        "title": "Lineage",
+        "type": "object"
+      },
+      "LineageCurve": {
+        "additionalProperties": false,
+        "properties": {
+          "fidelity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Spearman of pseudotime against position along the drawn curve.",
+            "title": "Fidelity"
+          },
+          "lineage": {
+            "title": "Lineage",
+            "type": "integer"
+          },
+          "points": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "lineage",
+          "points",
+          "fidelity"
+        ],
+        "title": "LineageCurve",
+        "type": "object"
+      },
+      "LineageMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "a": {
+            "title": "A",
+            "type": "integer"
+          },
+          "b": {
+            "title": "B",
+            "type": "integer"
+          },
+          "jaccard": {
+            "title": "Jaccard",
+            "type": "number"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "jaccard"
+        ],
+        "title": "LineageMatch",
+        "type": "object"
+      },
+      "LineageRename": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "LineageRename",
+        "type": "object"
+      },
+      "MethodInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "experimental": {
+            "default": false,
+            "title": "Experimental",
+            "type": "boolean"
+          },
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "install_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Install Hint"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "params_schema": {
+            "additionalProperties": true,
+            "description": "JSON Schema of the method's parameters.",
+            "title": "Params Schema",
+            "type": "object"
+          },
+          "reference_scores": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Benchmark scores of the current defaults, by metric.",
+            "title": "Reference Scores",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "family",
+          "description",
+          "available",
+          "install_hint",
+          "experimental",
+          "params_schema",
+          "reference_scores"
+        ],
+        "title": "MethodInfo",
+        "type": "object"
+      },
+      "MethodList": {
+        "additionalProperties": false,
+        "properties": {
+          "methods": {
+            "items": {
+              "$ref": "#/components/schemas/MethodInfo"
+            },
+            "title": "Methods",
+            "type": "array"
+          }
+        },
+        "required": [
+          "methods"
+        ],
+        "title": "MethodList",
+        "type": "object"
+      },
+      "Milestone": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "root",
+              "fork",
+              "tip",
+              "cluster"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "pseudotime": {
+            "title": "Pseudotime",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "pseudotime"
+        ],
+        "title": "Milestone",
+        "type": "object"
+      },
+      "MilestonePosition": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "x",
+          "y"
+        ],
+        "title": "MilestonePosition",
+        "type": "object"
+      },
+      "Notice": {
+        "additionalProperties": false,
+        "description": "A warning or diagnostic attached to a result. Shown in the trust panel.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "Notice",
+        "type": "object"
+      },
+      "ObsColumn": {
+        "additionalProperties": false,
+        "properties": {
+          "categories": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categories"
+          },
+          "colors": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One hex colour per category, when the file has them.",
+            "title": "Colors"
+          },
+          "kind": {
+            "enum": [
+              "categorical",
+              "continuous",
+              "boolean",
+              "string"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "categories",
+          "colors",
+          "min",
+          "max"
+        ],
+        "title": "ObsColumn",
+        "type": "object"
+      },
+      "PrepStage": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "running",
+              "done",
+              "failed",
+              "skipped"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "state",
+          "seconds",
+          "message"
+        ],
+        "title": "PrepStage",
+        "type": "object"
+      },
+      "PrepStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/PrepStage"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "missing",
+              "running",
+              "ready",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "stages",
+          "job_id"
+        ],
+        "title": "PrepStatus",
+        "type": "object"
+      },
+      "Provenance": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_fingerprint": {
+            "title": "Dataset Fingerprint",
+            "type": "string"
+          },
+          "inference_dims": {
+            "title": "Inference Dims",
+            "type": "integer"
+          },
+          "inference_rep": {
+            "title": "Inference Rep",
+            "type": "string"
+          },
+          "lumencell_version": {
+            "title": "Lumencell Version",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "method_version": {
+            "title": "Method Version",
+            "type": "string"
+          },
+          "param_hash": {
+            "title": "Param Hash",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "root": {
+            "$ref": "#/components/schemas/ResolvedRoot"
+          },
+          "terminals": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Terminals",
+            "type": "array"
+          },
+          "terminals_source": {
+            "enum": [
+              "user",
+              "auto"
+            ],
+            "title": "Terminals Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "method_version",
+          "lumencell_version",
+          "params",
+          "param_hash",
+          "dataset_fingerprint",
+          "inference_rep",
+          "inference_dims",
+          "root",
+          "terminals",
+          "terminals_source",
+          "created_at"
+        ],
+        "title": "Provenance",
+        "type": "object"
+      },
+      "ResolvedRoot": {
+        "additionalProperties": false,
+        "properties": {
+          "cell_index": {
+            "title": "Cell Index",
+            "type": "integer"
+          },
+          "cluster_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster Key"
+          },
+          "cluster_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster Label"
+          },
+          "obs_name": {
+            "title": "Obs Name",
+            "type": "string"
+          },
+          "resolved_by": {
+            "description": "The rule that picked the cell, in words.",
+            "title": "Resolved By",
+            "type": "string"
+          },
+          "spec": {
+            "discriminator": {
+              "mapping": {
+                "cell": "#/components/schemas/CellRoot",
+                "cluster": "#/components/schemas/ClusterRoot",
+                "file": "#/components/schemas/FileRoot"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CellRoot"
+              },
+              {
+                "$ref": "#/components/schemas/ClusterRoot"
+              },
+              {
+                "$ref": "#/components/schemas/FileRoot"
+              }
+            ],
+            "title": "Spec"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "spec",
+          "cell_index",
+          "obs_name",
+          "cluster_key",
+          "cluster_label",
+          "resolved_by",
+          "warnings"
+        ],
+        "title": "ResolvedRoot",
+        "type": "object"
+      },
+      "RootRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "root": {
+            "discriminator": {
+              "mapping": {
+                "cell": "#/components/schemas/CellRoot",
+                "cluster": "#/components/schemas/ClusterRoot",
+                "file": "#/components/schemas/FileRoot"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CellRoot"
+              },
+              {
+                "$ref": "#/components/schemas/ClusterRoot"
+              },
+              {
+                "$ref": "#/components/schemas/FileRoot"
+              }
+            ],
+            "title": "Root"
+          }
+        },
+        "required": [
+          "root"
+        ],
+        "title": "RootRequest",
+        "type": "object"
+      },
+      "RootState": {
+        "additionalProperties": false,
+        "properties": {
+          "root": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedRoot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "root"
+        ],
+        "title": "RootState",
+        "type": "object"
+      },
+      "RootSuggestion": {
+        "additionalProperties": false,
+        "description": "A candidate start point. Never applied automatically.",
+        "properties": {
+          "evidence": {
+            "description": "Why this is suggested, e.g. '84% of cells at day 0 (p=1e-40)'.",
+            "title": "Evidence",
+            "type": "string"
+          },
+          "is_extremity": {
+            "description": "Whether the cluster sits at an end of the PAGA graph.",
+            "title": "Is Extremity",
+            "type": "boolean"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "source": {
+            "enum": [
+              "file",
+              "time_column",
+              "gene_count"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "spec": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClusterRoot"
+              },
+              {
+                "$ref": "#/components/schemas/FileRoot"
+              }
+            ],
+            "title": "Spec"
+          }
+        },
+        "required": [
+          "spec",
+          "source",
+          "score",
+          "evidence",
+          "is_extremity"
+        ],
+        "title": "RootSuggestion",
+        "type": "object"
+      },
+      "RootSuggestions": {
+        "additionalProperties": false,
+        "properties": {
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/RootSuggestion"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "suggestions"
+        ],
+        "title": "RootSuggestions",
+        "type": "object"
+      },
+      "RunCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "job_id",
+          "state"
+        ],
+        "title": "RunCreated",
+        "type": "object"
+      },
+      "RunList": {
+        "additionalProperties": false,
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunSummary"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "title": "RunList",
+        "type": "object"
+      },
+      "RunSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "n_lineages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Lineages"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "method",
+          "state",
+          "created_at",
+          "n_lineages",
+          "error"
+        ],
+        "title": "RunSummary",
+        "type": "object"
+      },
+      "Segment": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "length": {
+            "title": "Length",
+            "type": "number"
+          },
+          "source": {
+            "title": "Source",
+            "type": "integer"
+          },
+          "target": {
+            "title": "Target",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "target",
+          "length"
+        ],
+        "title": "Segment",
+        "type": "object"
+      },
+      "TrajectoryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Params",
+            "type": "object"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "cell": "#/components/schemas/CellRoot",
+                    "cluster": "#/components/schemas/ClusterRoot",
+                    "file": "#/components/schemas/FileRoot"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CellRoot"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ClusterRoot"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FileRoot"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Omit to use the saved root; 409 if none is saved.",
+            "title": "Root"
+          },
+          "terminals": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Terminal cluster labels, when known.",
+            "title": "Terminals"
+          }
+        },
+        "required": [
+          "method"
+        ],
+        "title": "TrajectoryRequest",
+        "type": "object"
+      },
+      "TrajectoryRun": {
+        "additionalProperties": false,
+        "properties": {
+          "cell_arrays": {
+            "description": "Names of the arrays served by GET .../cells.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Cell Arrays",
+            "type": "array"
+          },
+          "divergence": {
+            "items": {
+              "$ref": "#/components/schemas/Divergence"
+            },
+            "title": "Divergence",
+            "type": "array"
+          },
+          "lineages": {
+            "items": {
+              "$ref": "#/components/schemas/Lineage"
+            },
+            "title": "Lineages",
+            "type": "array"
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/Milestone"
+            },
+            "title": "Milestones",
+            "type": "array"
+          },
+          "n_unassigned": {
+            "title": "N Unassigned",
+            "type": "integer"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "runtime_seconds": {
+            "title": "Runtime Seconds",
+            "type": "number"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            },
+            "title": "Segments",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "topology_kind": {
+            "enum": [
+              "tree",
+              "fate_star"
+            ],
+            "title": "Topology Kind",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "state",
+          "topology_kind",
+          "milestones",
+          "segments",
+          "lineages",
+          "divergence",
+          "warnings",
+          "n_unassigned",
+          "runtime_seconds",
+          "cell_arrays",
+          "provenance"
+        ],
+        "title": "TrajectoryRun",
+        "type": "object"
+      },
+      "Trends": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "description": "Cells per bin.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "array"
+          },
+          "genes": {
+            "items": {
+              "$ref": "#/components/schemas/GeneTrend"
+            },
+            "title": "Genes",
+            "type": "array"
+          },
+          "lineage": {
+            "title": "Lineage",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "x": {
+            "description": "Pseudotime bin centres.",
+            "items": {
+              "type": "number"
+            },
+            "title": "X",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "lineage",
+          "x",
+          "counts",
+          "genes"
+        ],
+        "title": "Trends",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "summary": "Local API for exploring single-cell pseudotime and lineage trajectories.",
+    "title": "lumenCell",
+    "version": "v1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/compare": {
+      "get": {
+        "operationId": "compare_runs_api_v1_compare_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "a",
+            "required": true,
+            "schema": {
+              "title": "A",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "b",
+            "required": true,
+            "schema": {
+              "title": "B",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comparison"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Compare Runs",
+        "tags": [
+          "trajectories"
+        ]
+      }
+    },
+    "/api/v1/dataset": {
+      "get": {
+        "operationId": "get_dataset_api_v1_dataset_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Dataset",
+        "tags": [
+          "dataset"
+        ]
+      }
+    },
+    "/api/v1/embeddings/{name}": {
+      "get": {
+        "operationId": "get_embedding_api_v1_embeddings__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.lumencell.lcb1": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "LCB1 buffer. Array `coords` f32[n_obs, 2]."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Embedding",
+        "tags": [
+          "dataset"
+        ]
+      }
+    },
+    "/api/v1/expression": {
+      "get": {
+        "operationId": "get_expression_api_v1_expression_get",
+        "parameters": [
+          {
+            "description": "Comma-separated gene symbols.",
+            "in": "query",
+            "name": "genes",
+            "required": true,
+            "schema": {
+              "description": "Comma-separated gene symbols.",
+              "title": "Genes",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.lumencell.lcb1": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "LCB1 buffer. Array `expression` f32[n_genes, n_obs], log-normalised, rows in request order."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Expression",
+        "tags": [
+          "dataset"
+        ]
+      }
+    },
+    "/api/v1/genes": {
+      "get": {
+        "operationId": "search_genes_api_v1_genes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 100,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneSearchResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Search Genes",
+        "tags": [
+          "dataset"
+        ]
+      }
+    },
+    "/api/v1/healthz": {
+      "get": {
+        "operationId": "healthz_api_v1_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}": {
+      "delete": {
+        "operationId": "cancel_job_api_v1_jobs__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Cancel Job",
+        "tags": [
+          "jobs"
+        ]
+      },
+      "get": {
+        "operationId": "get_job_api_v1_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}/events": {
+      "get": {
+        "operationId": "job_events_api_v1_jobs__job_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Server-sent events; each `data:` line is a JobEvent."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Job Events",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/methods": {
+      "get": {
+        "operationId": "list_methods_api_v1_methods_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MethodList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "List Methods",
+        "tags": [
+          "methods"
+        ]
+      }
+    },
+    "/api/v1/obs/{column}": {
+      "get": {
+        "operationId": "get_obs_api_v1_obs__column__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "column",
+            "required": true,
+            "schema": {
+              "title": "Column",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.lumencell.lcb1": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "LCB1 buffer. Categorical/boolean columns: `codes` (u8/u16/i32 by category count, -1 = missing); continuous columns: `values` f32[n_obs] (NaN = missing)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Obs",
+        "tags": [
+          "dataset"
+        ]
+      }
+    },
+    "/api/v1/prepare": {
+      "get": {
+        "operationId": "get_prepare_api_v1_prepare_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrepStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Prepare",
+        "tags": [
+          "prepare"
+        ]
+      },
+      "post": {
+        "operationId": "start_prepare_api_v1_prepare_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Start Prepare",
+        "tags": [
+          "prepare"
+        ]
+      }
+    },
+    "/api/v1/root": {
+      "get": {
+        "operationId": "get_root_api_v1_root_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RootState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Root",
+        "tags": [
+          "root"
+        ]
+      },
+      "put": {
+        "operationId": "set_root_api_v1_root_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RootRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedRoot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Set Root",
+        "tags": [
+          "root"
+        ]
+      }
+    },
+    "/api/v1/root/resolve": {
+      "post": {
+        "operationId": "resolve_root_api_v1_root_resolve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RootRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedRoot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Resolve Root",
+        "tags": [
+          "root"
+        ]
+      }
+    },
+    "/api/v1/root/suggestions": {
+      "get": {
+        "operationId": "root_suggestions_api_v1_root_suggestions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RootSuggestions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Root Suggestions",
+        "tags": [
+          "root"
+        ]
+      }
+    },
+    "/api/v1/trajectories": {
+      "get": {
+        "operationId": "list_trajectories_api_v1_trajectories_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "List Trajectories",
+        "tags": [
+          "trajectories"
+        ]
+      },
+      "post": {
+        "operationId": "create_trajectory_api_v1_trajectories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrajectoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunCreated"
+                }
+              }
+            },
+            "description": "An identical run already exists."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "root_required: no root given and none saved."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Create Trajectory",
+        "tags": [
+          "trajectories"
+        ]
+      }
+    },
+    "/api/v1/trajectories/{run_id}": {
+      "get": {
+        "operationId": "get_trajectory_api_v1_trajectories__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrajectoryRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Trajectory",
+        "tags": [
+          "trajectories"
+        ]
+      }
+    },
+    "/api/v1/trajectories/{run_id}/cells": {
+      "get": {
+        "operationId": "get_trajectory_cells_api_v1_trajectories__run_id__cells_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.lumencell.lcb1": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "LCB1 buffer. Arrays: `pseudotime` f32[n_obs] (NaN = unassigned), `membership` u8[n_lineages, n_obs], `primary_lineage` i16[n_obs] (-1 shared trunk, -2 unassigned), `segment` i32[n_obs], `progress` f32[n_obs], optional `fate` f32[n_lineages, n_obs] and `extras.*`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Trajectory Cells",
+        "tags": [
+          "trajectories"
+        ]
+      }
+    },
+    "/api/v1/trajectories/{run_id}/curves": {
+      "get": {
+        "operationId": "get_trajectory_curves_api_v1_trajectories__run_id__curves_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "embedding",
+            "required": true,
+            "schema": {
+              "title": "Embedding",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Curves"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Trajectory Curves",
+        "tags": [
+          "trajectories"
+        ]
+      }
+    },
+    "/api/v1/trajectories/{run_id}/heatmap": {
+      "post": {
+        "operationId": "get_heatmap_api_v1_trajectories__run_id__heatmap_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeatmapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.lumencell.lcb1": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "LCB1 buffer. Array `heatmap` f32[n_genes, n_bins]; meta has `genes` (peak order) and `bins`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Heatmap",
+        "tags": [
+          "trajectories"
+        ]
+      }
+    },
+    "/api/v1/trajectories/{run_id}/lineages/{lineage_id}": {
+      "patch": {
+        "operationId": "rename_lineage_api_v1_trajectories__run_id__lineages__lineage_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lineage_id",
+            "required": true,
+            "schema": {
+              "title": "Lineage Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineageRename"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lineage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Rename Lineage",
+        "tags": [
+          "trajectories"
+        ]
+      }
+    },
+    "/api/v1/trajectories/{run_id}/trends": {
+      "get": {
+        "operationId": "get_trends_api_v1_trajectories__run_id__trends_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lineage",
+            "required": true,
+            "schema": {
+              "title": "Lineage",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Comma-separated gene symbols.",
+            "in": "query",
+            "name": "genes",
+            "required": true,
+            "schema": {
+              "description": "Comma-separated gene symbols.",
+              "title": "Genes",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trends"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Trends",
+        "tags": [
+          "trajectories"
+        ]
+      }
+    }
+  }
+}
