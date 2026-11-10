@@ -79,7 +79,9 @@ def handle_infer(payload: dict[str, Any], emit: Emit) -> str | None:
         label_key=payload.get("label_key"),
     )
     rid: str = payload["run_id"]
-    RunStore(dataset_dir(ds.fingerprint, _cache_root(payload))).save(rid, result)
+    RunStore(dataset_dir(ds.fingerprint, _cache_root(payload))).save(
+        rid, result, terminals=payload.get("terminals")
+    )
     return rid
 
 

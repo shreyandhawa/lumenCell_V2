@@ -74,12 +74,16 @@ def cells_payload(result: TrajectoryResult) -> bytes:
     return binary.encode(arrays, {"n_obs": result.n_obs, "n_lineages": len(result.lineages)})
 
 
-def _graph_json(result: TrajectoryResult, rid: str, created_at: str) -> dict[str, Any]:
+def _graph_json(
+    result: TrajectoryResult, rid: str, created_at: str, terminals: list[str] | None
+) -> dict[str, Any]:
     root = asdict(result.root)
     return {
         "store_version": STORE_VERSION,
         "run_id": rid,
         "created_at": created_at,
+        # Provenance: whether the terminals were named by the user or found by the method.
+        "terminals_source": "user" if terminals else "auto",
         "method": result.method,
         "method_version": result.method_version,
         "lumencell_version": __version__,
@@ -112,14 +116,15 @@ class RunStore:
     def exists(self, rid: str) -> bool:
         return (self.path(rid) / ".complete").exists()
 
-    def save(self, rid: str, result: TrajectoryResult) -> None:
+    def save(self, rid: str, result: TrajectoryResult, terminals: list[str] | None = None) -> None:
+        """Save a run. ``terminals`` are the terminal labels the run was asked for, if any."""
         self.dir.mkdir(parents=True, exist_ok=True)
         final = self.path(rid)
         tmp = Path(tempfile.mkdtemp(prefix=f".{rid}-", dir=self.dir))
         try:
             created = datetime.now(UTC).isoformat(timespec="seconds")
             (tmp / "result.json").write_text(
-                json.dumps(_graph_json(result, rid, created), indent=2), encoding="utf-8"
+                json.dumps(_graph_json(result, rid, created, terminals), indent=2), encoding="utf-8"
             )
             (tmp / "cells.lcb").write_bytes(cells_payload(result))
             sparse.save_npz(

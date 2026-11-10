@@ -627,7 +627,8 @@ class Session:
                 inference_dims=g["inference_dims"],
                 root=root,
                 terminals=terminals,
-                terminals_source="auto",
+                # Runs saved before this was recorded count as "auto".
+                terminals_source="user" if g.get("terminals_source") == "user" else "auto",
                 created_at=datetime.fromisoformat(g["created_at"]),
             ),
         )

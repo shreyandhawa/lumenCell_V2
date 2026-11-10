@@ -77,6 +77,14 @@ def test_listing_and_existence(tmp_path: Path, result: TrajectoryResult) -> None
     assert summary["n_lineages"] == len(result.lineages)
 
 
+def test_the_store_records_who_named_the_terminals(tmp_path: Path, result: TrajectoryResult) -> None:
+    store = RunStore(tmp_path)
+    store.save("auto", result)
+    store.save("named", result, terminals=["a", "b"])
+    assert store.graph("auto")["terminals_source"] == "auto"
+    assert store.graph("named")["terminals_source"] == "user"
+
+
 def test_listing_skips_runs_it_cannot_read(tmp_path: Path, result: TrajectoryResult) -> None:
     store = RunStore(tmp_path)
     for rid in ("good", "damaged", "other_version"):
