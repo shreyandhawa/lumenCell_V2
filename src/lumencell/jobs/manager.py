@@ -10,20 +10,80 @@
 * If the worker dies mid-job (a crash in compiled code), the job fails with a
   clear message and a new worker is started. If it dies between jobs, a new
   one is started before the next job is handed over.
+* A job whose payload cannot be pickled is refused at submit (PayloadError):
+  the queue would drop it silently and the job would look running for ever.
+* Each kind of job has a time limit. A job that runs past it fails with a
+  message saying so, and the worker is replaced, as for a cancel. The limits
+  come from DEFAULT_TIME_LIMITS, then the LUMENCELL_JOB_TIME_LIMITS environment
+  variable ("prepare=7200,infer=10800", in seconds), then the constructor.
 """
 
+import math
 import multiprocessing as mp
+import os
 import queue
+import sys
 import threading
 import time
 import uuid
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from multiprocessing.reduction import ForkingPickler
 from typing import Any
 
-from lumencell.jobs.worker import Task, worker_main
+from lumencell.jobs.worker import HANDLERS, Task, worker_main
 
 ACTIVE = ("queued", "running")
+# Generous: about twenty times the 100k-cell budgets (prep 8 min, slowest method 10 min).
+DEFAULT_TIME_LIMITS: dict[str, float] = {"prepare": 3 * 3600, "infer": 3 * 3600, "sleep": 600}
+FALLBACK_TIME_LIMIT = 3 * 3600.0
+TIME_LIMITS_ENV = "LUMENCELL_JOB_TIME_LIMITS"
+
+
+class PayloadError(ValueError):
+    """A job's payload cannot be sent to the worker process."""
+
+
+def _checked_limits(limits: Mapping[str, object], where: str) -> dict[str, float]:
+    """Every limit names a job kind and is a finite number of seconds above 0."""
+    out: dict[str, float] = {}
+    for kind, value in limits.items():
+        number = isinstance(value, int | float) and not isinstance(value, bool)
+        seconds = float(value) if number else math.nan  # type: ignore[arg-type]
+        if kind not in HANDLERS or not (math.isfinite(seconds) and seconds > 0):
+            raise ValueError(
+                f"{where}: the time limit for {kind!r} must be a number of seconds above 0, not {value!r} "
+                f"(job kinds: {', '.join(HANDLERS)})"
+            )
+        out[kind] = seconds
+    return out
+
+
+def _env_time_limits() -> dict[str, float]:
+    raw = os.environ.get(TIME_LIMITS_ENV, "").strip()
+    if not raw:
+        return {}
+    parsed: dict[str, object] = {}
+    for part in raw.split(","):
+        kind, eq, value = part.strip().partition("=")
+        if not eq:
+            raise ValueError(
+                f"{TIME_LIMITS_ENV} must look like 'prepare=7200,infer=10800' (seconds), not {raw!r}"
+            )
+        try:
+            parsed[kind.strip()] = float(value)
+        except ValueError:
+            parsed[kind.strip()] = value.strip()
+    return _checked_limits(parsed, TIME_LIMITS_ENV)
+
+
+def _duration(seconds: float) -> str:
+    if seconds < 120:
+        return f"{seconds:g} s"
+    if seconds < 2 * 3600:
+        return f"{seconds / 60:g} min"
+    return f"{seconds / 3600:g} h"
 
 
 @dataclass
@@ -65,7 +125,12 @@ class Job:
 
 
 class JobManager:
-    def __init__(self) -> None:
+    def __init__(self, time_limits: Mapping[str, float] | None = None) -> None:
+        self._time_limits = {
+            **DEFAULT_TIME_LIMITS,
+            **_env_time_limits(),
+            **_checked_limits(time_limits or {}, "time_limits"),
+        }
         self._ctx = mp.get_context("spawn")
         self._lock = threading.RLock()
         self._wake = threading.Condition(self._lock)
@@ -105,13 +170,25 @@ class JobManager:
             self._tasks.put(None)
             self._worker.join(timeout)
             if self._worker.is_alive():
-                self._worker.terminate()
+                self._stop_worker()
         for t in self._threads:
             t.join(timeout)
 
     # ---- public API -------------------------------------------------------------------
 
+    def time_limit(self, kind: str) -> float:
+        """Seconds a job of this kind may run before it is stopped."""
+        return self._time_limits.get(kind, FALLBACK_TIME_LIMIT)
+
     def submit(self, kind: str, key: str, payload: dict[str, Any]) -> Job:
+        try:
+            # What the task queue does in a background thread, where a failure is
+            # only printed and the job would never reach the worker.
+            ForkingPickler.dumps(Task("", kind, payload))
+        except Exception as exc:
+            raise PayloadError(
+                f"the {kind} job cannot be sent to the worker: its payload cannot be pickled ({exc})"
+            ) from exc
         with self._lock:
             for job in self._jobs.values():
                 if job.key == key and job.state in ACTIVE:
@@ -146,13 +223,8 @@ class JobManager:
                 self._pending.remove(job_id)
                 self._finish(job, "cancelled")
                 return job
-            # Running: the only safe way to stop numba/igraph code is to end the process.
-            self._worker.terminate()
-            self._worker.join(5)
-            self._running = None
+            self._replace_worker()
             self._finish(job, "cancelled")
-            self._spawn()
-            self._wake.notify_all()
             return job
 
     def subscribe(self, job_id: str) -> "queue.Queue[dict[str, Any]]":
@@ -190,6 +262,23 @@ class JobManager:
         for q in self._subscribers.get(job.job_id, []):
             q.put(event)
 
+    def _stop_worker(self) -> None:
+        self._worker.terminate()
+        self._worker.join(5)
+        if self._worker.is_alive():  # it ignores SIGTERM (some libraries install their own handler)
+            pid = self._worker.pid
+            print(f"lumencell: the worker (pid {pid}) ignored SIGTERM; killing it", file=sys.stderr)
+            self._worker.kill()
+            self._worker.join(5)
+
+    def _replace_worker(self) -> None:
+        """Stop the running job by ending the worker (the only safe way to stop numba
+        or igraph code) and start a fresh one. Call with the lock held."""
+        self._stop_worker()
+        self._running = None
+        self._spawn()
+        self._wake.notify_all()
+
     def _finish(self, job: Job, state: str, error: str | None = None) -> None:
         job.state = state
         job.error = error
@@ -215,6 +304,21 @@ class JobManager:
                     continue
                 self._wake.wait(0.2)
                 self._check_worker()
+                self._check_time_limit()
+
+    def _check_time_limit(self) -> None:
+        if self._running is None:
+            return
+        job = self._jobs[self._running]
+        limit = self.time_limit(job.kind)
+        if job.started is not None and time.time() - job.started > limit:
+            self._replace_worker()
+            message = (
+                f"timed out: the {job.kind} job ran longer than its time limit of {_duration(limit)} "
+                "and was stopped"
+            )
+            print(f"lumencell: job {job.job_id} {message}", file=sys.stderr)
+            self._finish(job, "failed", message)
 
     def _check_worker(self) -> None:
         if self._running is not None and self._worker is not None and not self._worker.is_alive():

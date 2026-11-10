@@ -182,7 +182,12 @@ def launch(
             parse_root(root)
         except RootError as exc:
             raise typer.BadParameter(str(exc), param_hint="--root") from exc
-    jobs = JobManager().start()
+    try:
+        jobs = JobManager()
+    except ValueError as exc:  # a malformed LUMENCELL_JOB_TIME_LIMITS
+        typer.echo(f"lumencell: {exc}", err=True)
+        raise typer.Exit(2) from None
+    jobs.start()
     try:
         session = Session(data, jobs, x_is=x_is, prep_params=_prep_params(recompute_umap))
     except DatasetError as exc:
