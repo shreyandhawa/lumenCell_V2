@@ -100,7 +100,8 @@ class Runs:
                 {"errors": errors},
             ) from exc
         try:
-            # The root travels to the worker as text, so it has to survive the round trip.
+            # The root travels to the worker as text. Every spec survives that round trip;
+            # a root saved in the state file by hand, or damaged, may not.
             spec = parse_root(spec_text)
         except RootError as exc:
             raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "invalid_root", str(exc)) from exc
