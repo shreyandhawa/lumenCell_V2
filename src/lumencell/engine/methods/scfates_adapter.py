@@ -14,7 +14,9 @@ Defaults, measured on the synthetic benchmark (2026-11-10):
 * **Pruning:** side branches shorter than 5 points are removed. With scFates'
   default of 3, two-fork cases grew 2 spurious branches on 2 of 3 seeds; 5, 8 and
   12 all removed them with identical results elsewhere.
-* **Root:** the tree's tip nearest the root cell in the fitted space.
+* **Root:** if the root cell sits on a dead-end arm of the tree, the arm's tip;
+  if it sits between forks (stem cells with lineages radiating out), its own
+  point. See ``_root_point``.
 """
 
 import contextlib
@@ -87,6 +89,37 @@ def _node_path(adj: sparse.csr_matrix, start: int, end: int) -> list[int]:
     return path[::-1]
 
 
+def _arm_end(adj: sparse.csr_matrix, start: int, first: int) -> tuple[int, int]:
+    """Walk from ``start`` through ``first`` along degree-2 points; return (end point, steps)."""
+    prev, cur, steps = start, first, 1
+    while len(adj[cur].indices) == 2:
+        nxt = next(int(n) for n in adj[cur].indices if int(n) != prev)
+        prev, cur, steps = cur, nxt, steps + 1
+    return cur, steps
+
+
+def _root_point(adj: sparse.csr_matrix, node: int, tips: set[int]) -> int:
+    """Where to root the tree, given the point the root cell is most assigned to.
+
+    * On a dead-end arm (its segment ends at a tip), the trajectory starts at that
+      tip: the cells between the tip and the root cell are the earliest ones, and
+      rooting mid-arm would give them pseudotime counting backwards.
+    * Between forks (stem cells with lineages radiating out), root at the point
+      itself: any tip lies beyond other lineages, and their cells would be wrongly
+      placed before the root.
+    """
+    if node in tips:
+        return node
+    neighbours = [int(n) for n in adj[node].indices]
+    if len(neighbours) != 2:
+        return node  # the root cell sits on a fork
+    ends = [_arm_end(adj, node, n) for n in neighbours]
+    tip_ends = [(steps, end) for end, steps in ends if end in tips]
+    if not tip_ends:
+        return node
+    return min(tip_ends)[1]  # on a linear tree, the nearer end
+
+
 class ScFates:
     name: ClassVar[str] = "scfates_ppt"
     label: ClassVar[str] = "scFates principal tree"
@@ -152,7 +185,6 @@ class ScFates:
             )
             scf.tl.cleanup(view, minbranchlength=params.minbranchlength)
         graph = view.uns["graph"]
-        F: npt.NDArray[np.float64] = np.asarray(graph["F"], dtype=np.float64)  # (dims, nodes)
         R: npt.NDArray[np.float64] = np.asarray(view.obsm["X_R"], dtype=np.float64)  # (cells, nodes)
         adj = sparse.csr_matrix(graph["B"])
         tips = [int(t) for t in graph["tips"]]
@@ -160,8 +192,7 @@ class ScFates:
 
         # ---- root and terminals ------------------------------------------------------
         progress("pseudotime", 1, 3)
-        x = rep[root.cell_index]
-        root_tip = min(tips, key=lambda t: float(np.linalg.norm(F[:, t] - x)))
+        root_tip = _root_point(adj, int(np.argmax(R[root.cell_index])), set(tips))
         labels = ctx.labels(params.cluster_key)
         if terminals:
             missing = [t for t in terminals if t not in set(labels.tolist())]

@@ -3,8 +3,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from scipy import sparse
 
-from lumencell.engine.methods.scfates_adapter import INSTALL_HINT, ScFates
+from lumencell.engine.methods.scfates_adapter import INSTALL_HINT, ScFates, _root_point
 from lumencell.engine.projection import project
 from lumencell.engine.registry import run_method
 from lumencell.engine.roots import ClusterRoot
@@ -77,3 +78,33 @@ def test_missing_install_gives_a_hint(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(builtins, "__import__", fake)
     avail = ScFates().available()
     assert not avail.ok and avail.install_hint == INSTALL_HINT
+
+
+def _graph(edges: list[tuple[int, int]], n: int) -> "sparse.csr_matrix":
+    rows = [a for a, b in edges] + [b for a, b in edges]
+    cols = [b for a, b in edges] + [a for a, b in edges]
+    return sparse.csr_matrix((np.ones(len(rows)), (rows, cols)), shape=(n, n))
+
+
+def test_root_on_a_dead_end_arm_moves_to_its_tip() -> None:
+    # 0 - 1 - 2 - 3(fork) - 4 ; 3 - 5 : the root cell sits at 1, on the arm ending at tip 0.
+    adj = _graph([(0, 1), (1, 2), (2, 3), (3, 4), (3, 5)], 6)
+    assert _root_point(adj, 1, {0, 4, 5}) == 0
+
+
+def test_root_between_forks_stays_put() -> None:
+    # Stem cells in the middle: 0 - 1(fork) - 2 - 3(fork) - 4, with 1 - 5 and 3 - 6.
+    adj = _graph([(0, 1), (1, 2), (2, 3), (3, 4), (1, 5), (3, 6)], 7)
+    assert _root_point(adj, 2, {0, 4, 5, 6}) == 2
+
+
+def test_root_on_a_fork_or_tip_stays_put() -> None:
+    adj = _graph([(0, 1), (1, 2), (1, 3)], 4)
+    assert _root_point(adj, 1, {0, 2, 3}) == 1
+    assert _root_point(adj, 2, {0, 2, 3}) == 2
+
+
+def test_root_on_a_line_goes_to_the_nearer_end() -> None:
+    adj = _graph([(0, 1), (1, 2), (2, 3), (3, 4)], 5)
+    assert _root_point(adj, 1, {0, 4}) == 0
+    assert _root_point(adj, 3, {0, 4}) == 4
