@@ -8,10 +8,11 @@ from lumencell.engine.lineages import divergence, name_lineages
 from lumencell.engine.methods.base import ProgressFn, TrajectoryMethod, no_progress
 from lumencell.engine.methods.paga_dpt import PagaDpt
 from lumencell.engine.methods.palantir_adapter import Palantir
+from lumencell.engine.methods.scfates_adapter import ScFates
 from lumencell.engine.roots import RootSpec, interior_root_warning, resolve_root
 from lumencell.engine.schema import TrajectoryResult
 
-METHODS: dict[str, TrajectoryMethod] = {m.name: m for m in (PagaDpt(), Palantir())}
+METHODS: dict[str, TrajectoryMethod] = {m.name: m for m in (PagaDpt(), Palantir(), ScFates())}
 
 
 class UnknownMethodError(KeyError):

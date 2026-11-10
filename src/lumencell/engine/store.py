@@ -6,6 +6,7 @@ A run lives in ``<dataset cache dir>/runs/<run_id>/``::
     cells.lcb       every per-cell array, already in the wire format, so the API
                     serves GET /trajectories/{id}/cells straight from disk
     weights.npz     the milestone weight matrix used to draw on embeddings
+    curve_nodes.npz cell weights of a fitted curve's nodes (only for methods that fit one)
 
 The run id hashes everything that determines the result, so asking for the same
 run twice finds the existing one instead of recomputing it.
@@ -97,6 +98,7 @@ def _graph_json(result: TrajectoryResult, rid: str, created_at: str) -> dict[str
         "n_unassigned": result.n_unassigned,
         "has_fate": result.fate is not None,
         "extras": sorted(result.extras),
+        "curve_paths": result.curve_paths,
     }
 
 
@@ -123,6 +125,10 @@ class RunStore:
             sparse.save_npz(
                 tmp / "weights.npz", sparse.csr_matrix(result.milestone_weights), compressed=False
             )
+            if result.curve_nodes is not None:
+                sparse.save_npz(
+                    tmp / "curve_nodes.npz", sparse.csr_matrix(result.curve_nodes), compressed=False
+                )
             (tmp / ".complete").write_text(created, encoding="utf-8")
             if final.exists():
                 shutil.rmtree(final)
@@ -172,6 +178,12 @@ class RunStore:
             extras=extras,
             warnings=[Notice(**w) for w in g["warnings"]],
             runtime_seconds=g["runtime_seconds"],
+            curve_nodes=(
+                sparse.csr_matrix(sparse.load_npz(self.path(rid) / "curve_nodes.npz"))
+                if (self.path(rid) / "curve_nodes.npz").exists()
+                else None
+            ),
+            curve_paths=g.get("curve_paths"),
         )
 
     def list(self) -> list[dict[str, Any]]:

@@ -116,6 +116,11 @@ class TrajectoryResult:
     milestone_weights: sparse.csr_matrix  # (n_obs, n_milestones), for drawing on an embedding
     fate: npt.NDArray[np.float32] | None = None  # (n_lineages, n_obs)
     extras: dict[str, npt.NDArray[np.float32]] = field(default_factory=dict)
+    # A fitted curve (e.g. a principal tree): cell weights per curve node, and each
+    # lineage's node path from the root. When present, it is drawn instead of
+    # binned means, so the line on screen is the one that produced the pseudotime.
+    curve_nodes: sparse.csr_matrix | None = None  # (n_obs, n_nodes)
+    curve_paths: list[list[int]] | None = None  # one ordered node list per lineage
     warnings: list[Notice] = field(default_factory=list)
     runtime_seconds: float = 0.0
 
@@ -157,6 +162,16 @@ class TrajectoryResult:
             check(self.fate.shape == (n_lin, n), "fate must be (n_lineages, n_obs)")
         for name, arr in self.extras.items():
             check(arr.shape == (n,), f"extras[{name!r}] must have one value per cell")
+        if (self.curve_nodes is None) != (self.curve_paths is None):
+            problems.append("curve_nodes and curve_paths come together")
+        if self.curve_nodes is not None and self.curve_paths is not None:
+            check(self.curve_nodes.shape[0] == n, "curve_nodes must have one row per cell")
+            check(len(self.curve_paths) == n_lin, "curve_paths needs one path per lineage")
+            n_nodes = self.curve_nodes.shape[1]
+            check(
+                all(0 <= k < n_nodes for path in self.curve_paths for k in path),
+                "curve path node out of range",
+            )
         if problems:
             raise InvariantError(problems)
 

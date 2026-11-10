@@ -6,8 +6,10 @@ inferred trajectory, and says so:
 
 * milestone positions are the weighted mean display position of the cells
   associated with each milestone (the method's ``milestone_weights``);
-* each lineage's curve is the mean display position of its cells in 40
-  pseudotime quantile bins, lightly smoothed, starting at the root milestone;
+* each lineage's curve is either the method's own fitted curve (a principal
+  tree: each node placed at the weighted mean of its cells), or, for methods
+  without one, the mean display position of its cells in 40 pseudotime quantile
+  bins, lightly smoothed, starting at the root milestone;
 * ``fidelity`` is the Spearman correlation between a cell's pseudotime and the
   arc-length position of its nearest point on the drawn curve. A low value means
   the embedding distorts that lineage, and the UI should say so.
@@ -17,6 +19,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import numpy.typing as npt
+from scipy import sparse
 from scipy.stats import spearmanr
 
 from lumencell.engine.schema import Notice, TrajectoryResult
@@ -89,18 +92,30 @@ def project(result: TrajectoryResult, coords: npt.NDArray[np.floating], embeddin
     pt = result.pseudotime.astype(np.float64)
     curves: list[LineageCurve] = []
     warnings: list[Notice] = []
+    fitted = result.curve_nodes is not None and result.curve_paths is not None
+    node_xy = None
+    if fitted:
+        cn = sparse.csc_matrix(result.curve_nodes)
+        node_sum = np.asarray(cn.sum(axis=0)).ravel()
+        node_xy = (cn.T @ xy) / np.maximum(node_sum, 1e-12)[:, None]
     for lin in result.lineages:
         members = result.membership[lin.id] & np.isfinite(pt)
-        if members.sum() < N_BINS:
-            curves.append(LineageCurve(lin.id, [], None))
-            continue
         idx = np.flatnonzero(members)
-        edges = np.quantile(pt[idx], np.linspace(0, 1, N_BINS + 1))
-        bins = np.clip(np.searchsorted(edges, pt[idx], side="right") - 1, 0, N_BINS - 1)
-        means = np.array([xy[idx[bins == b]].mean(axis=0) for b in range(N_BINS) if np.any(bins == b)])
-        if root_id in milestones:
-            means = np.vstack([np.array(milestones[root_id])[None, :], means])
-        curve = _smooth(means)
+        if node_xy is not None and result.curve_paths is not None:
+            curve = np.asarray(node_xy[result.curve_paths[lin.id]], dtype=np.float64)
+            if len(curve) < 2 or idx.size < 3:
+                curves.append(LineageCurve(lin.id, [], None))
+                continue
+        else:
+            if members.sum() < N_BINS:
+                curves.append(LineageCurve(lin.id, [], None))
+                continue
+            edges = np.quantile(pt[idx], np.linspace(0, 1, N_BINS + 1))
+            bins = np.clip(np.searchsorted(edges, pt[idx], side="right") - 1, 0, N_BINS - 1)
+            means = np.array([xy[idx[bins == b]].mean(axis=0) for b in range(N_BINS) if np.any(bins == b)])
+            if root_id in milestones:
+                means = np.vstack([np.array(milestones[root_id])[None, :], means])
+            curve = _smooth(means)
         pos = _arc_position(xy[idx], curve)
         fid = float(spearmanr(pt[idx], pos).statistic) if np.ptp(pos) > 0 else None
         if fid is not None and fid < FIDELITY_WARN:
@@ -113,4 +128,6 @@ def project(result: TrajectoryResult, coords: npt.NDArray[np.floating], embeddin
                 )
             )
         curves.append(LineageCurve(lin.id, [(float(x), float(y)) for x, y in curve], fid))
-    return Projection(milestones=milestones, curves=curves, warnings=warnings)
+    return Projection(
+        milestones=milestones, curves=curves, curve_source="fitted" if fitted else "binned", warnings=warnings
+    )
