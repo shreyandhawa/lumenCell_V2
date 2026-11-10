@@ -24,6 +24,7 @@ from lumencell import __version__
 from lumencell.api import binary, models
 from lumencell.api.errors import ApiError, root_required
 from lumencell.data.loader import Dataset, load
+from lumencell.engine.compare import RunComparison, compare
 from lumencell.engine.context import LEIDEN_KEY, InferenceContext, detect_label_key
 from lumencell.engine.projection import project
 from lumencell.engine.registry import METHODS, get_method
@@ -38,8 +39,9 @@ from lumencell.engine.roots import (
     resolve_root,
     suggest_roots,
 )
-from lumencell.engine.schema import ResolvedRoot
+from lumencell.engine.schema import ResolvedRoot, TrajectoryResult
 from lumencell.engine.store import RunStore, run_id
+from lumencell.engine.trends import gene_trends, temporal_heatmap
 from lumencell.jobs.manager import Job, JobManager
 from lumencell.prep.cache import PrepCache, dataset_dir, prep_key
 from lumencell.prep.pipeline import PrepResult
@@ -116,6 +118,7 @@ class Session:
         self._prep: PrepResult | None = None
         self._ctx: InferenceContext | None = None
         self._expr: sparse.csc_matrix | None = None
+        self._heatmaps: dict[tuple[object, ...], bytes] = {}
 
     # ---- persisted user state --------------------------------------------------------
 
@@ -608,6 +611,80 @@ class Session:
         state.setdefault("lineage_names", {}).setdefault(rid, {})[str(lineage_id)] = clean
         self._save_state(state)
         return models.Lineage(**{**lineages[lineage_id], "name": clean})
+
+    # ---- trends, heatmap, comparison --------------------------------------------------------
+
+    def _lineage(self, rid: str, lineage: int) -> tuple[TrajectoryResult, np.ndarray]:
+        self._require_run(rid)
+        result = self.store.load(rid)
+        if not 0 <= lineage < len(result.lineages):
+            raise ApiError(HTTPStatus.NOT_FOUND, "not_found", f"run {rid} has no lineage {lineage}")
+        return result, result.membership[lineage]
+
+    def trends(self, rid: str, lineage: int, genes: list[str]) -> models.Trends:
+        if not genes:
+            raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "invalid_request", "ask for at least one gene")
+        if len(genes) > 50:
+            raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "too_many_genes", "ask for at most 50 genes")
+        result, members = self._lineage(rid, lineage)
+        idx = self.gene_indices(genes)
+        t = gene_trends(self._expression_matrix(), idx, result.pseudotime, members)
+        return models.Trends(
+            run_id=rid,
+            lineage=lineage,
+            x=[float(v) for v in t.centers],
+            counts=[int(c) for c in t.counts],
+            genes=[
+                models.GeneTrend(
+                    gene=str(self.ds.gene_symbols[j]),
+                    y=[None if not np.isfinite(v) else float(v) for v in t.smooth[:, k]],
+                    r2=float(t.r2[k]),
+                )
+                for k, j in enumerate(idx)
+            ],
+        )
+
+    def heatmap_payload(self, rid: str, req: models.HeatmapRequest) -> bytes:
+        result, members = self._lineage(rid, req.lineage)
+        key = (rid, req.lineage, req.top_n, tuple(req.genes or ()))
+        with self._lock:
+            cached = self._heatmaps.get(key)
+        if cached is not None:
+            return cached
+        idx = self.gene_indices(req.genes) if req.genes else None
+        h = temporal_heatmap(
+            self._expression_matrix(), result.pseudotime, members, top_n=req.top_n, genes=idx
+        )
+        body = binary.encode(
+            {"heatmap": ("f32", h.values)},
+            {
+                "genes": [str(self.ds.gene_symbols[j]) for j in h.genes],
+                "r2": [round(float(v), 4) for v in h.r2],
+                "bins": [round(float(c), 4) for c in h.centers],
+            },
+        )
+        with self._lock:
+            self._heatmaps[key] = body
+        return body
+
+    def _comparison(self, a: str, b: str) -> RunComparison:
+        self._require_run(a)
+        self._require_run(b)
+        return compare(self.store.load(a), self.store.load(b))
+
+    def compare(self, a: str, b: str) -> models.Comparison:
+        c = self._comparison(a, b)
+        return models.Comparison(
+            runs=(a, b),
+            n_common=c.n_common,
+            spearman=c.spearman,
+            lineage_matches=[models.LineageMatch(a=p.a, b=p.b, jaccard=p.jaccard) for p in c.pairs],
+        )
+
+    def compare_cells(self, a: str, b: str) -> bytes:
+        return binary.encode(
+            {"rank_difference": ("f32", self._comparison(a, b).rank_difference)}, {"runs": [a, b]}
+        )
 
     # ---- jobs ----------------------------------------------------------------------------
 

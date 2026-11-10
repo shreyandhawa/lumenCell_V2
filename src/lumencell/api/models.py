@@ -314,8 +314,8 @@ class LineageRename(Model):
 
 class GeneTrend(Model):
     gene: str
-    y: list[float]
-    r2: float
+    y: list[float | None] = Field(description="Smoothed mean per bin; null where the bin has no cells.")
+    r2: float = Field(description="Share of the gene's variance on this lineage that the trend explains.")
 
 
 class Trends(Model):

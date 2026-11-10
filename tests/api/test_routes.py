@@ -167,7 +167,7 @@ def test_repeating_a_run_returns_the_existing_one(client: TestClient, run: dict[
     assert again.status_code == 200
     assert again.json() == {"run_id": run["run_id"], "job_id": None, "state": "done"}
     listed = client.get("/api/v1/trajectories").json()["runs"]
-    assert [r["run_id"] for r in listed] == [run["run_id"]]
+    assert run["run_id"] in [r["run_id"] for r in listed]
 
 
 def test_cells_payload(client: TestClient, run: dict[str, object]) -> None:
@@ -216,17 +216,32 @@ def test_validation_errors_use_the_error_body(client: TestClient) -> None:
     assert body["error"]["detail"]["errors"]
 
 
-@pytest.mark.parametrize(
-    ("method", "path"),
-    [("get", "/trends?lineage=0&genes=G00001"), ("post", "/heatmap")],
-)
-def test_unbuilt_routes_return_a_structured_501(
-    client: TestClient, run: dict[str, object], method: str, path: str
-) -> None:
-    url = f"/api/v1/trajectories/{run['run_id']}{path}"
-    res = client.request(method, url, json={"lineage": 0} if method == "post" else None)
-    assert res.status_code == 501
-    assert res.json()["error"]["code"] == "not_implemented"
+def test_trends(client: TestClient, run: dict[str, object]) -> None:
+    url = f"/api/v1/trajectories/{run['run_id']}/trends"
+    res = client.get(url, params={"lineage": 0, "genes": "G00001,G00002"}).json()
+    assert [g["gene"] for g in res["genes"]] == ["G00001", "G00002"]
+    assert len(res["x"]) == len(res["counts"]) == len(res["genes"][0]["y"]) == 50
+    assert all(0.0 <= g["r2"] <= 1.0 for g in res["genes"])
+    assert client.get(url, params={"lineage": 9, "genes": "G00001"}).status_code == 404
+
+
+def test_heatmap(client: TestClient, run: dict[str, object]) -> None:
+    url = f"/api/v1/trajectories/{run['run_id']}/heatmap"
+    decoded = _lcb(client.post(url, json={"lineage": 0, "top_n": 12}))
+    assert decoded.arrays["heatmap"].shape == (12, 50)
+    assert len(decoded.meta["genes"]) == 12 and len(decoded.meta["bins"]) == 50
+    again = client.post(url, json={"lineage": 0, "top_n": 12})
+    assert again.content == client.post(url, json={"lineage": 0, "top_n": 12}).content
+
+
+def test_compare_two_methods(client: TestClient, session: Session, run: dict[str, object]) -> None:
+    other = client.post("/api/v1/trajectories", json={"method": "paga_dpt", "params": {"n_dcs": 8}}).json()
+    session.jobs.wait(other["job_id"], timeout=300)
+    res = client.get("/api/v1/compare", params={"a": run["run_id"], "b": other["run_id"]}).json()
+    assert res["spearman"] > 0.9 and res["n_common"] > 700
+    assert res["lineage_matches"]
+    cells = _lcb(client.get("/api/v1/compare/cells", params={"a": run["run_id"], "b": other["run_id"]}))
+    assert cells.arrays["rank_difference"].shape == (800,)
 
 
 def test_no_session_means_503() -> None:

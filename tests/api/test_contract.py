@@ -35,6 +35,7 @@ M1_ROUTES = {
     ("get", "/api/v1/trajectories/{run_id}/trends"),
     ("post", "/api/v1/trajectories/{run_id}/heatmap"),
     ("get", "/api/v1/compare"),
+    ("get", "/api/v1/compare/cells"),
     ("get", "/api/v1/jobs/{job_id}"),
     ("get", "/api/v1/jobs/{job_id}/events"),
     ("delete", "/api/v1/jobs/{job_id}"),

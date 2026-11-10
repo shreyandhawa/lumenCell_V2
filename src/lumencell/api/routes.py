@@ -17,7 +17,7 @@ from fastapi.responses import Response, StreamingResponse
 
 from lumencell import __version__
 from lumencell.api.binary import MEDIA_TYPE
-from lumencell.api.errors import ApiError, not_implemented
+from lumencell.api.errors import ApiError
 from lumencell.api.models import (
     Comparison,
     Curves,
@@ -249,23 +249,39 @@ def get_trends(
     run_id: str,
     lineage: int,
     genes: Annotated[str, Query(description="Comma-separated gene symbols.")],
+    session: S,
 ) -> Trends:
-    raise not_implemented("GET /trajectories/{run_id}/trends")
+    return session.trends(run_id, lineage, _csv(genes))
 
 
 @router.post(
     "/trajectories/{run_id}/heatmap",
     tags=["trajectories"],
     response_class=Response,
-    responses=_lcb1("Array `heatmap` f32[n_genes, n_bins]; meta has `genes` (peak order) and `bins`."),
+    responses=_lcb1(
+        "Array `heatmap` f32[n_genes, n_bins], each row scaled to [0, 1]; meta has `genes` (ordered by "
+        "peak), `r2` and `bins` (bin centres)."
+    ),
 )
-def get_heatmap(run_id: str, body: HeatmapRequest) -> Response:
-    raise not_implemented("POST /trajectories/{run_id}/heatmap")
+def get_heatmap(run_id: str, body: HeatmapRequest, session: S) -> Response:
+    return lcb1(session.heatmap_payload(run_id, body))
 
 
 @router.get("/compare", tags=["trajectories"], responses=_ERRORS)
-def compare_runs(a: str, b: str) -> Comparison:
-    raise not_implemented("GET /compare")
+def compare_runs(a: str, b: str, session: S) -> Comparison:
+    return session.compare(a, b)
+
+
+@router.get(
+    "/compare/cells",
+    tags=["trajectories"],
+    response_class=Response,
+    responses=_lcb1(
+        "Array `rank_difference` f32[n_obs]: |rank in a - rank in b| / cells in both; NaN if not."
+    ),
+)
+def compare_cells(a: str, b: str, session: S) -> Response:
+    return lcb1(session.compare_cells(a, b))
 
 
 # ---- jobs -------------------------------------------------------------------------

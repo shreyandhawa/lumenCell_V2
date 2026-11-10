@@ -264,12 +264,16 @@ export type GeneTrend = {
     gene: string;
     /**
      * R2
+     *
+     * Share of the gene's variance on this lineage that the trend explains.
      */
     r2: number;
     /**
      * Y
+     *
+     * Smoothed mean per bin; null where the bin has no cells.
      */
-    y: Array<number>;
+    y: Array<number | null>;
 };
 
 /**
@@ -1024,6 +1028,44 @@ export type CompareRunsApiV1CompareGetResponses = {
 
 export type CompareRunsApiV1CompareGetResponse = CompareRunsApiV1CompareGetResponses[keyof CompareRunsApiV1CompareGetResponses];
 
+export type CompareCellsApiV1CompareCellsGetData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * A
+         */
+        a: string;
+        /**
+         * B
+         */
+        b: string;
+    };
+    url: '/api/v1/compare/cells';
+};
+
+export type CompareCellsApiV1CompareCellsGetErrors = {
+    /**
+     * Unknown dataset column, gene, run or job.
+     */
+    404: ErrorBody;
+    /**
+     * The request is not valid.
+     */
+    422: ErrorBody;
+};
+
+export type CompareCellsApiV1CompareCellsGetError = CompareCellsApiV1CompareCellsGetErrors[keyof CompareCellsApiV1CompareCellsGetErrors];
+
+export type CompareCellsApiV1CompareCellsGetResponses = {
+    /**
+     * LCB1 buffer. Array `rank_difference` f32[n_obs]: |rank in a - rank in b| / cells in both; NaN if not.
+     */
+    200: Blob | File;
+};
+
+export type CompareCellsApiV1CompareCellsGetResponse = CompareCellsApiV1CompareCellsGetResponses[keyof CompareCellsApiV1CompareCellsGetResponses];
+
 export type GetDatasetApiV1DatasetGetData = {
     body?: never;
     path?: never;
@@ -1716,7 +1758,7 @@ export type GetHeatmapApiV1TrajectoriesRunIdHeatmapPostError = GetHeatmapApiV1Tr
 
 export type GetHeatmapApiV1TrajectoriesRunIdHeatmapPostResponses = {
     /**
-     * LCB1 buffer. Array `heatmap` f32[n_genes, n_bins]; meta has `genes` (peak order) and `bins`.
+     * LCB1 buffer. Array `heatmap` f32[n_genes, n_bins], each row scaled to [0, 1]; meta has `genes` (ordered by peak), `r2` and `bins` (bin centres).
      */
     200: Blob | File;
 };

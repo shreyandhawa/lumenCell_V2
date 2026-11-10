@@ -22,15 +22,6 @@ class ApiError(Exception):
         self.detail = detail
 
 
-def not_implemented(feature: str) -> ApiError:
-    return ApiError(
-        HTTPStatus.NOT_IMPLEMENTED,
-        "not_implemented",
-        f"{feature} is not implemented yet.",
-        {"feature": feature},
-    )
-
-
 def root_required() -> ApiError:
     return ApiError(
         HTTPStatus.CONFLICT,

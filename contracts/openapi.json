@@ -428,12 +428,21 @@
             "type": "string"
           },
           "r2": {
+            "description": "Share of the gene's variance on this lineage that the trend explains.",
             "title": "R2",
             "type": "number"
           },
           "y": {
+            "description": "Smoothed mean per bin; null where the bin has no cells.",
             "items": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "title": "Y",
             "type": "array"
@@ -1805,6 +1814,68 @@
         ]
       }
     },
+    "/api/v1/compare/cells": {
+      "get": {
+        "operationId": "compare_cells_api_v1_compare_cells_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "a",
+            "required": true,
+            "schema": {
+              "title": "A",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "b",
+            "required": true,
+            "schema": {
+              "title": "B",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.lumencell.lcb1": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "LCB1 buffer. Array `rank_difference` f32[n_obs]: |rank in a - rank in b| / cells in both; NaN if not."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Compare Cells",
+        "tags": [
+          "trajectories"
+        ]
+      }
+    },
     "/api/v1/dataset": {
       "get": {
         "operationId": "get_dataset_api_v1_dataset_get",
@@ -2861,7 +2932,7 @@
                 }
               }
             },
-            "description": "LCB1 buffer. Array `heatmap` f32[n_genes, n_bins]; meta has `genes` (peak order) and `bins`."
+            "description": "LCB1 buffer. Array `heatmap` f32[n_genes, n_bins], each row scaled to [0, 1]; meta has `genes` (ordered by peak), `r2` and `bins` (bin centres)."
           },
           "404": {
             "content": {
