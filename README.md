@@ -75,6 +75,8 @@ in CI; real datasets are a release gate (`lumencell bench fetch all`, then
 
 ## Development
 
+Picking the project up? Start with [`docs/HANDOFF.md`](docs/HANDOFF.md): state, decisions, open work.
+
 ```bash
 make install   # uv sync --all-extras + npm ci (the palantir/scfates extras are optional)
 make ci        # lint, types, tests, API contract check, web build, end-to-end test
