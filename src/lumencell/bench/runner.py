@@ -37,6 +37,7 @@ class CaseResult:
             "n_spurious": s.n_spurious,
             "root_pt_median": round(s.root_pt_median, 4),
             "root_pt_excess": round(s.root_pt_excess, 4),
+            "terminal_share": round(s.terminal_share, 4),
             "coverage": round(s.coverage, 4),
             "n_clusters": self.n_clusters,
             "runtime_seconds": round(self.runtime_seconds, 2),
@@ -78,6 +79,34 @@ def run_synthetic_case(
         case=case,
         method=method,
         scores=score(result.pseudotime, result.membership, truth),
+        n_clusters=int(ctx.leiden.max()) + 1,
+        runtime_seconds=elapsed,
+        warnings=[w.code for w in result.warnings],
+    )
+
+
+def run_real_case(
+    dataset_id: str, method: str = "paga_dpt", params: dict[str, Any] | None = None
+) -> CaseResult:
+    """Run a method on a downloaded real dataset (prep is cached) and score it."""
+    from lumencell.bench.datasets import DATASETS, is_cached, local_path, truth_for
+    from lumencell.engine.roots import parse_root
+    from lumencell.prep.cache import PrepCache
+
+    ds = DATASETS[dataset_id]
+    if not is_cached(ds):
+        raise FileNotFoundError(f"{dataset_id} is not downloaded; run: lumencell bench fetch {dataset_id}")
+    start = time.perf_counter()
+    data = load(local_path(ds))
+    pp = PrepParams()
+    prep = PrepCache(data).run(pp)
+    ctx = InferenceContext.from_prep(data, prep, pp)
+    result = run_method(ctx, method, parse_root(ds.root_spec), params=params, label_key=ds.label_key)
+    elapsed = time.perf_counter() - start
+    return CaseResult(
+        case=dataset_id,
+        method=method,
+        scores=score(result.pseudotime, result.membership, truth_for(ds, data.obs)),
         n_clusters=int(ctx.leiden.max()) + 1,
         runtime_seconds=elapsed,
         warnings=[w.code for w in result.warnings],

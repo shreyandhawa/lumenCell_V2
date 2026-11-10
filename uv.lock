@@ -1025,6 +1025,7 @@ name = "lumencell"
 source = { editable = "." }
 dependencies = [
     { name = "anndata" },
+    { name = "certifi" },
     { name = "fastapi" },
     { name = "igraph" },
     { name = "numpy" },
@@ -1062,6 +1063,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anndata", specifier = ">=0.12" },
+    { name = "certifi", specifier = ">=2024.2" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "igraph", specifier = ">=0.11" },
     { name = "numpy", specifier = ">=2.0" },

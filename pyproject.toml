@@ -28,6 +28,7 @@ dependencies = [
     "pydantic>=2.9",
     "typer>=0.15",
     "platformdirs>=4.3",
+    "certifi>=2024.2",
 ]
 
 [project.optional-dependencies]

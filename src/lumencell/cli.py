@@ -224,6 +224,35 @@ bench_app = typer.Typer(help="Accuracy benchmarks against known trajectories.", 
 app.add_typer(bench_app, name="bench")
 
 
+@bench_app.command("fetch")
+def bench_fetch(
+    dataset: Annotated[str, typer.Argument(help="Dataset id, or 'all'.")],
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Download without asking.")] = False,
+) -> None:
+    """Download a real benchmark dataset (asks first; shows source and size)."""
+    from lumencell.bench.datasets import DATASETS, FetchError, fetch, is_cached, local_path, sha256_of
+
+    ids = list(DATASETS) if dataset == "all" else [dataset]
+    unknown = [i for i in ids if i not in DATASETS]
+    if unknown:
+        raise typer.BadParameter(f"unknown dataset {unknown[0]!r}; choose from {', '.join(DATASETS)} or all")
+    for i in ids:
+        ds = DATASETS[i]
+        if is_cached(ds):
+            typer.echo(f"{ds.id}: already at {local_path(ds)}")
+            continue
+        typer.echo(f"{ds.id}: {ds.title} ({ds.citation})")
+        typer.echo(f"  from {ds.url}\n  {ds.size / 1e6:,.1f} MB -> {local_path(ds)}")
+        if not yes and not typer.confirm("  download it?", default=False):
+            typer.echo("  skipped")
+            continue
+        try:
+            path = fetch(ds)
+        except FetchError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        typer.echo(f"  done, sha256 {sha256_of(path)}")
+
+
 @bench_app.command("synth")
 def bench_synth(
     methods: Annotated[str, typer.Option(help="Comma-separated method names.")] = "paga_dpt",

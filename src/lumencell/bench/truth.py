@@ -30,6 +30,8 @@ class Truth:
     root: BoolArray
     meta: dict[str, Any] = field(default_factory=dict)
     resolvable: BoolArray | None = None
+    # Cells of each lineage's terminal stage (real datasets), for terminal_share.
+    terminals: dict[str, BoolArray] | None = None
 
     def __post_init__(self) -> None:
         n = self.order.shape[0]

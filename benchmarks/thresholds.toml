@@ -20,6 +20,22 @@ lineage_recall = { min = 1.0 }
 n_spurious = { max = 1 }
 root_pt_excess = { max = 0.10 }
 
+# Real datasets: a release gate (make bench-real), never run in CI. Set from the
+# approved M1 plan and written down before the first real run (2026-11-10).
+[real.pancreas.gates]
+pt_spearman_lineage = { min = 0.70 }  # Alpha and Beta, against stage order
+branch_accuracy = { min = 0.80 }      # Alpha and Beta cells on their own lineage
+lineage_recall = { min = 1.0 }
+
+[real.bonemarrow.gates]
+pt_spearman_lineage = { min = 0.70 }  # Ery and Mono
+branch_accuracy = { min = 0.75 }
+lineage_recall = { min = 1.0 }
+
+[real.gastrulation_erythroid.gates]
+pt_spearman_global = { min = 0.60 }   # against real embryo time (E7.0-E8.5)
+terminal_share = { min = 0.80 }       # Erythroid3 cells on one inferred lineage
+
 [regression]
 # CI fails if a synthetic metric falls further than this below benchmarks/baseline.json.
 max_drop = 0.03
@@ -43,3 +59,8 @@ max_drop = 0.03
 #     branch's cluster can now reach the 0.6 Jaccard needed to count as "found"
 #     (paga_dpt, trifurcation seeds 0-1). That error still fails the
 #     branch_accuracy gate, which counts the misplaced cells.
+#
+# 2026-11-10  Real-dataset gates added, before any method was run on real data.
+#   The plan's "share of Erythroid3 cells on the main lineage" is implemented as
+#   terminal_share (worst expected lineage's terminal-stage cells held by one
+#   inferred lineage).

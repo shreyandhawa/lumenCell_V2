@@ -20,6 +20,10 @@ fork (and are identifiable). Shared trunk cells say nothing about which branch a
 including them would stop a method that found one clean lineage from ever
 matching it. A pair counts as "found" at Jaccard >= 0.6, so an inferred lineage
 that merges two equal-sized true branches (Jaccard 0.5 with each) finds neither.
+* ``terminal_share`` (real datasets): for each expected lineage, the share of its
+  terminal-stage cells held by the single inferred lineage that holds most of
+  them; the worst lineage is reported. Low when a terminal population is split
+  across several inferred lineages or left unassigned.
 * ``root_pt_median``: median pseudotime of the true root cells.
   ``root_pt_excess`` subtracts their true median when the truth order is a real
   pseudotime: the root population spans a stretch of time, so even a perfect
@@ -130,6 +134,7 @@ class Scores:
     n_inferred_lineages: int
     root_pt_median: float
     root_pt_excess: float
+    terminal_share: float
     coverage: float  # share of cells with a finite pseudotime
     matches: list[LineageMatch]
 
@@ -156,6 +161,12 @@ def score(pseudotime: FloatArray, membership: BoolArray, truth: Truth) -> Scores
     root_median = float(np.median(root_pt)) if root_pt.size else math.nan
     true_root_median = float(np.median(truth.order[truth.root]))
     excess = root_median - true_root_median if truth.meta.get("order_is_pseudotime") else math.nan
+    shares = []
+    for mask in (truth.terminals or {}).values():
+        if mask.any() and membership.shape[0]:
+            shares.append(float((membership[:, mask].sum(axis=1) / mask.sum()).max()))
+        elif mask.any():
+            shares.append(0.0)
 
     return Scores(
         pt_spearman_global=pt_spearman_global(pseudotime, truth),
@@ -168,6 +179,7 @@ def score(pseudotime: FloatArray, membership: BoolArray, truth: Truth) -> Scores
         n_inferred_lineages=int(membership.shape[0]),
         root_pt_median=root_median,
         root_pt_excess=excess,
+        terminal_share=min(shares) if shares else math.nan,
         coverage=float(np.mean(np.isfinite(pseudotime))),
         matches=matches,
     )
