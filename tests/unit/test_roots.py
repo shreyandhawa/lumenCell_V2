@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import pytest
 from scipy import sparse
-from tests.conftest import Prepared
 
 from lumencell.engine.context import LEIDEN_KEY, InferenceContext
 from lumencell.engine.roots import (
@@ -18,6 +17,7 @@ from lumencell.engine.roots import (
     resolve_root,
     suggest_roots,
 )
+from tests.conftest import Prepared
 
 # ---- parsing ------------------------------------------------------------------------
 

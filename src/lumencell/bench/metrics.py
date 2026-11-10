@@ -6,19 +6,24 @@ matrix), so they score any method and never depend on the engine's internals.
 * ``pt_spearman_global``: rank correlation of pseudotime with the true order.
 * ``pt_spearman_lineage``: the same, within each expected lineage; the gate
   uses the worst lineage, so one reversed branch cannot hide behind a good one.
-* ``branch_accuracy``: for cells that truly lie on exactly one lineage (past
-  the fork), the share placed exclusively on the matching inferred lineage.
-  Chance level is ``1 / n_lineages``.
+* ``branch_accuracy``: for cells that truly lie on exactly one lineage and whose
+  branch is identifiable (``Truth.resolvable``), the share placed exclusively on
+  the matching inferred lineage. Chance level is ``1 / n_lineages``.
+  ``branch_accuracy_all`` is the same over every post-fork cell, including
+  those just past a fork that no method can place (reported, not gated).
 * ``lineage_recall`` / ``n_spurious``: how many true lineages were found, and
   how many inferred lineages correspond to none.
 
 Matching: inferred lineages are paired with true ones by the Hungarian
 algorithm on Jaccard overlap, computed only over cells that truly lie past a
-fork. Shared trunk cells say nothing about which branch a lineage follows, so
+fork (and are identifiable). Shared trunk cells say nothing about which branch a lineage follows, so
 including them would stop a method that found one clean lineage from ever
 matching it. A pair counts as "found" at Jaccard >= 0.6, so an inferred lineage
 that merges two equal-sized true branches (Jaccard 0.5 with each) finds neither.
-* ``root_pt_median``: median pseudotime of the true root cells (should be ~0).
+* ``root_pt_median``: median pseudotime of the true root cells.
+  ``root_pt_excess`` subtracts their true median when the truth order is a real
+  pseudotime: the root population spans a stretch of time, so even a perfect
+  method has a non-zero median there.
 """
 
 import math
@@ -77,7 +82,7 @@ def match_lineages(membership: BoolArray, truth: Truth) -> list[LineageMatch]:
     what counts as "found" using ``MIN_MATCH_JACCARD``.
     """
     true_ex = truth.exclusive()
-    post = true_ex >= 0
+    post = truth.branch_cells()
     n_pred, n_true = membership.shape[0], len(truth.names)
     if n_pred == 0 or n_true == 0:
         return []
@@ -85,14 +90,16 @@ def match_lineages(membership: BoolArray, truth: Truth) -> list[LineageMatch]:
     for i in range(n_pred):
         p = membership[i] & post
         for j in range(n_true):
-            t = true_ex == j
+            t = (true_ex == j) & post
             union = int(np.count_nonzero(p | t))
             jac[i, j] = np.count_nonzero(p & t) / union if union else 0.0
     rows, cols = linear_sum_assignment(-jac)
     return [LineageMatch(int(r), truth.names[c], float(jac[r, c])) for r, c in zip(rows, cols, strict=True)]
 
 
-def branch_accuracy(membership: BoolArray, truth: Truth, matches: list[LineageMatch]) -> float:
+def branch_accuracy(
+    membership: BoolArray, truth: Truth, matches: list[LineageMatch], resolvable_only: bool = True
+) -> float:
     """Share of truly post-fork cells placed exclusively on their matched lineage.
 
     NaN when the truth has fewer than two lineages (there is no branch to get right).
@@ -100,7 +107,7 @@ def branch_accuracy(membership: BoolArray, truth: Truth, matches: list[LineageMa
     if len(truth.names) < 2:
         return math.nan
     true_ex = truth.exclusive()
-    post = true_ex >= 0
+    post = truth.branch_cells() if resolvable_only else true_ex >= 0
     if not post.any():
         return math.nan
     pred_to_true = np.full(membership.shape[0], -1, dtype=np.int64)
@@ -117,10 +124,12 @@ class Scores:
     pt_spearman_lineage: float  # worst lineage
     pt_spearman_by_lineage: dict[str, float]
     branch_accuracy: float
+    branch_accuracy_all: float
     lineage_recall: float
     n_spurious: int
     n_inferred_lineages: int
     root_pt_median: float
+    root_pt_excess: float
     coverage: float  # share of cells with a finite pseudotime
     matches: list[LineageMatch]
 
@@ -144,16 +153,21 @@ def score(pseudotime: FloatArray, membership: BoolArray, truth: Truth) -> Scores
 
     root_pt = pseudotime[truth.root]
     root_pt = root_pt[np.isfinite(root_pt)]
+    root_median = float(np.median(root_pt)) if root_pt.size else math.nan
+    true_root_median = float(np.median(truth.order[truth.root]))
+    excess = root_median - true_root_median if truth.meta.get("order_is_pseudotime") else math.nan
 
     return Scores(
         pt_spearman_global=pt_spearman_global(pseudotime, truth),
         pt_spearman_lineage=min(finite) if finite else math.nan,
         pt_spearman_by_lineage=by_lineage,
         branch_accuracy=branch_accuracy(membership, truth, matches),
+        branch_accuracy_all=branch_accuracy(membership, truth, matches, resolvable_only=False),
         lineage_recall=len(found) / n_true if n_true else math.nan,
         n_spurious=membership.shape[0] - len(found),
         n_inferred_lineages=int(membership.shape[0]),
-        root_pt_median=float(np.median(root_pt)) if root_pt.size else math.nan,
+        root_pt_median=root_median,
+        root_pt_excess=excess,
         coverage=float(np.mean(np.isfinite(pseudotime))),
         matches=matches,
     )

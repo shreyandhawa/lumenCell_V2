@@ -134,3 +134,25 @@ def test_truth_rejects_empty_root() -> None:
 def test_spearman_needs_variation() -> None:
     assert math.isnan(spearman(np.ones(10), np.arange(10.0)))
     assert math.isnan(spearman(np.arange(2.0), np.arange(2.0)))
+
+
+def test_branch_accuracy_skips_unidentifiable_cells() -> None:
+    truth, t, membership = _bifurcation_truth()
+    resolvable = t >= FORK + 0.15
+    truth_r = Truth(order=t, lineages=truth.lineages, root=truth.root, resolvable=resolvable)
+    # Get every cell in the ambiguous zone just past the fork wrong.
+    wrong = membership.copy()
+    zone = (t >= FORK) & (t < FORK + 0.15)
+    wrong[:, zone] = wrong[::-1, zone]
+    s = score(t, wrong, truth_r)
+    assert s.branch_accuracy == pytest.approx(1.0)
+    assert s.branch_accuracy_all < 1.0
+
+
+def test_root_excess_is_relative_to_the_truth() -> None:
+    truth, t, membership = _bifurcation_truth()
+    with_flag = Truth(order=t, lineages=truth.lineages, root=truth.root, meta={"order_is_pseudotime": True})
+    s = score(t, membership, with_flag)
+    assert s.root_pt_excess == pytest.approx(0.0)
+    assert s.root_pt_median > 0.0
+    assert math.isnan(score(t, membership, truth).root_pt_excess), "no excess without a true pseudotime"

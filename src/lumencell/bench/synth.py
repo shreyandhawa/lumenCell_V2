@@ -35,6 +35,12 @@ from lumencell.bench.truth import Truth
 
 ROOT_SEGMENT = "trunk"
 
+# Branch-specific expression ramps in from zero at a fork, so cells just past it
+# are indistinguishable across branches by construction. Branch metrics count a
+# cell only once it is this far (in true pseudotime) into its branch, the same
+# margin the preset calibration uses for kNN branch purity.
+RESOLVABLE_MARGIN = 0.15
+
 
 @dataclass(frozen=True)
 class Segment:
@@ -293,11 +299,23 @@ def truth_from_adata(adata: ad.AnnData) -> Truth:
     seg = adata.obs["true_segment"].astype(str).to_numpy()
     lineages = {leaf: np.isin(seg, [str(s) for s in path]) for leaf, path in dict(meta["lineages"]).items()}
     root = (adata.obs["true_label"].astype(str) == meta["root_label"]).to_numpy()
+    t = adata.obs["true_pseudotime"].to_numpy(dtype=np.float64)
+    segments = dict(meta["segments"])
+    starts = {name: 0.0 for name in segments}
+    for name in segments:  # start = summed length of ancestors
+        cur, total = str(segments[name]["parent"]), 0.0
+        while cur:
+            total += float(segments[cur]["length"])
+            cur = str(segments[cur]["parent"])
+        starts[name] = total
+    depth = t - np.array([starts[s] for s in seg])
+    meta["order_is_pseudotime"] = True
     return Truth(
-        order=adata.obs["true_pseudotime"].to_numpy(dtype=np.float64),
+        order=t,
         lineages=lineages,
         root=root,
         meta=meta,
+        resolvable=depth >= RESOLVABLE_MARGIN,
     )
 
 

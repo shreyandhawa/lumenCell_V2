@@ -1,0 +1,45 @@
+# Accuracy gates for trajectory methods.
+#
+# A method that misses any gate on any case ships labelled "experimental", with
+# its measured scores shown in the UI. Thresholds are never lowered to make a
+# method pass; every change to a threshold or to a metric's definition is logged
+# below with the reason.
+
+[synthetic]
+preset = "realistic"
+topologies = ["linear", "bifurcation", "trifurcation", "binary2"]
+seeds = [0, 1, 2]
+n_cells = 3000
+n_genes = 2000
+
+[synthetic.gates]
+pt_spearman_global = { min = 0.90 }
+pt_spearman_lineage = { min = 0.85 }
+branch_accuracy = { min = 0.90 }  # NaN (single-lineage topologies) is skipped
+lineage_recall = { min = 1.0 }
+n_spurious = { max = 1 }
+root_pt_excess = { max = 0.10 }
+
+[regression]
+# CI fails if a synthetic metric falls further than this below benchmarks/baseline.json.
+max_drop = 0.03
+
+# ---- changelog ---------------------------------------------------------------------
+#
+# 2026-11-10  Initial gates, set before any method was measured.
+#
+# 2026-11-10  Two metric definitions corrected after the first paga_dpt run.
+#             Thresholds unchanged.
+#   * root_pt_median -> root_pt_excess. The true root population (first half of
+#     the trunk) spans true pseudotime 0-0.2, so even perfect inference gives a
+#     median near 0.10 and the original gate (<= 0.10) was unpassable by design.
+#     The gate now applies to the excess over the true median.
+#   * branch_accuracy and lineage matching now count only cells at least 0.15
+#     (true pseudotime) past their fork. The generator ramps branch expression in
+#     from zero at a fork, so earlier cells are indistinguishable for any method;
+#     the realistic preset's calibration measures branch purity on the same region.
+#     The all-cells figure is still reported as branch_accuracy_all.
+#     Side effect, stated openly: a lineage that wrongly runs through a sibling
+#     branch's cluster can now reach the 0.6 Jaccard needed to count as "found"
+#     (paga_dpt, trifurcation seeds 0-1). That error still fails the
+#     branch_accuracy gate, which counts the misplaced cells.

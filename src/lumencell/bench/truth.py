@@ -7,7 +7,10 @@ know an ordering of annotated stages along each expected lineage. Both reduce to
   pseudotime, or a stage ordinal), NaN where unknown;
 * ``lineages``: for each expected lineage, which cells lie on it (the shared
   trunk counts towards every lineage that passes through it);
-* ``root``: which cells form the true starting population.
+* ``root``: which cells form the true starting population;
+* ``resolvable`` (optional): cells whose branch can be told apart at all. Just
+  past a fork, branches have not diverged yet and no method can separate them;
+  branch metrics are scored only where the answer is identifiable.
 """
 
 from dataclasses import dataclass, field
@@ -26,6 +29,7 @@ class Truth:
     lineages: dict[str, BoolArray]
     root: BoolArray
     meta: dict[str, Any] = field(default_factory=dict)
+    resolvable: BoolArray | None = None
 
     def __post_init__(self) -> None:
         n = self.order.shape[0]
@@ -36,6 +40,10 @@ class Truth:
             raise ValueError("root must be a bool array matching order")
         if not self.root.any():
             raise ValueError("the true root population is empty")
+        if self.resolvable is not None and (
+            self.resolvable.shape != (n,) or self.resolvable.dtype != np.bool_
+        ):
+            raise ValueError("resolvable must be a bool array matching order")
 
     @property
     def n_obs(self) -> int:
@@ -60,3 +68,8 @@ class Truth:
         single = m.sum(axis=0) == 1
         out[single] = np.argmax(m[:, single], axis=0)
         return out
+
+    def branch_cells(self) -> BoolArray:
+        """Cells on exactly one true lineage whose branch is identifiable (see ``resolvable``)."""
+        post = self.exclusive() >= 0
+        return post & self.resolvable if self.resolvable is not None else post
