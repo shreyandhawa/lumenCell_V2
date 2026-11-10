@@ -108,7 +108,7 @@ def _gene_symbols(var: pd.DataFrame, var_names: pd.Index) -> tuple[npt.NDArray[n
 def _display_embeddings(adata: ad.AnnData) -> dict[str, npt.NDArray[np.float32]]:
     out: dict[str, npt.NDArray[np.float32]] = {}
     for key in adata.obsm:
-        arr = np.asarray(adata.obsm[key])
+        arr: npt.NDArray[Any] = np.asarray(adata.obsm[key])
         if arr.ndim != 2 or arr.shape[1] < 2 or arr.shape[0] != adata.n_obs:
             continue
         if not np.issubdtype(arr.dtype, np.number):
