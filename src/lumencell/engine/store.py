@@ -187,20 +187,29 @@ class RunStore:
         )
 
     def list(self) -> list[dict[str, Any]]:
-        """Summaries of every completed run, newest first."""
+        """Summaries of every completed run this version can read, newest first.
+
+        A run folder that is damaged, or was written by another store version,
+        is left out rather than failing the whole list.
+        """
         if not self.dir.exists():
             return []
         out = []
         for d in self.dir.iterdir():
             if d.name.startswith(".") or not (d / ".complete").exists():
                 continue
-            g = self.graph(d.name)
-            out.append(
-                {
-                    "run_id": g["run_id"],
-                    "method": g["method"],
-                    "created_at": g["created_at"],
+            try:
+                g = self.graph(d.name)
+                if g.get("store_version") != STORE_VERSION:
+                    continue
+                datetime.fromisoformat(g["created_at"])
+                summary = {
+                    "run_id": str(g["run_id"]),
+                    "method": str(g["method"]),
+                    "created_at": str(g["created_at"]),
                     "n_lineages": len(g["lineages"]),
                 }
-            )
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                continue
+            out.append(summary)
         return sorted(out, key=lambda r: r["created_at"], reverse=True)

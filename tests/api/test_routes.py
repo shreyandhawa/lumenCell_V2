@@ -204,6 +204,10 @@ def test_job_routes(client: TestClient, run: dict[str, object]) -> None:
 
 def test_unknown_run_and_method(client: TestClient) -> None:
     assert client.get("/api/v1/trajectories/nope").status_code == 404
+    # Run ids name folders in the cache; a path is never looked up as one.
+    for a in ("../stages", "..", "a/b"):
+        res = client.get("/api/v1/compare", params={"a": a, "b": a})
+        assert res.status_code == 404 and res.json()["error"]["code"] == "not_found", a
     res = client.post("/api/v1/trajectories", json={"method": "slingshot", "root": ROOT})
     assert res.status_code == 404 and res.json()["error"]["code"] == "unknown_method"
 

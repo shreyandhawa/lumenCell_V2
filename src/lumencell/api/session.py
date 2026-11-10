@@ -8,6 +8,7 @@ in a small state file outside the cache, so they survive cache eviction.
 
 import json
 import os
+import re
 import threading
 from datetime import datetime
 from http import HTTPStatus
@@ -50,6 +51,8 @@ from lumencell.prep.stages import STAGES, PrepParams
 
 MAX_CATEGORIES_LISTED = 1000
 MAX_GENES_PER_REQUEST = 200
+# Run ids name folders in the run store, so anything that is not a plain name is not a run.
+_RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 def _is_numeric(s: pd.Series) -> bool:
@@ -544,6 +547,8 @@ class Session:
             return [j for j in self.jobs._jobs.values() if j.kind == "infer"]
 
     def _require_run(self, rid: str) -> dict[str, Any]:
+        if not _RUN_ID.fullmatch(rid):
+            raise ApiError(HTTPStatus.NOT_FOUND, "not_found", f"no run {rid!r}")
         if not self.store.exists(rid):
             job = self.jobs.find(f"infer:{rid}")
             if job is not None:

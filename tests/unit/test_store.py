@@ -77,6 +77,17 @@ def test_listing_and_existence(tmp_path: Path, result: TrajectoryResult) -> None
     assert summary["n_lineages"] == len(result.lineages)
 
 
+def test_listing_skips_runs_it_cannot_read(tmp_path: Path, result: TrajectoryResult) -> None:
+    store = RunStore(tmp_path)
+    for rid in ("good", "damaged", "other_version"):
+        store.save(rid, result)
+    (store.path("damaged") / "result.json").write_text("{not json", encoding="utf-8")
+    graph = store.graph("other_version")
+    graph["store_version"] = 0
+    store.update_graph("other_version", graph)
+    assert [r["run_id"] for r in store.list()] == ["good"]
+
+
 def test_failed_save_leaves_nothing(
     tmp_path: Path, result: TrajectoryResult, monkeypatch: pytest.MonkeyPatch
 ) -> None:
