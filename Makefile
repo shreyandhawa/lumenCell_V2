@@ -1,4 +1,4 @@
-.PHONY: install py-install web-install py-lint py-typecheck py-test py-ci web-lint web-typecheck web-test web-build web-ci ci fmt dev-web web-dist dev-server contract contract-check py-test-all bench-synth bench-baseline
+.PHONY: install py-install web-install py-lint py-typecheck py-test py-ci web-lint web-typecheck web-test web-build web-ci web-e2e ci fmt dev-web web-dist dev-server contract contract-check py-test-all bench-synth bench-baseline
 
 install: py-install web-install
 
@@ -42,6 +42,10 @@ web-build:
 
 web-ci: web-lint web-typecheck web-test web-build
 
+# End to end: the real server serving the built app, driven by Playwright (Chromium).
+web-e2e: web-build
+	cd web && npx playwright test
+
 # ---- API contract ---------------------------------------------------------
 # contracts/openapi.json is generated from api/models.py, and the TypeScript
 # types are generated from it. `contract` regenerates both; `contract-check`
@@ -71,7 +75,7 @@ bench-baseline:
 
 # ---- Everything -----------------------------------------------------------
 
-ci: py-ci contract-check web-ci
+ci: py-ci contract-check web-ci web-e2e
 
 fmt:
 	uv run ruff format .

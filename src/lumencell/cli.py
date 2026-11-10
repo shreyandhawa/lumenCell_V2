@@ -159,6 +159,9 @@ def launch(
         "127.0.0.1"
     ),
     browser: Annotated[bool, typer.Option(help="Open the browser when the server is ready.")] = True,
+    strict_port: Annotated[
+        bool, typer.Option(help="Fail if the port is taken instead of trying the next.")
+    ] = False,
     x_is: XIsOpt = None,
     recompute_umap: UmapOpt = False,
 ) -> None:
@@ -201,7 +204,11 @@ def launch(
 
         threading.Thread(target=run_when_prepared, daemon=True).start()
 
-    port = free_port(host, port)
+    try:
+        port = free_port(host, port, attempts=1 if strict_port else 20)
+    except RuntimeError:
+        jobs.shutdown()
+        raise typer.BadParameter(f"port {port} is already in use", param_hint="--port") from None
     url = f"http://{host}:{port}"
     trusted = LOCAL_HOSTS if host in LOCAL_HOSTS else [host, *LOCAL_HOSTS]
     typer.echo(f"lumenCell is running at {url}  (Ctrl+C to stop)")

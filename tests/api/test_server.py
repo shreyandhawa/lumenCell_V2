@@ -36,13 +36,15 @@ def test_root_serves_the_web_app_or_explains_how_to_build_it() -> None:
         assert '<div id="root">' in res.text
 
 
-def test_free_port_skips_a_busy_one() -> None:
+def test_free_port_skips_a_busy_one_unless_strict() -> None:
     import socket
 
     with socket.socket() as busy:
         busy.bind(("127.0.0.1", 0))
         taken = busy.getsockname()[1]
         assert free_port("127.0.0.1", taken) != taken
+        with pytest.raises(RuntimeError, match="no free port"):
+            free_port("127.0.0.1", taken, attempts=1)
 
 
 def _get(url: str) -> dict[str, object]:

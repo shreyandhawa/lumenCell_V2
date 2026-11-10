@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview",
-    "gen:api": "openapi-ts -i ../contracts/openapi.json -o src/api/generated -p @hey-api/typescript --no-log-file -s"
+    "gen:api": "openapi-ts -i ../contracts/openapi.json -o src/api/generated -p @hey-api/typescript --no-log-file -s",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@deck.gl/core": "^9.4.1",
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@hey-api/openapi-ts": "^0.99.0",
+    "@playwright/test": "^1.65.0",
     "@tailwindcss/vite": "^4.3.5",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
