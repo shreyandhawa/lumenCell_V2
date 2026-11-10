@@ -58,7 +58,7 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --color-field: #f3f5f8;
+  --color-field: #e6eaf0;
   --color-panel: #ffffff;
   --color-raised: #ffffff;
   --color-control: #f0f2f5;
@@ -67,7 +67,7 @@
   --color-line-strong: #cbd2dc;
   --color-ink: #10141a;
   --color-ink-2: #465061;
-  --color-ink-3: #636d7f;
+  --color-ink-3: #576174;
   --color-live: #12804a;
   --color-live-ink: #ffffff;
   --color-focus: #2f5fd9;

@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-10T13:30:00Z",
+  "title": "Design System: lumenCell",
+  "extensions": {
+    "colorMeta": {
+      "field": { "role": "neutral", "displayName": "Darkfield", "canonical": "#06080b", "tonalRamp": ["#06080b", "#0c0f14", "#151a21", "#1d242e", "#2b3440", "#7f8899", "#a3acbb", "#e6eaf0"] },
+      "panel": { "role": "neutral", "displayName": "Panel Slate", "canonical": "#0c0f14" },
+      "raised": { "role": "neutral", "displayName": "Raised Slate", "canonical": "#151a21" },
+      "control": { "role": "neutral", "displayName": "Control", "canonical": "#141920" },
+      "line": { "role": "neutral", "displayName": "Hairline", "canonical": "#1d242e" },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#e6eaf0" },
+      "ink-2": { "role": "neutral", "displayName": "Ink 2", "canonical": "#a3acbb" },
+      "ink-3": { "role": "neutral", "displayName": "Ink 3", "canonical": "#7f8899" },
+      "live": { "role": "primary", "displayName": "GFP Green", "canonical": "#3ddc84", "tonalRamp": ["#03140a", "#0a3a20", "#12804a", "#1fae63", "#3ddc84", "#7be8aa", "#b5f2cf", "#e6fbef"] },
+      "focus": { "role": "primary", "displayName": "DAPI Blue", "canonical": "#5b8cff", "tonalRamp": ["#0a1430", "#16296a", "#2f5fd9", "#4a7af0", "#5b8cff", "#8eaffc", "#c2d4fd", "#ebf1ff"] },
+      "danger": { "role": "tertiary", "displayName": "mCherry", "canonical": "#ff5a76" },
+      "warn": { "role": "tertiary", "displayName": "Amber", "canonical": "#f2b544" },
+      "brightfield-field": { "role": "neutral", "displayName": "Brightfield", "canonical": "#e6eaf0" }
+    },
+    "typographyMeta": {
+      "stamp": { "displayName": "Stamp", "purpose": "The pseudotime acquisition stamp in the field's corner; ink-3 at rest, ink while a window is set." },
+      "title": { "displayName": "Title", "purpose": "Panel section headings and the wordmark." },
+      "body": { "displayName": "Body", "purpose": "Default text in panels and controls." },
+      "label": { "displayName": "Label", "purpose": "Control labels, tabs, segmented options, hints." },
+      "data": { "displayName": "Data", "purpose": "Counts, pseudotime values, fidelity, IDs and parameters, with tabular figures." }
+    },
+    "shadows": [
+      { "name": "ply", "value": "0 12px 32px -8px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.35)", "purpose": "Popovers and tooltips only: the top ply." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0.23, 1, 0.32, 1)", "purpose": "UI enter and state changes." },
+      { "name": "ease-in-out", "value": "cubic-bezier(0.77, 0, 0.175, 1)", "purpose": "Things moving across the field: the cell morph and camera." },
+      { "name": "duration-press", "value": "120ms", "purpose": "Press feedback (scale 0.97)." },
+      { "name": "duration-ui", "value": "180ms", "purpose": "Popups, hover, colour; exits use 120ms." },
+      { "name": "duration-panel", "value": "240ms", "purpose": "Step changes and collapsibles." },
+      { "name": "panel-spring", "value": "spring duration 0.38s, bounce 0", "purpose": "Floating panels, sheet detents, segmented indicator." },
+      { "name": "morph", "value": "700ms ease-in-out", "purpose": "Cells moving between embeddings on the GPU." },
+      { "name": "draw-on", "value": "900ms ease-out", "purpose": "Curves drawing from the root when a run first lands." },
+      { "name": "time-lapse", "value": "7000ms linear, window 0.14", "purpose": "The pseudotime sweep from root to tips." }
+    ],
+    "breakpoints": [
+      { "name": "narrow", "value": "900px stage width: both panels start closed and cover the field" },
+      { "name": "compact", "value": "1200px stage width: the Cells panel starts closed" },
+      { "name": "md", "value": "768px: the toolbar wraps onto two rows below this" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled green action in view (Play, a step's primary action).",
+      "html": "<button class=\"ds-btn-primary\">Run PAGA + DPT</button>",
+      "css": ".ds-btn-primary { background: var(--color-live, #3ddc84); color: var(--color-live-ink, #03140a); height: 32px; padding: 0 12px; border: 0; border-radius: 8px; font: 600 13px/20px 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif; transition: transform 120ms cubic-bezier(0.23,1,0.32,1), filter 180ms ease; cursor: pointer; } .ds-btn-primary:hover { filter: brightness(1.1); } .ds-btn-primary:active { transform: scale(0.97); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-focus, #5b8cff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Everyday actions; Run again once a result is on the field.",
+      "html": "<button class=\"ds-btn-secondary\">Run again</button>",
+      "css": ".ds-btn-secondary { background: var(--color-control, #141920); color: var(--color-ink, #e6eaf0); height: 32px; padding: 0 12px; border: 0; border-radius: 8px; font: 500 13px/20px 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif; transition: transform 120ms cubic-bezier(0.23,1,0.32,1), background-color 180ms ease; cursor: pointer; } .ds-btn-secondary:hover { background: var(--color-control-hover, #1b212a); } .ds-btn-secondary:active { transform: scale(0.97); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-focus, #5b8cff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "nav",
+      "description": "The embedding switch: one-of-n with a sliding raised indicator.",
+      "html": "<div class=\"ds-seg\" role=\"group\" aria-label=\"Embedding\"><button class=\"ds-seg-item ds-on\">UMAP</button><button class=\"ds-seg-item\">DC 2D</button><button class=\"ds-seg-item\">DC 3D</button></div>",
+      "css": ".ds-seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--color-control, #141920); } .ds-seg-item { height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--color-ink-2, #a3acbb); font: 500 12px/18px 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif; cursor: pointer; transition: color 180ms ease, background-color 240ms cubic-bezier(0.23,1,0.32,1); } .ds-seg-item:hover { color: var(--color-ink, #e6eaf0); } .ds-seg-item.ds-on { background: var(--color-raised, #151a21); color: var(--color-ink, #e6eaf0); box-shadow: 0 1px 2px rgb(0 0 0 / 0.35); } .ds-seg-item:focus-visible { outline: 2px solid var(--color-focus, #5b8cff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Gene search: a filled field with a leading icon.",
+      "html": "<label class=\"ds-search\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-3.5-3.5\"/></svg><input placeholder=\"Colour by gene…\" aria-label=\"Colour by gene\"></label>",
+      "css": ".ds-search { display: inline-flex; align-items: center; gap: 8px; height: 32px; width: 176px; padding: 0 10px; border-radius: 8px; background: var(--color-control, #141920); color: var(--color-ink-3, #7f8899); transition: background-color 180ms ease; } .ds-search:hover { background: var(--color-control-hover, #1b212a); } .ds-search:focus-within { outline: 2px solid var(--color-focus, #5b8cff); } .ds-search input { all: unset; flex: 1; min-width: 0; color: var(--color-ink, #e6eaf0); font: 400 13px/20px 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif; } .ds-search input::placeholder { color: var(--color-ink-3, #7f8899); }"
+    },
+    {
+      "name": "Tag",
+      "kind": "chip",
+      "refersTo": "tag-warn",
+      "description": "Small state markers; colour only where it carries meaning.",
+      "html": "<span class=\"ds-tag ds-tag-warn\">heuristic</span> <span class=\"ds-tag\">end of graph</span>",
+      "css": ".ds-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 9999px; background: var(--color-control, #141920); color: var(--color-ink-2, #a3acbb); font: 600 11px/16px 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif; } .ds-tag-warn { background: color-mix(in oklab, var(--color-warn, #f2b544) 15%, transparent); color: var(--color-warn, #f2b544); }"
+    },
+    {
+      "name": "Floating Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "The first ply: panels float over the field with a hairline and no shadow.",
+      "html": "<section class=\"ds-panel\"><h2>Lineages</h2><p>Cluster 5 · splits off at <span class=\"ds-num\">0.67</span></p></section>",
+      "css": ".ds-panel { width: 280px; padding: 20px 16px; border-radius: 16px; border: 1px solid var(--color-line, #1d242e); background: var(--color-panel, #0c0f14); color: var(--color-ink, #e6eaf0); font: 400 13px/20px 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif; } .ds-panel h2 { margin: 0 0 10px; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em; } .ds-panel p { margin: 0; color: var(--color-ink-3, #7f8899); font-size: 12px; } .ds-num { font-family: 'Atkinson Hyperlegible Mono Variable', ui-monospace, monospace; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Pseudotime Stamp",
+      "kind": "custom",
+      "description": "The acquisition stamp in the field's corner; quiet at rest, lit while the window moves.",
+      "html": "<div class=\"ds-stamp\">pt 0.48</div>",
+      "css": ".ds-stamp { display: inline-block; padding: 8px 12px; background: var(--color-field, #06080b); color: var(--color-ink, #e6eaf0); font: 600 28px/1 'Atkinson Hyperlegible Mono Variable', ui-monospace, monospace; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Darkfield Time-Lapse",
+    "overview": "lumenCell is an imaging stage. The plot is a black darkfield, the cells are the light on it, and pseudotime is the stage's clock. Everything else (toolbar, panels, sheets) frames the field and steps out of its way. The world is fluorescence time-lapse microscopy, read for its discipline rather than its gear: channel colours that each own one job, an acquisition stamp in the corner, and a result you watch develop rather than read off a static chart.\n\nIt is a working tool for computational biologists, so density is high and every control is a standard one (Base UI underneath). Character comes from four things only: the darkfield palette, Atkinson Hyperlegible type, a tight scale with tabular numbers, and the signature move, which is pseudotime played as a time-lapse across the field. Motion explains changes in the data or the view and nothing else.",
+    "keyCharacteristics": [
+      "Full-bleed darkfield stage with floating panels; the camera centres the cells in the area the panels leave free.",
+      "Channel colours with fixed jobs; data keeps Okabe-Ito and viridis.",
+      "One shared 0–1 pseudotime axis across the timeline, lineage bars, trends and heatmap.",
+      "Numbers in Atkinson Hyperlegible Mono with tabular figures; they change in place.",
+      "Brightfield is the light variant, chosen from the toolbar."
+    ],
+    "rules": [
+      { "name": "The Channel Rule", "body": "Each channel colour owns one job: green is live and primary, blue is selection and focus, amber is caution, mCherry is error. A colour never borrows another's job, and none is used as decoration.", "section": "colors" },
+      { "name": "The One Green Button Rule", "body": "At most one filled green control is in view at a time. Once a run is on the field, re-running is a secondary button and Play is the only green fill.", "section": "colors" },
+      { "name": "The Data Keeps Its Encoding Rule", "body": "Cells and charts use Okabe-Ito for categories and viridis for values in both themes. The UI palette never tints the data.", "section": "colors" },
+      { "name": "The Mono Means Measurement Rule", "body": "Mono is only for numbers, IDs, parameters and the stamp, never as a \"technical\" costume for prose or headings.", "section": "typography" },
+      { "name": "The No Eyebrow Rule", "body": "Section titles carry their own weight. There are no uppercase tracked labels above headings.", "section": "typography" },
+      { "name": "The Three Plies Rule", "body": "Field, panel, popover. Nothing else is raised, and only the top ply has a shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep the field full-bleed and the panels floating; centre the cells with the view padding, never by shrinking the canvas.",
+      "Do put every pseudotime graphic on the one shared 0–1 axis.",
+      "Do keep motion to what explains a change: the morph, the time-lapse, the draw-on and highlights. UI transitions stay at or under 240ms, and exits are faster than entrances.",
+      "Do keep a change marked until it has been seen; a finished run keeps its blue dot until it is opened.",
+      "Do say a method is experimental wherever it is chosen or judged."
+    ],
+    "donts": [
+      "Don't box each panel section or put uppercase tracked labels above headings.",
+      "Don't use a channel colour outside its job, or tint the data with UI colours.",
+      "Don't animate keyboard-initiated panel toggles.",
+      "Don't let semi-transparent layers stack into brightness on the field; dimmed cells are drawn opaque and pre-mixed toward the field.",
+      "Don't load fonts or assets from a CDN; the app runs offline."
+    ]
+  }
+}

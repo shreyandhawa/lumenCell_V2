@@ -85,6 +85,8 @@ function useStageSize(): [React.RefObject<HTMLDivElement | null>, { width: numbe
 
 /** Below this stage width the panels float over the field as sheets and start closed. */
 const NARROW = 900;
+/** Below this stage width the Cells panel starts closed so the field keeps room. */
+const COMPACT = 1200;
 
 export default function App() {
   const dataset = useDataset();
@@ -134,10 +136,10 @@ function Stage() {
   const insets = stageInsets(narrow ? { cells: false, inspector: false } : panels, detent, stageHeight, hasTimeline);
   const closedForNarrow = useRef(false);
   useEffect(() => {
-    if (!narrow || closedForNarrow.current) return;
+    if (stageWidth >= COMPACT || closedForNarrow.current) return;
     closedForNarrow.current = true;
-    useUi.setState({ panels: { cells: false, inspector: false }, panelsAnimate: false });
-  }, [narrow]);
+    useUi.setState({ panels: { cells: false, inspector: !narrow }, panelsAnimate: false });
+  }, [stageWidth, narrow]);
   const transition = animate ? PANEL_SPRING : { duration: 0 };
   const sheetH = Math.max(44, Math.min(stageHeight * 0.8, sheetHeight(detent, stageHeight) - (drag ?? 0)));
   const sheetTransition = drag !== null ? { duration: 0 } : transition;

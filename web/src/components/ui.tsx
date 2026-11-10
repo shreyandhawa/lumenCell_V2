@@ -187,6 +187,8 @@ export interface SelectItem {
   disabled?: boolean;
   /** Shown faintly after the label, e.g. why an item is disabled. */
   note?: string;
+  /** "warn" sets the note in the amber channel (warnings and the experimental flag). */
+  noteTone?: "quiet" | "warn";
 }
 export interface SelectGroup {
   label?: string;
@@ -246,7 +248,11 @@ export function Select({
                       </BaseSelect.ItemIndicator>
                       <span className="col-start-2 flex min-w-0 items-baseline gap-2">
                         <BaseSelect.ItemText className="truncate">{it.label}</BaseSelect.ItemText>
-                        {it.note && <span className="truncate text-xs text-ink-3">{it.note}</span>}
+                        {it.note && (
+                          <span className={cx("truncate text-xs", it.noteTone === "warn" ? "text-warn" : "text-ink-3")}>
+                            {it.note}
+                          </span>
+                        )}
                       </span>
                     </BaseSelect.Item>
                   ))}

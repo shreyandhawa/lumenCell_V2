@@ -18,9 +18,16 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
     <Section title="How far to trust this">
       <div className="space-y-2">
         {method?.experimental && (
-          <Note tone="warning">
-            {method.label} is experimental. {method.experimental_note}
-          </Note>
+          <div>
+            <Note tone="warning">{method.label} is experimental: it misses some of lumenCell's accuracy gates.</Note>
+            {method.experimental_note && (
+              <div className="pl-[22px]">
+                <Disclosure label="Benchmark results">
+                  <p className="text-xs text-ink-2">{method.experimental_note}</p>
+                </Disclosure>
+              </div>
+            )}
+          </div>
         )}
         {notices.length > 0 ? (
           <ul className="space-y-2" aria-label="Warnings">

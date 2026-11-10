@@ -18,12 +18,15 @@ import { useCellColors, useHighlightMask, withEmphasis } from "@/components/useC
 import { cx, IconButton } from "@/components/ui";
 import { embeddingLabel } from "@/lib/colorBy";
 import { categorical, type RGBA } from "@/lib/colors";
+import { DepthCueExtension } from "@/lib/depthCue";
 import { fitStage, type Insets, onStage, selectInPolygon, type Stage } from "@/lib/geometry";
 import { DURATION, easeInOut, easeOut, prefersReducedMotion } from "@/lib/motion";
 import { softRange } from "@/lib/playback";
 import { useUi } from "@/state/ui";
 
 const FILTER = new DataFilterExtension({ filterSize: 2 });
+const DEPTH = new DepthCueExtension();
+const CELL_EXTENSIONS = [FILTER, DEPTH];
 const CAMERA = new LinearInterpolator(["target", "zoom", "rotationX", "rotationOrbit"]);
 const NO_PT = -2;
 const TILT_3D = { rotationX: 22, rotationOrbit: -34 };
@@ -260,25 +263,52 @@ export function Scatter({ insets }: { insets: Insets }) {
   const curveShow = useCurveVisibility(embedding);
   const progress = drawKey === runId ? drawProgress : 1;
 
-  const fieldColor: RGBA = theme === "dark" ? [6, 8, 11, 255] : [243, 245, 248, 255];
+  const fieldColor: RGBA = theme === "dark" ? [6, 8, 11, 255] : [230, 234, 240, 255];
   const inkColor: RGBA = theme === "dark" ? [230, 234, 240, 255] : [16, 20, 26, 255];
+  // A faint rim under every cell keeps the embedding's shape when a colour runs dark
+  // (viridis' low end on darkfield, its high end on brightfield). Opaque, so it never stacks.
+  const rimColor: RGBA = theme === "dark" ? [30, 36, 46, 255] : [203, 209, 219, 255];
+
+  // Cells the time-lapse window has passed: their own colour mixed most of the way to the
+  // field, drawn opaque so overlapping cells cannot add up to full brightness.
+  // One data object per dataset: deck.gl compares `data` by identity, and a new object
+  // on every render would recompute every per-cell attribute (80 ms at 100k cells).
+  const cellData = useMemo(() => ({ length: n }), [n]);
+
+  const glowFill = useMemo(() => {
+    if (!fill) return null;
+    const out = new Uint8Array(fill.length);
+    for (let i = 0; i < fill.length; i += 4) {
+      // A light field swallows tints faster than a dark one, so brightfield keeps more colour.
+      const k = (theme === "dark" ? 0.2 : 0.4) * (fill[i + 3]! / 255);
+      out[i] = Math.round(fieldColor[0] + (fill[i]! - fieldColor[0]) * k);
+      out[i + 1] = Math.round(fieldColor[1] + (fill[i + 1]! - fieldColor[1]) * k);
+      out[i + 2] = Math.round(fieldColor[2] + (fill[i + 2]! - fieldColor[2]) * k);
+      out[i + 3] = 255;
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fill, theme]);
 
   const layers = [];
   if (ready) {
-    const data = { length: n };
+    const data = cellData;
     const positionOf = (_: unknown, { index, target }: { index: number; target: number[] }) => {
       target[0] = stage.positions[index * 3]!;
       target[1] = stage.positions[index * 3 + 1]!;
       target[2] = stage.positions[index * 3 + 2]!;
       return target as [number, number, number];
     };
-    const colourOf = (_: unknown, { index, target }: { index: number; target: number[] }) => {
-      target[0] = fill[index * 4]!;
-      target[1] = fill[index * 4 + 1]!;
-      target[2] = fill[index * 4 + 2]!;
-      target[3] = fill[index * 4 + 3]!;
-      return target as unknown as RGBA;
-    };
+    const colourFrom =
+      (buf: Uint8Array) =>
+      (_: unknown, { index, target }: { index: number; target: number[] }) => {
+        target[0] = buf[index * 4]!;
+        target[1] = buf[index * 4 + 1]!;
+        target[2] = buf[index * 4 + 2]!;
+        target[3] = buf[index * 4 + 3]!;
+        return target as unknown as RGBA;
+      };
+    const colourOf = colourFrom(fill);
     const filterOf = (_: unknown, { index, target }: { index: number; target: number[] }) => {
       target[0] = filterValues[index * 2]!;
       target[1] = filterValues[index * 2 + 1]!;
@@ -293,7 +323,9 @@ export function Scatter({ insets }: { insets: Insets }) {
       getRadius: radius,
       billboard: true,
       stroked: false,
-      extensions: [FILTER],
+      extensions: CELL_EXTENSIONS,
+      depthCue: is3D ? 1 : 0,
+      depthCueRadius: Math.max(stage.radius, 0.5),
       parameters: { depthCompare: "always" as const },
       updateTriggers: { getPosition: stage, getFillColor: fill, getFilterValue: filterValues },
       transitions: {
@@ -301,19 +333,35 @@ export function Scatter({ insets }: { insets: Insets }) {
         getFillColor: { duration: 220, easing: easeOut },
       },
     };
-    if (windowed) {
-      // The time-lapse: cells the window has passed keep a faint afterglow; while paused,
-      // every cell outside the window stays faintly visible for context.
+    // What is on the field at all: every cell, or while the time-lapse plays, the cells
+    // the window has reached so far (cells ahead of it stay dark).
+    const shown: [number, number] = windowed ? [0, playing ? ptRange[1] : 1] : [-3, 3];
+    layers.push(
+      new ScatterplotLayer({
+        ...shared,
+        id: "rim",
+        getRadius: radius + 1.1,
+        getFillColor: rimColor,
+        pickable: false,
+        filterRange: [shown, [0.5, 1.5]],
+        updateTriggers: { ...shared.updateTriggers, getFillColor: theme },
+        transitions: { getPosition: shared.transitions.getPosition },
+      }),
+    );
+    if (windowed && glowFill) {
+      // The time-lapse afterglow: cells the window has passed stay dimly lit; while paused,
+      // every cell outside the window stays dimly visible for context.
       layers.push(
         new ScatterplotLayer({
           ...shared,
           id: "afterglow",
-          opacity: 0.14,
+          getFillColor: colourFrom(glowFill),
           pickable: false,
           filterRange: [
             [0, playing ? ptRange[0] : 1],
             [0.5, 1.5],
           ],
+          updateTriggers: { ...shared.updateTriggers, getFillColor: glowFill },
         }),
       );
     }
@@ -327,6 +375,31 @@ export function Scatter({ insets }: { insets: Insets }) {
         filterTransformColor: true,
       }),
     );
+    if (playing && theme === "dark") {
+      // The exposure front: cells brighten as the window reaches them, then settle.
+      // Darkfield only: brightfield has no fluorescence to excite, and ink there would darken.
+      const front = Math.max(ptRange[0], ptRange[1] - 0.035);
+      layers.push(
+        new ScatterplotLayer({
+          ...shared,
+          id: "exposure",
+          getFillColor: [inkColor[0], inkColor[1], inkColor[2], 110],
+          getRadius: radius + 0.6,
+          pickable: false,
+          filterRange: [
+            [front, ptRange[1]],
+            [0.5, 1.5],
+          ],
+          filterSoftRange: [
+            [front, ptRange[1] - 0.012],
+            [0.5, 1.5],
+          ],
+          filterTransformColor: true,
+          updateTriggers: { ...shared.updateTriggers, getFillColor: theme },
+          transitions: { getPosition: shared.transitions.getPosition },
+        }),
+      );
+    }
     if (hovered && hovered.index < n) {
       const i = hovered.index;
       layers.push(
@@ -439,19 +512,14 @@ export function Scatter({ insets }: { insets: Insets }) {
         getTextAnchor: "middle",
         getAlignmentBaseline: "bottom",
         getPixelOffset: [0, -12],
-        background: true,
-        getBackgroundColor: (d) => [
-          fieldColor[0],
-          fieldColor[1],
-          fieldColor[2],
-          Math.round(220 * dim(d.lineage) * curveShow * labelFade(progress)),
-        ],
-        backgroundPadding: [5, 3],
+        fontSettings: { sdf: true, fontSize: 64, buffer: 10, radius: 12 },
+        outlineWidth: 5,
+        outlineColor: [fieldColor[0], fieldColor[1], fieldColor[2], 235],
         fontFamily: "Atkinson Hyperlegible Next Variable, system-ui, sans-serif",
         fontWeight: 600,
         billboard: true,
         parameters: { depthCompare: "always" },
-        updateTriggers: { getColor: [focusLineage, curveShow, progress, theme], getBackgroundColor: [focusLineage, curveShow, progress, theme] },
+        updateTriggers: { getColor: [focusLineage, curveShow, progress, theme] },
       }),
     );
   }
@@ -517,7 +585,7 @@ export function Scatter({ insets }: { insets: Insets }) {
         {stage && embedding && (
           <p
             className="truncate text-2xs text-ink-3"
-            style={{ maxWidth: Math.max(120, size.width - insets.left - insets.right - 120) }}
+            style={{ maxWidth: Math.max(120, size.width - insets.left - insets.right - (selection ? 112 : 78) - 18) }}
           >
             {embeddingLabel(embedding)}
             {stage.dims === 3
@@ -527,8 +595,15 @@ export function Scatter({ insets }: { insets: Insets }) {
                 : " · display only; trajectories are inferred in diffusion space"}
           </p>
         )}
-        {windowed && <PseudotimeStamp range={ptRange} playing={playing} />}
+        {cells && <PseudotimeStamp range={ptRange} playing={playing} active={windowed || playing} />}
       </div>
+
+      {is3D && viewState && size.width > 0 && (
+        <AxisTriad
+          viewport={view.makeViewport({ width: size.width, height: size.height, viewState })}
+          style={{ left: insets.left + 14, bottom: insets.bottom + 18 }}
+        />
+      )}
 
       <div className="absolute flex gap-1" style={{ top: insets.top, right: insets.right }}>
         <div className="flex gap-0.5 rounded-xl border border-line bg-panel p-0.5">
@@ -593,14 +668,63 @@ function Fade({ show, children }: { show: boolean; children: React.ReactNode }) 
   );
 }
 
-function PseudotimeStamp({ range, playing }: { range: [number, number]; playing: boolean }) {
+/** The acquisition stamp every time-lapse frame carries: quiet at rest, lit while the window moves. */
+function PseudotimeStamp({ range, playing, active }: { range: [number, number]; playing: boolean; active: boolean }) {
   const [lo, hi] = range;
   return (
-    <div className="num text-ink" aria-hidden>
-      <div className="text-lg leading-none font-semibold tracking-[-0.02em]">
-        pt {playing ? ((lo + hi) / 2).toFixed(2) : `${lo.toFixed(2)}–${hi.toFixed(2)}`}
-      </div>
+    <div
+      aria-hidden
+      className={cx(
+        "num w-[11ch] text-[1.75rem] leading-none font-semibold tracking-[-0.03em] whitespace-nowrap transition-colors duration-300",
+        active ? "text-ink" : "text-ink-3",
+      )}
+    >
+      pt {playing ? ((lo + hi) / 2).toFixed(2) : `${lo.toFixed(2)}–${hi.toFixed(2)}`}
     </div>
+  );
+}
+
+/** DC1, DC2 and DC3 drawn from the camera's point of view, so a still frame reads as 3-D. */
+function AxisTriad({
+  viewport,
+  style,
+}: {
+  viewport: { project: (p: number[]) => number[] } | null;
+  style: React.CSSProperties;
+}) {
+  if (!viewport) return null;
+  const o = viewport.project([0, 0, 0]);
+  const axes = [
+    { label: "DC1", p: viewport.project([1, 0, 0]) },
+    { label: "DC2", p: viewport.project([0, 1, 0]) },
+    { label: "DC3", p: viewport.project([0, 0, 1]) },
+  ].map(({ label, p }) => ({ label, dx: p[0]! - o[0]!, dy: p[1]! - o[1]!, depth: p[2]! - o[2]! }));
+  const longest = Math.max(...axes.map((a) => Math.hypot(a.dx, a.dy)), 1e-6);
+  const L = 30;
+  return (
+    <svg
+      width={104}
+      height={104}
+      viewBox="-52 -52 104 104"
+      className="pointer-events-none absolute"
+      style={style}
+      aria-hidden
+    >
+      {[...axes]
+        .sort((a, b) => b.depth - a.depth)
+        .map((a) => {
+          const x = (a.dx / longest) * L;
+          const y = (a.dy / longest) * L;
+          return (
+            <g key={a.label} className={a.depth < 0 ? "text-ink" : "text-ink-2"}>
+              <line x1={0} y1={0} x2={x} y2={y} stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" />
+              <text x={x * 1.36} y={y * 1.36 + 4} textAnchor="middle" className="num fill-current text-[11px] font-semibold">
+                {a.label}
+              </text>
+            </g>
+          );
+        })}
+    </svg>
   );
 }
 

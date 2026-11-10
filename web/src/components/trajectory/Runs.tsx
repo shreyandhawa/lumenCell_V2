@@ -2,7 +2,7 @@ import { Play } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { useJobEvents } from "@/api/events";
-import { useCreateRun, useMethods, useRuns } from "@/api/queries";
+import { useCreateRun, useDoneRunId, useMethods, useRun, useRuns } from "@/api/queries";
 import { Button, cx, Hint, Note, Section, Select, Tag } from "@/components/ui";
 import { EASE_OUT } from "@/lib/motion";
 import { useUi } from "@/state/ui";
@@ -31,26 +31,38 @@ export function MethodRunner() {
     );
   };
   const running = live?.state === "running";
+  const activeRun = useRun(useDoneRunId(useUi((s) => s.runId))).data;
+  // With a result on the field, running again is a secondary action: one row, quiet button.
+  const compact = Boolean(activeRun) && !running;
 
   return (
     <Section title="Method">
-      <Select
-        label="Method"
-        className="w-full"
-        value={chosen?.name ?? null}
-        onChange={setMethod}
-        groups={[
-          {
-            items: methods.map((m) => ({
-              value: m.name,
-              label: m.label,
-              disabled: !m.available,
-              note: m.available ? undefined : "not installed",
-            })),
-          },
-        ]}
-      />
-      {chosen && (
+      <div className={cx(compact && "flex items-center gap-2")}>
+        <Select
+          label="Method"
+          className={compact ? "min-w-0 flex-1" : "w-full"}
+          value={chosen?.name ?? null}
+          onChange={setMethod}
+          groups={[
+            {
+              items: methods.map((m) => ({
+                value: m.name,
+                label: m.label,
+                disabled: !m.available,
+                note: !m.available ? "not installed" : m.experimental ? "experimental" : undefined,
+                noteTone: m.available && m.experimental ? ("warn" as const) : undefined,
+              })),
+            },
+          ]}
+        />
+        {compact && (
+          <Button onClick={run} disabled={!chosen?.available || create.isPending}>
+            <Play size={13} fill="currentColor" />
+            {chosen?.name === activeRun?.provenance.method ? "Run again" : `Run ${chosen?.label ?? ""}`}
+          </Button>
+        )}
+      </div>
+      {!compact && chosen && (
         <div className="mt-2 space-y-2">
           <Hint>{chosen.description}</Hint>
           {chosen.experimental && (
@@ -59,9 +71,16 @@ export function MethodRunner() {
           {!chosen.available && chosen.install_hint && <Hint>{chosen.install_hint}</Hint>}
         </div>
       )}
-      <Button tone="primary" className="mt-3 w-full" onClick={run} disabled={!chosen?.available || create.isPending || running}>
-        <Play size={13} fill="currentColor" /> Run {chosen?.label ?? ""}
-      </Button>
+      {!compact && (
+        <Button
+          tone="primary"
+          className="mt-3 w-full"
+          onClick={run}
+          disabled={!chosen?.available || create.isPending || running}
+        >
+          <Play size={13} fill="currentColor" /> Run {chosen?.label ?? ""}
+        </Button>
+      )}
       <AnimatePresence initial={false}>
         {running && live && (
           <motion.div

@@ -7,10 +7,11 @@ export const CELLS_W = 264;
 export const INSPECTOR_W = 336;
 export const TIMELINE_H = 52;
 
+/** The sheet never takes more than its share of a short window: the field must stay visible. */
 export function sheetHeight(detent: SheetDetent, stageHeight: number): number {
   if (detent === "bar") return 44;
-  if (detent === "peek") return 276;
-  return Math.max(276, Math.round(stageHeight * 0.55));
+  if (detent === "peek") return Math.max(140, Math.min(276, Math.round(stageHeight * 0.4)));
+  return Math.max(Math.min(276, Math.round(stageHeight * 0.4)), Math.round(stageHeight * 0.55));
 }
 
 export function stageInsets(
