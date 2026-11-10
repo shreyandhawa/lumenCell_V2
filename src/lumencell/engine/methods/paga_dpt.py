@@ -14,13 +14,10 @@ which the benchmark's branch accuracy measures honestly.
 """
 
 import time
-from collections import deque
 from importlib.metadata import version as package_version
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import numpy as np
-import numpy.typing as npt
-import pandas as pd
 import scanpy as sc
 from pydantic import Field
 from scipy import sparse
@@ -36,6 +33,7 @@ from lumencell.engine.schema import (
     Segment,
     TrajectoryResult,
 )
+from lumencell.engine.topology import cluster_tree
 from lumencell.prep.stages import neighbors_view
 
 # A child cluster whose median pseudotime is less than this past its parent's is
@@ -49,24 +47,6 @@ class PagaDptParams(MethodParams):
         0.05, ge=0.0, le=1.0, description="PAGA tree edges weaker than this are cut."
     )
     cluster_key: str = Field(LEIDEN_KEY, description="obs column whose groups become PAGA nodes.")
-
-
-def _paga(
-    ctx: InferenceContext, key: str, view: Any
-) -> tuple[npt.NDArray[np.str_], list[str], sparse.csr_matrix, sparse.csr_matrix]:
-    labels = ctx.labels(key)
-    if key == LEIDEN_KEY:
-        cats = [str(i) for i in range(int(ctx.leiden.max()) + 1)]
-        return labels, cats, ctx.artifacts["paga_connectivities"], ctx.artifacts["paga_tree"]
-    cats = sorted(set(labels.tolist()))
-    view.obs["groups"] = pd.Categorical(labels, categories=cats)
-    sc.tl.paga(view, groups="groups")
-    return (
-        labels,
-        cats,
-        sparse.csr_matrix(view.uns["paga"]["connectivities"]),
-        sparse.csr_matrix(view.uns["paga"]["connectivities_tree"]),
-    )
 
 
 class PagaDpt:
@@ -112,31 +92,10 @@ class PagaDpt:
 
         # ---- cluster tree -------------------------------------------------------------
         progress("paga", 1, 3)
-        labels, cats, conn, tree = _paga(ctx, params.cluster_key, view)
-        conn = sparse.csr_matrix(conn).maximum(sparse.csr_matrix(conn).T).toarray()
-        tree = sparse.csr_matrix(tree)
-        adj = ((tree + tree.T) > 0).toarray()
-        adj &= conn >= params.min_connectivity
-        group_of = (
-            np.array([cats.index(v) for v in labels]) if params.cluster_key != LEIDEN_KEY else ctx.leiden
-        )
-        root_group = int(group_of[root.cell_index])
-
-        # Orient by breadth-first search from the root's cluster.
-        parent = {root_group: -1}
-        order = [root_group]
-        queue = deque([root_group])
-        while queue:
-            g = queue.popleft()
-            for nb in (int(x) for x in np.flatnonzero(adj[g])):
-                if nb not in parent:
-                    parent[nb] = g
-                    order.append(nb)
-                    queue.append(nb)
-        children: dict[int, list[int]] = {g: [] for g in order}
-        for g in order[1:]:
-            children[parent[g]].append(g)
-        unreachable = [g for g in range(len(cats)) if g not in parent]
+        tree = cluster_tree(ctx, root.cell_index, params.cluster_key, params.min_connectivity)
+        cats, group_of, root_group = tree.cats, tree.group_of, tree.root_group
+        parent, order, children = tree.parent, tree.order, tree.children
+        unreachable = tree.unreachable
         if unreachable:
             n_cells = int(np.isin(group_of, unreachable).sum())
             warnings.append(
@@ -210,13 +169,7 @@ class PagaDpt:
         else:
             terminal_groups = [g for g in order if not children[g] and g != root_group] or [root_group]
 
-        def path_to(g: int) -> list[int]:
-            path = [g]
-            while parent[path[-1]] != -1:
-                path.append(parent[path[-1]])
-            return path[::-1]
-
-        paths = [path_to(g) for g in terminal_groups]
+        paths = [tree.path_to(g) for g in terminal_groups]
         finite = np.isfinite(pt)
         membership = np.stack([np.isin(group_of, p) & finite for p in paths])
         on_any = membership.any(axis=0)
