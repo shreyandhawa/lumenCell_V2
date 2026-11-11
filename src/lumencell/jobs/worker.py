@@ -5,6 +5,10 @@ stay imported and warm. Datasets it has loaded are kept by path. Nothing here
 writes partial results: the stage cache and the run store both commit with an
 atomic rename, so terminating the worker mid-job (to cancel it) is safe.
 
+The worker ends itself as soon as the process that started it is gone, however
+it went (killed, crashed). It would otherwise wait on the task queue for ever:
+it holds a write end of that queue itself, so it never sees end-of-file.
+
 Events sent back on the events queue (plain tuples, so they pickle cheaply)::
 
     ("started",  job_id)
@@ -13,12 +17,15 @@ Events sent back on the events queue (plain tuples, so they pickle cheaply)::
     ("failed",   job_id, message)
 """
 
+import multiprocessing as mp
 import os
 import sys
+import threading
 import time
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from multiprocessing.process import BaseProcess
 from multiprocessing.queues import Queue
 from pathlib import Path
 from typing import Any
@@ -103,8 +110,16 @@ HANDLERS: dict[str, Callable[[dict[str, Any], Emit], str | None]] = {
 }
 
 
+def _exit_with(parent: BaseProcess) -> None:
+    parent.join()  # returns once the parent has exited
+    os._exit(1)  # mid-job too: numba or igraph code cannot be interrupted any other way
+
+
 def worker_main(tasks: "Queue[Task | None]", events: "Queue[tuple[Any, ...]]") -> None:
     os.environ.setdefault("PYTHONWARNINGS", "ignore")
+    parent = mp.parent_process()
+    if parent is not None:
+        threading.Thread(target=_exit_with, args=(parent,), name="parent-watch", daemon=True).start()
     while True:
         task = tasks.get()
         if task is None:
