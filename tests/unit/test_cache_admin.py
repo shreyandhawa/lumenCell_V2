@@ -35,6 +35,11 @@ def _age(path: Path, seconds: float, now: float) -> None:
     os.utime(path, (now - seconds, now - seconds), follow_symlinks=False)
 
 
+def _age_tree(root: Path, seconds: float, now: float) -> None:
+    for p in [*root.rglob("*"), root]:
+        _age(p, seconds, now)
+
+
 @pytest.fixture
 def cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     root, state = tmp_path / "cache", tmp_path / "state"
@@ -69,8 +74,8 @@ def cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
 
     for p in (old_stage_tmp, old_manifest_tmp, old_run_tmp, *finder):
         _age(p, 2 * 3600, now)
-    _age(a, 40 * DAY, now)
-    _age(c, 5 * DAY, now)
+    _age_tree(a, 40 * DAY, now)
+    _age_tree(c, 5 * DAY, now)
     return SimpleNamespace(
         root=root, v1=v1, a=a, b=b, c=c, now=now, datasets=datasets, state_file=state_file,
         old_temps=[old_stage_tmp, old_manifest_tmp, old_run_tmp], fresh_tmp=fresh_tmp,
@@ -231,3 +236,19 @@ def test_listing_survives_files_that_vanish_meanwhile(
 
     monkeypatch.setattr(housekeeping.os, "walk", walk_with_a_ghost)
     assert {e.fingerprint for e in list_cache(cache.root)} == {FP_A, FP_B, FP_C}
+
+
+def test_a_cache_from_before_the_stamp_counts_its_newest_file_as_last_use(cache: SimpleNamespace) -> None:
+    # Prepared 40 days ago, a run saved yesterday, and no last-used stamp (written before it existed).
+    e = cache.v1 / ("f" * 24)
+    (e / "manifest.json").parent.mkdir(parents=True)
+    (e / "manifest.json").write_text(MANIFEST_C, encoding="utf-8")
+    _write(e / "stages" / "pca-0123456789abcdef" / "pca.npy", 10)
+    _age_tree(e, 40 * DAY, cache.now)
+    run = _write(e / "runs" / "r9" / "result.json", 10)
+    _age(run, DAY, cache.now)
+    _age(e, 40 * DAY, cache.now)
+    (entry,) = [x for x in list_cache(cache.root) if x.fingerprint == "f" * 24]
+    assert abs(entry.last_used - (cache.now - DAY)) < 5
+    assert runner.invoke(app, ["cache", "prune", "--older-than", "30d"]).exit_code == 0
+    assert run.exists(), "a dataset used yesterday is kept"

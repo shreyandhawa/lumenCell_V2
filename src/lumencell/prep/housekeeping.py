@@ -96,11 +96,27 @@ def _tree_size(path: Path) -> int:
     return total
 
 
+def _newest_file(path: Path) -> float:
+    """The newest modification time of a file under ``path`` (the OS's .DS_Store aside)."""
+    newest = path.lstat().st_mtime if not path.is_dir() else 0.0
+    for dirpath, _dirs, files in os.walk(path):
+        for f in files:
+            if f == ".DS_Store":
+                continue
+            try:
+                newest = max(newest, os.lstat(os.path.join(dirpath, f)).st_mtime)
+            except FileNotFoundError:
+                continue  # renamed or removed by a job since it was listed
+    return newest or path.lstat().st_mtime
+
+
 def _last_used(entry: Path) -> float:
     try:
         return (entry / LAST_USED).lstat().st_mtime
-    except FileNotFoundError:  # a cache from before the stamp existed
-        return entry.lstat().st_mtime
+    except FileNotFoundError:
+        # A cache from before the stamp existed: its newest file is the last time
+        # something was computed into it (a stage or a run), the best evidence there is.
+        return _newest_file(entry)
 
 
 def _dataset_of(entry: Path) -> tuple[str | None, str | None]:
