@@ -40,3 +40,17 @@ def test_synth_writes_an_h5ad(tmp_path: Path) -> None:
 def test_synth_rejects_unknown_topology(tmp_path: Path) -> None:
     result = runner.invoke(app, ["synth", str(tmp_path / "x.h5ad"), "--topology", "spiral"])
     assert result.exit_code != 0
+
+
+def test_launch_reports_a_bad_time_limit_setting(tmp_path: Path, monkeypatch: object) -> None:
+    import pytest
+
+    mp = monkeypatch
+    assert isinstance(mp, pytest.MonkeyPatch)
+    mp.setenv("LUMENCELL_JOB_TIME_LIMITS", "prepare=soon")
+    data = tmp_path / "d.h5ad"
+    data.write_bytes(b"")
+    result = runner.invoke(app, ["launch", str(data), "--no-browser"])
+    assert result.exit_code != 0
+    assert "LUMENCELL_JOB_TIME_LIMITS" in result.output
+    assert isinstance(result.exception, SystemExit), "a message, not a traceback"

@@ -1,3 +1,5 @@
+import os
+import shutil
 import time
 from pathlib import Path
 from unittest import mock
@@ -114,3 +116,196 @@ def test_cache_root_can_be_overridden(monkeypatch: pytest.MonkeyPatch, tmp_path:
 
 def test_every_stage_has_a_key(ds: Dataset) -> None:
     assert set(stage_keys(ds, PrepParams())) == {s.name for s in STAGES}
+
+
+# ---- damaged stages ----------------------------------------------------------------------
+
+
+def _artifact(cache: PrepCache, stage: str, filename: str) -> Path:
+    key = stage_keys(cache.ds, PrepParams())[stage]
+    return cache.stages_dir / f"{stage}-{key}" / filename
+
+
+def _assert_same_artifacts(got: dict[str, object], want: dict[str, object]) -> None:
+    assert set(got) == set(want)
+    for name, value in want.items():
+        g, w = (got[name].toarray(), value.toarray()) if hasattr(value, "toarray") else (got[name], value)  # type: ignore[attr-defined]
+        g, w = np.asarray(g), np.asarray(w)
+        if np.issubdtype(w.dtype, np.floating):
+            np.testing.assert_allclose(g, w, atol=1e-5, err_msg=name)
+        else:
+            np.testing.assert_array_equal(g, w, err_msg=name)
+
+
+def test_a_stage_with_a_missing_artifact_counts_as_not_cached(
+    ds: Dataset, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clean = PrepCache(ds, tmp_path).run().artifacts
+    artifact = _artifact(PrepCache(ds, tmp_path), "pca", "pca.npy")
+    artifact.unlink()
+    cache = PrepCache(ds, tmp_path)
+    assert cache.status(PrepParams())["pca"] == "pending"
+    capsys.readouterr()
+    healed = cache.run()
+    err = capsys.readouterr().err
+    assert "pca" in err and str(artifact.parent) in err, "replacing the incomplete copy is reported"
+    assert not [p.name for p in cache.stages_dir.iterdir() if p.name.startswith(".")]
+    states = {r.name: r.state for r in healed.stages}
+    assert states.pop("pca") == "done"
+    assert set(states.values()) == {"cached"}, "only the damaged stage is recomputed"
+    _assert_same_artifacts(healed.artifacts, clean)
+    again = PrepCache(ds, tmp_path).run()
+    assert {r.state for r in again.stages} == {"cached"}, "the healed stage is on disk"
+
+
+@pytest.mark.parametrize(
+    ("stage", "filename", "keep"),
+    [
+        ("pca", "pca.npy", 0.5),
+        ("pca", "pca.npy", 0.0),
+        ("normalize", "lognorm.npz", 0.5),
+        ("neighbors", "connectivities.npz", 0.5),
+        ("neighbors", "connectivities.npz", 0.0),
+    ],
+)
+def test_a_truncated_artifact_is_recomputed(
+    ds: Dataset, tmp_path: Path, capsys: pytest.CaptureFixture[str], stage: str, filename: str, keep: float
+) -> None:
+    clean = PrepCache(ds, tmp_path).run().artifacts
+    artifact = _artifact(PrepCache(ds, tmp_path), stage, filename)
+    artifact.write_bytes(artifact.read_bytes()[: int(artifact.stat().st_size * keep)])
+    capsys.readouterr()
+    healed = PrepCache(ds, tmp_path).run()
+    states = {r.name: r.state for r in healed.stages}
+    assert states.pop(stage) == "done"
+    assert set(states.values()) == {"cached"}, "only the damaged stage is recomputed"
+    _assert_same_artifacts(healed.artifacts, clean)
+    err = capsys.readouterr().err
+    assert stage in err and str(artifact.parent) in err, "the damage is reported, not hidden"
+    assert not [p.name for p in PrepCache(ds, tmp_path).stages_dir.iterdir() if p.name.startswith(".")]
+    again = PrepCache(ds, tmp_path).run()
+    assert {r.state for r in again.stages} == {"cached"}, "the healed stage is on disk"
+
+
+def test_load_all_never_computes(ds: Dataset, tmp_path: Path) -> None:
+    cache = PrepCache(ds, tmp_path)
+    with pytest.raises(cache_mod.CacheMiss):
+        cache.load_all(PrepParams())
+    assert not cache.stages_dir.exists() or not any(cache.stages_dir.iterdir())
+
+
+def test_load_all_on_a_damaged_stage_takes_it_out_and_writes_nothing(ds: Dataset, tmp_path: Path) -> None:
+    cache = PrepCache(ds, tmp_path)
+    cache.run()
+    artifact = _artifact(cache, "pca", "pca.npy")
+    artifact.write_bytes(artifact.read_bytes()[:100])
+    others = sorted(p.name for p in cache.stages_dir.iterdir() if p != artifact.parent)
+    with pytest.raises(cache_mod.CacheMiss):
+        PrepCache(ds, tmp_path).load_all(PrepParams())
+    assert not artifact.parent.exists()
+    assert sorted(p.name for p in cache.stages_dir.iterdir()) == others
+
+
+def test_load_all_writes_nothing_to_the_cache(ds: Dataset, tmp_path: Path) -> None:
+    cache = PrepCache(ds, tmp_path)
+    cache.run()
+    (cache.dir / "manifest.json").unlink()
+    PrepCache(ds, tmp_path).load_all(PrepParams())
+    assert not (cache.dir / "manifest.json").exists(), "the server only reads the cache"
+
+
+def test_an_artifact_that_cannot_be_reached_is_not_deleted(ds: Dataset, tmp_path: Path) -> None:
+    # A permission or I/O error says nothing about the file being damaged: keep the stage.
+    PrepCache(ds, tmp_path).run()
+    stage_dir = _artifact(PrepCache(ds, tmp_path), "pca", "pca.npy").parent
+    denied = PermissionError(13, "Permission denied")
+    with mock.patch.object(cache_mod, "_load_artifact", side_effect=denied), pytest.raises(PermissionError):
+        PrepCache(ds, tmp_path).run()
+    assert (stage_dir / "pca.npy").exists()
+
+
+def test_a_stage_that_cannot_be_deleted_still_counts_as_taken_out(
+    ds: Dataset, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cache = PrepCache(ds, tmp_path)
+    cache.run()
+    artifact = _artifact(cache, "pca", "pca.npy")
+    artifact.write_bytes(b"")
+    capsys.readouterr()
+    busy = OSError("device busy")
+    with mock.patch.object(cache_mod.shutil, "rmtree", side_effect=busy), pytest.raises(cache_mod.CacheMiss):
+        PrepCache(ds, tmp_path).load_all(PrepParams())
+    assert not artifact.parent.exists(), "renamed out of the way even though deleting it failed"
+    assert "device busy" in capsys.readouterr().err, "the leftover is reported"
+
+
+def test_a_writer_that_loses_the_race_keeps_the_winners_copy(ds: Dataset, tmp_path: Path) -> None:
+    cache = PrepCache(ds, tmp_path)
+    cache.run()
+    artifact = _artifact(cache, "pca", "pca.npy")
+    final = artifact.parent
+    winner = tmp_path / "winner"
+    shutil.copytree(final, winner)
+    artifact.unlink()  # this run has to recompute pca
+    real_rename = Path.rename
+
+    def racing_rename(self: Path, target: str | Path) -> Path:
+        if Path(target) == final and self.name.startswith(".pca-") and not final.exists():
+            real_rename(winner, final)  # another writer lands its complete copy first
+        return real_rename(self, target)
+
+    with mock.patch.object(Path, "rename", racing_rename):
+        res = PrepCache(ds, tmp_path).run()
+    assert {r.name: r.state for r in res.stages}["pca"] == "done"
+    assert (final / "pca.npy").exists()
+    assert not [p.name for p in cache.stages_dir.iterdir() if p.name.startswith(".")]
+
+
+# ---- what `lumencell cache list` reads -----------------------------------------------------
+
+
+def test_the_manifest_names_the_dataset(ds: Dataset, tmp_path: Path) -> None:
+    cache = PrepCache(ds, tmp_path)
+    cache.run()
+    manifest = cache.manifest()
+    assert manifest is not None
+    assert manifest["dataset"] == {"name": ds.name, "path": str(ds.path.resolve())}
+
+
+def _last_used(cache: PrepCache, root: Path) -> float:
+    from lumencell.prep.housekeeping import list_cache
+
+    (entry,) = [e for e in list_cache(root) if e.fingerprint == cache.ds.fingerprint]
+    return entry.last_used
+
+
+def test_using_the_cache_marks_it_as_used(ds: Dataset, tmp_path: Path) -> None:
+    cache = PrepCache(ds, tmp_path)
+    cache.run()
+    ten_days_ago = time.time() - 10 * 86400
+    for use in (
+        lambda: PrepCache(ds, tmp_path).run(),
+        lambda: PrepCache(ds, tmp_path).load_all(PrepParams()),
+    ):
+        for p in (cache.dir, *cache.dir.iterdir()):
+            os.utime(p, (ten_days_ago, ten_days_ago))
+        use()
+        assert time.time() - _last_used(cache, tmp_path) < 60
+
+
+def test_a_dataset_being_prepared_counts_as_in_use(ds: Dataset, tmp_path: Path) -> None:
+    PrepCache(ds, tmp_path).run()
+    cache = PrepCache(ds, tmp_path)
+    ten_days_ago = time.time() - 10 * 86400
+    for p in (cache.dir, *cache.dir.iterdir()):
+        os.utime(p, (ten_days_ago, ten_days_ago))
+    seen: list[float] = []
+    real = cache_mod.run_stage
+
+    def watching(*args: object, **kw: object) -> object:
+        seen.append(_last_used(cache, tmp_path))
+        return real(*args, **kw)  # type: ignore[arg-type]
+
+    with mock.patch.object(cache_mod, "run_stage", watching):
+        cache.run(PrepParams(n_top_genes=300))  # recomputes hvg and everything after it
+    assert seen and time.time() - seen[0] < 60, "marked before the long work starts, not after"

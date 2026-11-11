@@ -72,7 +72,9 @@ class Dataset:
     path: Path
     name: str
     obs: pd.DataFrame
-    matrix: sparse.csr_matrix  # cells x genes, float32, in the source's own scale
+    # cells x genes, float32, in the source's own scale. None when loaded with
+    # keep_matrix=False: the server reads expression from the prep cache instead.
+    matrix: sparse.csr_matrix | None
     x_kind: XKind  # "counts" or "lognorm" (the matrix's scale)
     source: MatrixSource
     var_names: pd.Index
@@ -81,15 +83,28 @@ class Dataset:
     embeddings: dict[str, npt.NDArray[np.float32]]  # display embeddings found in the file
     uns_root: int | None  # uns["iroot"], if the file stores one
     fingerprint: str
+    shape: tuple[int, int]  # cells, genes
+    genes_detected: npt.NDArray[
+        np.int64
+    ]  # per cell: genes stored in the sparse matrix (detected, for counts)
     original_x_kind: XKind | None = field(default=None)
 
     @property
     def n_obs(self) -> int:
-        return int(self.matrix.shape[0])
+        return self.shape[0]
 
     @property
     def n_vars(self) -> int:
-        return int(self.matrix.shape[1])
+        return self.shape[1]
+
+    def require_matrix(self) -> sparse.csr_matrix:
+        """The expression matrix, for the code that computes from it (prep, in the worker)."""
+        if self.matrix is None:
+            raise DatasetError(
+                f"{self.name} was loaded without its expression matrix (as the server does); "
+                "preprocessing runs in the worker, which loads it in full"
+            )
+        return self.matrix
 
 
 def _gene_symbols(var: pd.DataFrame, var_names: pd.Index) -> tuple[npt.NDArray[np.str_], str | None]:
@@ -129,8 +144,13 @@ def _uns_root(adata: ad.AnnData) -> int | None:
     return idx if 0 <= idx < adata.n_obs else None
 
 
-def load(path: Path, x_is: XKind | None = None) -> Dataset:
-    """Load ``path``. ``x_is`` overrides the detected kind of ``X`` (CLI ``--x-is``)."""
+def load(path: Path, x_is: XKind | None = None, keep_matrix: bool = True) -> Dataset:
+    """Load ``path``. ``x_is`` overrides the detected kind of ``X`` (CLI ``--x-is``).
+
+    ``keep_matrix=False`` drops the expression matrix once its shape and per-cell
+    gene counts are known: the server serves expression from the prep cache, and
+    one copy of it is enough.
+    """
     path = Path(path)
     if not path.exists():
         raise DatasetError(f"{path} does not exist")
@@ -172,7 +192,7 @@ def load(path: Path, x_is: XKind | None = None) -> Dataset:
         path=path,
         name=path.stem,
         obs=adata.obs.copy(),
-        matrix=matrix,
+        matrix=matrix if keep_matrix else None,
         x_kind=kind,
         source=source,
         var_names=pd.Index(var_names.astype(str)),
@@ -188,5 +208,7 @@ def load(path: Path, x_is: XKind | None = None) -> Dataset:
             len(var_names),
             matrix=f"{source}:{kind}",
         ),
+        shape=(int(matrix.shape[0]), int(matrix.shape[1])),
+        genes_detected=np.diff(matrix.indptr).astype(np.int64),
         original_x_kind=x_kind,
     )

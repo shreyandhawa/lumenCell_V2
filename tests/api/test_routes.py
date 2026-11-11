@@ -115,6 +115,46 @@ def test_expression(client: TestClient, session: Session) -> None:
     assert unknown.status_code == 404 and unknown.json()["error"]["code"] == "unknown_gene"
 
 
+def _matrices_held_by(root: object, shape: tuple[int, int]) -> dict[int, object]:
+    """Every sparse matrix of this shape reachable from root, keyed by its data buffer."""
+    import gc
+    import types
+
+    from scipy import sparse
+
+    found: dict[int, object] = {}
+    seen: set[int] = set()
+    stack = [root]
+    while stack:
+        obj = stack.pop()
+        if id(obj) in seen:
+            continue
+        seen.add(id(obj))
+        if sparse.issparse(obj):
+            if obj.shape == shape:  # type: ignore[attr-defined]
+                found[obj.data.__array_interface__["data"][0]] = obj  # type: ignore[attr-defined]
+            continue
+        skip = (np.ndarray, str, bytes, type, types.ModuleType, types.FunctionType, types.BuiltinFunctionType)
+        if not isinstance(obj, skip):
+            stack.extend(gc.get_referents(obj))
+    return found
+
+
+def test_the_server_holds_expression_once(client: TestClient, session: Session) -> None:
+    assert client.get("/api/v1/expression", params={"genes": "G00001"}).status_code == 200
+    assert client.get("/api/v1/root/suggestions").status_code == 200
+    held = _matrices_held_by(session, (session.ds.n_obs, session.ds.n_vars))
+    assert len(held) == 1, f"{len(held)} copies of the expression matrix"
+    (matrix,) = held.values()
+    assert matrix.format == "csc" and matrix.dtype == np.float32  # type: ignore[attr-defined]
+
+
+def test_the_server_still_offers_the_gene_count_root(client: TestClient) -> None:
+    # It loads the file without its matrix, keeping only the genes detected per cell.
+    sources = [s["source"] for s in client.get("/api/v1/root/suggestions").json()["suggestions"]]
+    assert "gene_count" in sources
+
+
 def test_methods(client: TestClient) -> None:
     methods = {m["name"]: m for m in client.get("/api/v1/methods").json()["methods"]}
     m = methods["paga_dpt"]
@@ -239,6 +279,44 @@ def test_a_root_that_cannot_be_written_as_text_is_a_422(client: TestClient) -> N
         res = client.post("/api/v1/trajectories", json={"method": "paga_dpt", "root": root})
         assert res.status_code == 422, res.text
         assert res.json()["error"]["code"] == "invalid_root"
+
+
+def test_a_root_is_never_changed_on_its_way_to_the_worker(client: TestClient) -> None:
+    # The trailing space used to be stripped on the way, so this started a run from "trunk_early".
+    root = {"kind": "cluster", "key": "true_label", "value": "trunk_early "}
+    res = client.post("/api/v1/trajectories", json={"method": "paga_dpt", "root": root})
+    assert res.status_code == 422, res.text
+    assert res.json()["error"]["code"] == "invalid_root"
+    assert "no cell has true_label = 'trunk_early '" in res.json()["error"]["message"], "refused at resolve"
+
+
+def test_a_root_the_plain_text_cannot_carry_reaches_the_worker_unchanged() -> None:
+    from types import SimpleNamespace
+
+    from lumencell.api import models
+    from lumencell.api.runs import Runs
+    from lumencell.engine.roots import ClusterRoot, parse_root
+
+    submitted: list[dict[str, object]] = []
+    resolved: list[object] = []
+
+    def submit(kind: str, key: str, payload: dict[str, object]) -> SimpleNamespace:
+        submitted.append(payload)
+        return SimpleNamespace(job_id="j", state="queued")
+
+    jobs = SimpleNamespace(submit=submit)
+    runs = Runs(
+        SimpleNamespace(prep_key="p", label_key="l"),  # type: ignore[arg-type]
+        SimpleNamespace(exists=lambda rid: False),  # type: ignore[arg-type]
+        jobs,  # type: ignore[arg-type]
+        SimpleNamespace(read=lambda: {}),  # type: ignore[arg-type]
+        dict,
+        resolved.append,  # type: ignore[arg-type]
+    )
+    root = models.ClusterRoot(kind="cluster", key="batch=1", value="A ")
+    runs.create_run(models.TrajectoryRequest(method="paga_dpt", root=root))
+    assert resolved == [ClusterRoot("batch=1", "A ")]
+    assert parse_root(str(submitted[0]["root"])) == ClusterRoot("batch=1", "A ")
 
 
 def test_unexpected_errors_use_the_error_body() -> None:

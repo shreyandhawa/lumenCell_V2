@@ -11,10 +11,15 @@ the default view. Here the root is always an explicit choice:
 * ``file``: the root stored in the .h5ad (``uns['iroot']`` or a boolean obs
   ``root`` / ``is_root`` column), used only when asked for.
 
+Names the plain text form cannot carry (an empty name, a cell name or cluster
+value ending in whitespace, a cluster column with ``=`` in it) are written as
+``json:{...}`` in the API's own shape, so every root survives being written as text.
+
 :func:`suggest_roots` offers candidates with their evidence. Nothing here applies
 a suggestion; the caller (the user) decides.
 """
 
+import json
 import math
 import re
 from dataclasses import dataclass
@@ -57,9 +62,20 @@ class FileRoot:
 RootSpec = CellRoot | ClusterRoot | FileRoot
 
 
+# Text that the plain form's parser has always rejected, so using it for the escaped
+# form changes the meaning of no root written before.
+_ESCAPED = "json:"
+
+
+def _unparseable(text: str) -> RootError:
+    return RootError(f"cannot parse root {text!r}; use cell:<name>, cluster:<column>=<value> or file")
+
+
 def parse_root(text: str) -> RootSpec:
-    """Parse the CLI form: ``cell:NAME``, ``cluster:KEY=VALUE`` or ``file``."""
+    """Parse the text form: ``cell:NAME``, ``cluster:KEY=VALUE``, ``file`` or ``json:{...}``."""
     text = text.strip()
+    if text.startswith(_ESCAPED):
+        return _parse_escaped(text)
     if text == "file":
         return FileRoot()
     kind, sep, rest = text.partition(":")
@@ -69,14 +85,38 @@ def parse_root(text: str) -> RootSpec:
         key, eq, value = rest.partition("=")
         if eq and key and value:
             return ClusterRoot(key, value)
-    raise RootError(f"cannot parse root {text!r}; use cell:<name>, cluster:<column>=<value> or file")
+    raise _unparseable(text)
+
+
+def _parse_escaped(text: str) -> RootSpec:
+    try:
+        data = json.loads(text[len(_ESCAPED) :])
+    except (ValueError, RecursionError) as exc:  # RecursionError: absurdly deep nesting
+        raise _unparseable(text) from exc
+    if isinstance(data, dict) and all(isinstance(v, str) for v in data.values()):
+        if data.keys() == {"kind", "obs_name"} and data["kind"] == "cell":
+            return CellRoot(data["obs_name"])
+        if data.keys() == {"kind", "key", "value"} and data["kind"] == "cluster":
+            return ClusterRoot(data["key"], data["value"])
+    raise _unparseable(text)
+
+
+def _plain_end(name: str) -> bool:
+    """Survives at the end of the plain form: not empty, no trailing whitespace (parse_root strips it)."""
+    return bool(name) and name == name.rstrip()
 
 
 def format_root(spec: RootSpec) -> str:
+    """The text :func:`parse_root` reads back as ``spec``. Ordinary names keep the plain form."""
     if isinstance(spec, CellRoot):
-        return f"cell:{spec.obs_name}"
+        if _plain_end(spec.obs_name):
+            return f"cell:{spec.obs_name}"
+        return _ESCAPED + json.dumps({"kind": "cell", "obs_name": spec.obs_name})
     if isinstance(spec, ClusterRoot):
-        return f"cluster:{spec.key}={spec.value}"
+        # The key sits mid-text, so whitespace around it survives; an "=" in it does not.
+        if spec.key and "=" not in spec.key and _plain_end(spec.value):
+            return f"cluster:{spec.key}={spec.value}"
+        return _ESCAPED + json.dumps({"kind": "cluster", "key": spec.key, "value": spec.value})
     return "file"
 
 
@@ -278,9 +318,9 @@ def _time_suggestion(ctx: InferenceContext, key: str) -> RootSuggestion | None:
 
 
 def _gene_count_suggestion(ctx: InferenceContext, key: str) -> RootSuggestion | None:
-    if ctx.counts is None:
+    if ctx.genes_detected is None:
         return None
-    detected = np.diff(ctx.counts.indptr).astype(np.float64)
+    detected = ctx.genes_detected.astype(np.float64)
     clusters = ctx.labels(key)
     medians = {str(c): float(np.median(detected[clusters == c])) for c in np.unique(clusters)}
     best = max(medians, key=lambda c: (medians[c], c))

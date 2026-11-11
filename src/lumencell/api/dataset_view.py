@@ -2,10 +2,13 @@
 
 The dataset itself never changes while the server runs, so anything derived
 only from it is computed once. Prep artifacts are read from the on-disk cache
-once preprocessing has finished.
+once preprocessing has finished; the server only ever reads them, and a stage
+found missing or damaged is sent back to the worker.
 """
 
+import sys
 import threading
+from collections.abc import Callable
 from functools import cached_property
 from http import HTTPStatus
 from pathlib import Path
@@ -19,7 +22,7 @@ from lumencell.api import binary, models
 from lumencell.api.errors import ApiError
 from lumencell.data.loader import Dataset
 from lumencell.engine.context import LEIDEN_KEY, InferenceContext, detect_label_key
-from lumencell.prep.cache import PrepCache, prep_key
+from lumencell.prep.cache import CacheMiss, PrepCache, prep_key
 from lumencell.prep.pipeline import PrepResult
 from lumencell.prep.stages import PrepParams
 
@@ -38,17 +41,27 @@ def _is_boolean(s: pd.Series) -> bool:
 
 
 class DatasetView:
-    def __init__(self, path: Path, ds: Dataset, cache: PrepCache, params: PrepParams) -> None:
+    def __init__(
+        self,
+        path: Path,
+        ds: Dataset,
+        cache: PrepCache,
+        params: PrepParams,
+        on_cache_miss: Callable[[], object] | None = None,
+    ) -> None:
+        """``on_cache_miss`` is called when prep turns out not to be in the cache after all
+        (the session starts a prepare job)."""
         self.path = path
         self.ds = ds
         self.cache = cache
         self.params = params
+        self._on_cache_miss = on_cache_miss
+        self._healing: set[str] = set()  # stages already sent back to the worker once
         self.label_key = detect_label_key(ds.obs)
         self._lock = threading.RLock()
         self._ready = False
         self._prep: PrepResult | None = None
         self._ctx: InferenceContext | None = None
-        self._expr: sparse.csc_matrix | None = None
 
     # ---- prep --------------------------------------------------------------------------
 
@@ -64,17 +77,58 @@ class DatasetView:
             self._ready = all(s in ("done", "skipped") for s in self.cache.status(self.params).values())
         return self._ready
 
-    def prep(self) -> PrepResult:
+    def loaded_prep(self) -> PrepResult | None:
+        """The prep artifacts, read from the cache once; None while they are not ready.
+
+        A stage that turns out to be missing or unreadable is not computed here (that
+        is the worker's job): the readiness latch is cleared, a prepare job is
+        started, and the answer is None until that job has put the stage back. A
+        stage that is still unreadable after that is not sent back again, so a disk
+        that keeps damaging files cannot keep the worker busy for ever; preparing
+        the dataset by hand retries it.
+        """
         with self._lock:
-            if self._prep is None:
-                if not self.prep_ready():
-                    raise ApiError(
-                        HTTPStatus.CONFLICT,
-                        "prep_not_ready",
-                        "The dataset is still being prepared. Wait for the prepare job to finish.",
-                    )
-                self._prep = self.cache.run(self.params)
+            if self._prep is None and self.prep_ready():
+                try:
+                    self._prep = self._by_gene(self.cache.load_all(self.params))
+                except CacheMiss as exc:
+                    self._ready = False
+                    self._cache_missed(exc)
             return self._prep
+
+    @staticmethod
+    def _by_gene(prep: PrepResult) -> PrepResult:
+        """Keep log-normalised expression once, by gene (CSC), which is how every route reads it.
+
+        The cache stores it by cell; the copy by cell is dropped once this one is made.
+        """
+        artifacts = dict(prep.artifacts)
+        artifacts["lognorm"] = sparse.csc_matrix(artifacts["lognorm"], dtype=np.float32)
+        return PrepResult(artifacts=artifacts, stages=prep.stages)
+
+    def _cache_missed(self, exc: CacheMiss) -> None:
+        if exc.stage in self._healing:
+            print(
+                f"lumencell: {exc}, even after preparing it again; not trying again automatically "
+                "(prepare the dataset to retry)",
+                file=sys.stderr,
+            )
+        elif self._on_cache_miss is None:
+            print(f"lumencell: {exc}", file=sys.stderr)
+        else:
+            print(f"lumencell: {exc}; preparing the dataset again in the background", file=sys.stderr)
+            self._healing.add(exc.stage)
+            self._on_cache_miss()
+
+    def prep(self) -> PrepResult:
+        prep = self.loaded_prep()
+        if prep is None:
+            raise ApiError(
+                HTTPStatus.CONFLICT,
+                "prep_not_ready",
+                "The dataset is still being prepared. Wait for the prepare job to finish.",
+            )
+        return prep
 
     def ctx(self) -> InferenceContext:
         with self._lock:
@@ -84,7 +138,7 @@ class DatasetView:
 
     def obs_columns(self) -> list[models.ObsColumn]:
         out = list(self._file_columns)
-        if self.prep_ready():
+        if self.loaded_prep() is not None:
             k = int(self.ctx().leiden.max()) + 1
             out.append(
                 models.ObsColumn(name=LEIDEN_KEY, kind="categorical", categories=[str(i) for i in range(k)])
@@ -159,8 +213,9 @@ class DatasetView:
 
     def embeddings(self) -> list[models.Embedding]:
         out = [models.Embedding(name=n, dims=2, source="file") for n in self.ds.embeddings]
-        if self.prep_ready():
-            art = self.prep().artifacts
+        prep = self.loaded_prep()
+        if prep is not None:
+            art = prep.artifacts
             if "umap" in art and "umap" not in self.ds.embeddings:
                 out.append(models.Embedding(name="umap", dims=2, source="computed"))
             out.append(models.Embedding(name="dc12", dims=2, source="diffusion"))
@@ -169,8 +224,9 @@ class DatasetView:
     def embedding(self, name: str) -> npt.NDArray[np.float32]:
         if name in self.ds.embeddings:
             return self.ds.embeddings[name]
-        if self.prep_ready():
-            art = self.prep().artifacts
+        prep = self.loaded_prep()
+        if prep is not None:
+            art = prep.artifacts
             if name == "umap" and "umap" in art:
                 return np.asarray(art["umap"], dtype=np.float32)
             if name == "dc12":
@@ -217,11 +273,9 @@ class DatasetView:
         )
 
     def expression_matrix(self) -> sparse.csc_matrix:
-        with self._lock:
-            if self._expr is None:
-                lognorm = self.prep().artifacts["lognorm"]
-                self._expr = sparse.csc_matrix(lognorm, dtype=np.float32)
-            return self._expr
+        """Log-normalised expression, cells x genes, stored by gene (the one copy the server holds)."""
+        matrix: sparse.csc_matrix = self.prep().artifacts["lognorm"]
+        return matrix
 
     @cached_property
     def _gene_lookup(self) -> dict[str, int]:

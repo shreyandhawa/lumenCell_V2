@@ -86,7 +86,8 @@ def neighbors_view(n_obs: int, art: Artifacts, params: PrepParams) -> ad.AnnData
 
 
 def _counts_view(ds: Dataset) -> ad.AnnData:
-    return ad.AnnData(X=ds.matrix.copy(), obs=pd.DataFrame(index=pd.RangeIndex(ds.n_obs).astype(str)))
+    obs = pd.DataFrame(index=pd.RangeIndex(ds.n_obs).astype(str))
+    return ad.AnnData(X=ds.require_matrix().copy(), obs=obs)
 
 
 def multiscale_space(evecs: npt.NDArray[Any], evals: npt.NDArray[Any]) -> npt.NDArray[np.float32]:
@@ -117,7 +118,7 @@ def multiscale_space(evecs: npt.NDArray[Any], evals: npt.NDArray[Any]) -> npt.ND
 
 def _normalize(ds: Dataset, _art: Artifacts, _p: PrepParams) -> dict[str, Any]:
     if ds.x_kind == "lognorm":
-        return {"lognorm": ds.matrix.copy()}
+        return {"lognorm": ds.require_matrix().copy()}
     view = _counts_view(ds)
     sc.pp.normalize_total(view, target_sum=1e4)
     sc.pp.log1p(view)
