@@ -1,0 +1,74 @@
+name: CI
+
+# The same gate as `make ci` locally: Python lint, types and tests, the API
+# contract check, the web app's lint, types, tests and build, and the Playwright
+# end-to-end test against the real server.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # A newer push to a pull request replaces its run; every push to main keeps its own result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: make ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      UV_LOCKED: "1"  # fail on a uv.lock that is out of date instead of resolving it again
+    steps:
+      - uses: actions/checkout@v7
+
+      # Python 3.13, from .python-version.
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: make install
+
+      # Their tests skip when the import fails, which would pass CI without them.
+      - name: Check that the Palantir and scFates adapters can import their packages
+        run: uv run python -c "import palantir, scFates"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright's system libraries
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: web
+        run: npx playwright install-deps chromium
+
+      - name: make ci
+        run: make ci
+
+      - name: Keep the Playwright traces of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-results
+          path: web/test-results/
+          if-no-files-found: ignore
