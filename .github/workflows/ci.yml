@@ -62,8 +62,11 @@ jobs:
         working-directory: web
         run: npx playwright install-deps chromium
 
+      # typer forces rich's terminal styling when GITHUB_ACTIONS is set, which splits
+      # option names in CLI errors with colour codes; the CLI tests read plain text,
+      # as on a developer's machine. Nothing in `make ci` needs the variable.
       - name: make ci
-        run: make ci
+        run: env -u GITHUB_ACTIONS make ci
 
       - name: Keep the Playwright traces of a failed run
         if: failure()
