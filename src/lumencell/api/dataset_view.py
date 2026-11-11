@@ -62,7 +62,6 @@ class DatasetView:
         self._ready = False
         self._prep: PrepResult | None = None
         self._ctx: InferenceContext | None = None
-        self._expr: sparse.csc_matrix | None = None
 
     # ---- prep --------------------------------------------------------------------------
 
@@ -91,11 +90,21 @@ class DatasetView:
         with self._lock:
             if self._prep is None and self.prep_ready():
                 try:
-                    self._prep = self.cache.load_all(self.params)
+                    self._prep = self._by_gene(self.cache.load_all(self.params))
                 except CacheMiss as exc:
                     self._ready = False
                     self._cache_missed(exc)
             return self._prep
+
+    @staticmethod
+    def _by_gene(prep: PrepResult) -> PrepResult:
+        """Keep log-normalised expression once, by gene (CSC), which is how every route reads it.
+
+        The cache stores it by cell; the copy by cell is dropped once this one is made.
+        """
+        artifacts = dict(prep.artifacts)
+        artifacts["lognorm"] = sparse.csc_matrix(artifacts["lognorm"], dtype=np.float32)
+        return PrepResult(artifacts=artifacts, stages=prep.stages)
 
     def _cache_missed(self, exc: CacheMiss) -> None:
         if exc.stage in self._healing:
@@ -264,11 +273,9 @@ class DatasetView:
         )
 
     def expression_matrix(self) -> sparse.csc_matrix:
-        with self._lock:
-            if self._expr is None:
-                lognorm = self.prep().artifacts["lognorm"]
-                self._expr = sparse.csc_matrix(lognorm, dtype=np.float32)
-            return self._expr
+        """Log-normalised expression, cells x genes, stored by gene (the one copy the server holds)."""
+        matrix: sparse.csc_matrix = self.prep().artifacts["lognorm"]
+        return matrix
 
     @cached_property
     def _gene_lookup(self) -> dict[str, int]:

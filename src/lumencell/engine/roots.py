@@ -318,9 +318,9 @@ def _time_suggestion(ctx: InferenceContext, key: str) -> RootSuggestion | None:
 
 
 def _gene_count_suggestion(ctx: InferenceContext, key: str) -> RootSuggestion | None:
-    if ctx.counts is None:
+    if ctx.genes_detected is None:
         return None
-    detected = np.diff(ctx.counts.indptr).astype(np.float64)
+    detected = ctx.genes_detected.astype(np.float64)
     clusters = ctx.labels(key)
     medians = {str(c): float(np.median(detected[clusters == c])) for c in np.unique(clusters)}
     best = max(medians, key=lambda c: (medians[c], c))
