@@ -45,22 +45,52 @@ jobs:
       - name: Check that the Palantir and scFates adapters can import their packages
         run: uv run python -c "import palantir, scFates"
 
-      - name: Cache Playwright browsers
+      # Restore and save are separate steps because actions/cache saves only when
+      # the whole job succeeds, so main never got a cache. Pull requests can
+      # restore a cache saved on main, but main cannot restore one saved by a PR.
+      - name: Restore the Playwright browser cache
         id: playwright-cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
 
+      # From Playwright's download server; no apt involved.
       - name: Install Playwright Chromium
+        id: chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: web
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
+      # Saved straight after the download, so a failure later in the job still
+      # leaves a cache. Never after a failed download: a cache key cannot be overwritten.
+      - name: Save the Playwright browser cache
+        if: always() && steps.chromium.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.playwright-cache.outputs.cache-primary-key }}
+
+      # Uses apt, whose Ubuntu mirrors sometimes fail to resolve on the runner. Each
+      # try is capped at 3 minutes (a healthy one takes under a minute) and runs as
+      # root, so the timeout can stop apt and release its locks before the next try.
       - name: Install Playwright's system libraries
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
         working-directory: web
-        run: npx playwright install-deps chromium
+        timeout-minutes: 15
+        run: |
+          for try in 1 2 3; do
+            status=0
+            sudo env "PATH=$PATH" timeout --kill-after=30s 3m npx playwright install-deps chromium || status=$?
+            if [ "$status" -eq 0 ]; then
+              exit 0
+            fi
+            if [ "$try" -lt 3 ]; then
+              echo "::warning::Installing Playwright's system libraries failed (try $try of 3, exit $status). Retrying in $((try * 30)) s."
+              sleep $((try * 30))
+            fi
+          done
+          echo "::error::Could not install Playwright's system libraries after 3 tries (last exit $status; 124 or 137 means it hit the 3-minute limit). apt could not reach Ubuntu's mirrors; see the log above."
+          exit 1
 
       # typer forces rich's terminal styling when GITHUB_ACTIONS is set, which splits
       # option names in CLI errors with colour codes; the CLI tests read plain text,
