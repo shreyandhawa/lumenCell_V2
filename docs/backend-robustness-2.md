@@ -374,3 +374,38 @@ warming up); `pca` took 71 s both times.
 **Fold into HANDOFF.** The 100k-cell numbers above. The server's `Dataset` has no
 matrix (`keep_matrix=False`), and the expression it serves is the cache's lognorm,
 held once and by gene.
+
+## Issue 6: CI on GitHub Actions
+
+**Now.** `.github/workflows/ci.yml` runs `make ci` on every pull request and on
+pushes to `main`, and nowhere else. It runs on `ubuntu-latest` and:
+
+- installs Python 3.13 with uv (`astral-sh/setup-uv`, with the uv cache keyed
+  on `uv.lock`) and Node 22 (`actions/setup-node`, with the npm cache keyed on
+  `web/package-lock.json`);
+- runs `make install`;
+- caches Playwright's Chromium, keyed on the lockfile, and on a cache hit only
+  installs the system libraries;
+- runs `make ci`, and keeps `web/test-results` as an artifact when it fails.
+
+- `UV_LOCKED=1`, so a `uv.lock` that is out of date fails instead of being
+  resolved again.
+- An explicit import of palantir and scFates. Their tests skip when the import
+  fails, which would otherwise pass CI without them.
+- Python comes from `.python-version` (3.13).
+- A newer push to a pull request cancels its run in progress. Every push to
+  `main` keeps its own result. The job has a 45-minute timeout.
+
+**Suggested, in files this branch may not change.**
+
+- `forbidOnly: !!process.env.CI` in `web/playwright.config.ts`, so that a
+  committed `test.only` can't pass CI with fewer tests.
+- The Makefile's `contract-check` prints "openapi.json is stale" even when the
+  generator itself crashes.
+
+**Verified by:**
+
+- parsing the YAML and checking that its only triggers are `pull_request` and
+  `push` to `main`;
+- the full `make ci` in the worktree before the PR;
+- the run on the pull request (see the PR).
