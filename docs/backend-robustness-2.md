@@ -277,3 +277,100 @@ moved.
 **Fold into HANDOFF.** `lumencell cache list` and `lumencell cache prune` exist.
 Prune only touches `<cache root>/v1/<fingerprint>` folders. Don't prune with
 `--all` while `lumencell launch` is running on one of those datasets.
+
+## Issue 2: memory at 100k cells
+
+**Measured first.** I generated a 100,000-cell × 2,000-gene bifurcation into the
+worktree with `lumencell synth .lumencell/perf/synth100k.h5ad --n-cells 100000`
+(774 MB on disk, 864 MB in the cache once prepared).
+
+Every run used `LUMENCELL_CACHE_DIR` and `LUMENCELL_DATA_DIR` inside the
+worktree, on an Apple-silicon Mac, with the other agent's processes sharing the
+machine:
+
+- prep: `/usr/bin/time -l lumencell prepare`;
+- `paga_dpt`: `lumencell run --method paga_dpt`, with the method time taken from
+  the run's `runtime_seconds`;
+- the server: a script that builds a `Session` the way `launch` does, then
+  measures memory (RSS, and tracemalloc for the heatmap) and request timings in
+  that process.
+
+| | budget | before | after |
+|---|---|---|---|
+| prep, wall | < 8 min | 163 s | 135 s (see note) |
+| prep, peak RSS | | 2.79 GB | 3.43 GB (see note) |
+| `paga_dpt` method time | < 30 s | 0.09 s | 0.08 s |
+| `lumencell run`, end to end | | 2.5 s | 2.4 s |
+| server: expression copies held | one | 3 × 768 MB | **1 × 767 MB** |
+| server: RSS after loading prep | | 1.93 GB | 2.22 GB |
+| server: first gene (builds the by-gene copy) | | 305 ms | 1.1 ms (built at load) |
+| server: one gene, warm (median of 20) | < 50 ms | 0.09 ms | 0.09 ms |
+| server: uncached heatmap, top 50 | < 2 s | **2.97 s** | **0.79 s** |
+| server: heatmap allocations (tracemalloc peak) | | **3,984 MB** | **21.7 MB** |
+| server: trends, one gene | | 3.4 ms | 1.9 ms |
+| server: RSS after the heatmap | | 3.77 GB | 2.09 GB |
+| server: peak RSS of the process | | 4.45 GB | 2.23 GB |
+
+Note on the prep and CLI rows: these paths load the full matrix, as they did
+before, and this branch doesn't change their memory. Their peak RSS varies a lot
+between identical runs. Three `lumencell run`s of the old code peaked at 1,754,
+2,268 and 2,276 MB, and three of the new code at 2,126, 2,276 and 2,276 MB, so
+the prep difference above is run-to-run spread, not this change. The `neighbors`
+stage took 39 s in the first prep and 15 s in the second (compilation caches
+warming up); `pca` took 71 s both times.
+
+**Now:**
+
+- `engine/trends.py` bins, averages and scores a block of genes at a time.
+  Blocks are contiguous columns with at most `GENE_BLOCK_NNZ` = 500,000 nonzeros,
+  and each block is converted to float64 on its own. No request copies or
+  converts the whole matrix any more: no whole-matrix `astype`, no CSC→CSR
+  conversion inside the sparse product, and no row subset. The results are the
+  same operations in the same order. Input stored by cell is refused with a
+  `TypeError` instead of silently losing the memory bound. A lineage whose cells
+  have no pseudotime now has no trend (`null` in the API) and r2 0, where it used
+  to raise `ZeroDivisionError` (a 500).
+- `api/dataset_view.py` converts the cached lognorm to the by-gene (CSC) layout
+  once, when prep is loaded, and drops the by-cell copy. `expression_matrix()`
+  returns that one matrix.
+- `data/loader.py`: `Dataset.matrix` is optional. `load(..., keep_matrix=False)`
+  keeps the shape and a per-cell `genes_detected` and drops the matrix. The
+  server's `Session` loads this way; the worker, the CLI and the benchmarks load
+  in full, as before. Code that needs the matrix calls `require_matrix()`, which
+  raises a clear `DatasetError` instead of failing somewhere downstream.
+- `InferenceContext.counts` is replaced by `genes_detected`, which is all the
+  gene-count root suggestion ever used.
+
+**Verified by:**
+
+- `tests/unit/test_trends.py`:
+  - a frozen copy of the old implementation is reproduced on the shared
+    synthetic fixture (with missing pseudotimes) and the toy data, at block sizes
+    of 1 and 1,000 nonzeros and at the default: same genes in the same order,
+    values within 1e-6;
+  - the blocks cover every gene exactly once, within their budget;
+  - a by-cell matrix is refused;
+  - an empty lineage has no trend rather than an error;
+  - a hypothesis property: results don't depend on the block size, over random
+    matrices, missing pseudotimes, sparse lineages and named genes;
+  - a slow test: an uncached heatmap on a 40,000 × 2,000 matrix allocates under
+    0.2 copies. It allocated 883 MB against a 192 MB matrix before.
+- `tests/api/test_routes.py`: walking everything reachable from the session
+  finds one copy of expression, stored by gene in float32. Before there were 3.
+  The server still offers the gene-count root suggestion without the matrix.
+- `tests/unit/test_loader.py`: a dataset loaded without its matrix has the same
+  shape, gene counts and fingerprint, and refuses to be prepared.
+
+**Still open.**
+
+- The server's peak RSS (2.2 GB) is now mostly the load itself: anndata reads
+  `X` in full and then converts it to float32 CSR before the matrix is dropped.
+  Reading the file in backed mode would avoid that.
+- Making the by-gene copy at load takes a moment in the first request that loads
+  prep. It was already in a request, only later.
+- `_smooth` breaks for fewer than 5 bins. This is older than the branch, and
+  every caller uses 50.
+
+**Fold into HANDOFF.** The 100k-cell numbers above. The server's `Dataset` has no
+matrix (`keep_matrix=False`), and the expression it serves is the cache's lognorm,
+held once and by gene.

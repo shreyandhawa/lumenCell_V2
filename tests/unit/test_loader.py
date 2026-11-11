@@ -150,3 +150,17 @@ def test_loading_never_modifies_the_file(counts: ad.AnnData, tmp_path: Path) -> 
 def test_missing_file(tmp_path: Path) -> None:
     with pytest.raises(DatasetError, match="does not exist"):
         load(tmp_path / "nope.h5ad")
+
+
+def test_the_server_can_load_a_dataset_without_its_matrix(counts: ad.AnnData, tmp_path: Path) -> None:
+    from lumencell.prep.pipeline import run_pipeline
+
+    path = tmp_path / "d.h5ad"
+    counts.write_h5ad(path)
+    full, light = load(path), load(path, keep_matrix=False)
+    assert light.matrix is None
+    assert (light.n_obs, light.n_vars) == (full.n_obs, full.n_vars) == counts.shape
+    np.testing.assert_array_equal(light.genes_detected, (np.asarray(counts.X.todense()) != 0).sum(axis=1))
+    assert light.fingerprint == full.fingerprint, "the same cache serves both"
+    with pytest.raises(DatasetError, match="without its expression matrix"):
+        run_pipeline(light)

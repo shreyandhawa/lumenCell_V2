@@ -43,7 +43,8 @@ class Session:
         self.jobs = jobs
         self.params = prep_params or PrepParams()
         self.cache_root = cache_root
-        self.ds: Dataset = load(self.path, x_is)  # type: ignore[arg-type]
+        # Without its matrix: expression is served from the prep cache, held once.
+        self.ds: Dataset = load(self.path, x_is, keep_matrix=False)  # type: ignore[arg-type]
         self.cache = PrepCache(self.ds, cache_root)
         self.state = StateStore((state_dir or default_state_dir()) / f"{self.ds.fingerprint}.json")
         self.view = DatasetView(self.path, self.ds, self.cache, self.params, on_cache_miss=self.start_prep)

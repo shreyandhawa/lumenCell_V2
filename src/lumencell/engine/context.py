@@ -7,7 +7,6 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from scipy import sparse
 
 from lumencell.data.loader import Dataset
 from lumencell.prep.pipeline import PrepResult
@@ -50,7 +49,7 @@ class InferenceContext:
     obs_names: pd.Index
     artifacts: Mapping[str, Any]
     prep_params: PrepParams
-    counts: sparse.csr_matrix | None  # raw counts when the file has them
+    genes_detected: npt.NDArray[np.int64] | None  # per cell, when the file has raw counts
     uns_root: int | None
     fingerprint: str
     label_key: str
@@ -68,7 +67,7 @@ class InferenceContext:
             obs_names=ds.obs.index.astype(str),
             artifacts=prep.artifacts,
             prep_params=params,
-            counts=ds.matrix if ds.x_kind == "counts" else None,
+            genes_detected=ds.genes_detected if ds.x_kind == "counts" else None,
             uns_root=ds.uns_root,
             fingerprint=ds.fingerprint,
             label_key=detect_label_key(ds.obs),
