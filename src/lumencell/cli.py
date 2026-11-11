@@ -1,7 +1,9 @@
 """Command-line entry point (`lumencell`)."""
 
+import signal
 import threading
 from pathlib import Path
+from types import FrameType
 from typing import TYPE_CHECKING, Annotated
 
 import typer
@@ -149,6 +151,10 @@ def export(
     typer.echo(f"wrote {out}")
 
 
+def _exit_on_signal(signum: int, _frame: FrameType | None) -> None:
+    raise SystemExit(128 + signum)
+
+
 @app.command()
 def launch(
     data: DataArg,
@@ -226,9 +232,15 @@ def launch(
     typer.echo(f"lumenCell is running at {url}  (Ctrl+C to stop)")
     if browser:
         open_when_ready(url)
+    # uvicorn catches SIGTERM, shuts down, then raises it again under the handler that was in
+    # place before it started. Python's default handler would end the process there, skipping
+    # the `finally` and leaving the job worker running; SystemExit unwinds instead (exit code
+    # 143, as a shell reports SIGTERM). SIGINT already unwinds, as KeyboardInterrupt.
+    previous = signal.signal(signal.SIGTERM, _exit_on_signal)
     try:
         uvicorn.run(build_app(session, trusted), host=host, port=port, log_level="warning")
     finally:
+        signal.signal(signal.SIGTERM, previous or signal.SIG_DFL)  # a second SIGTERM ends it at once
         jobs.shutdown()
 
 

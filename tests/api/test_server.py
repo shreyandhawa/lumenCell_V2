@@ -2,12 +2,14 @@
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -53,12 +55,41 @@ def _get(url: str) -> dict[str, object]:
         return data
 
 
-@pytest.fixture
-def launched(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[str]:
+def _processes() -> dict[int, tuple[int, str]]:
+    """Every process on the machine: pid -> (parent pid, command line)."""
+    out = subprocess.run(
+        ["ps", "-Ao", "pid=,ppid=,command="], capture_output=True, text=True, check=True
+    ).stdout
+    procs = {}
+    for line in out.splitlines():
+        pid, ppid, *command = line.split(None, 2)
+        procs[int(pid)] = (int(ppid), command[0] if command else "")
+    return procs
+
+
+def _children(pid: int) -> dict[int, str]:
+    return {child: cmd for child, (ppid, cmd) in _processes().items() if ppid == pid}
+
+
+def _survivors(children: dict[int, str], timeout: float) -> dict[int, str]:
+    """The children still running after up to `timeout` seconds (same pid, same command)."""
+    deadline = time.time() + timeout
+    while True:
+        running = _processes()
+        alive = {pid: cmd for pid, cmd in children.items() if running.get(pid, (0, ""))[1] == cmd}
+        if not alive or time.time() >= deadline:
+            return alive
+        time.sleep(0.2)
+
+
+@contextmanager
+def _launch(tmp_path: Path, extra: Sequence[str] = ()) -> Iterator[tuple["subprocess.Popen[bytes]", str]]:
+    """`lumencell launch` on a small dataset, once it answers. On the way out the server is
+    stopped and any child of it that outlives it (its job worker, the resource tracker) is
+    killed, so a failing run never leaves processes behind."""
     data = tmp_path / "d.h5ad"
     generate("bifurcation", "realistic", n_cells=500, n_genes=300, seed=0).write_h5ad(data)
     port = free_port("127.0.0.1", 18765)
-    extra = getattr(request, "param", [])
     env = {
         **os.environ,
         "LUMENCELL_CACHE_DIR": str(tmp_path / "c"),
@@ -71,6 +102,7 @@ def launched(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[str]:
         stderr=subprocess.STDOUT,
     )
     url = f"http://127.0.0.1:{port}"
+    children: dict[int, str] = {}
     try:
         deadline = time.time() + 60
         while time.time() < deadline:
@@ -85,10 +117,23 @@ def launched(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[str]:
                 time.sleep(0.25)
         else:
             raise TimeoutError("server did not start")
-        yield url
+        children = _children(proc.pid)
+        yield proc, url
     finally:
         proc.terminate()
-        proc.wait(10)
+        try:
+            proc.wait(30)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        for pid in _survivors(children, timeout=10):
+            os.kill(pid, signal.SIGKILL)
+
+
+@pytest.fixture
+def launched(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[str]:
+    with _launch(tmp_path, getattr(request, "param", [])) as (_proc, url):
+        yield url
 
 
 def test_launch_serves_the_api_and_prepares_in_the_background(launched: str) -> None:
@@ -98,6 +143,19 @@ def test_launch_serves_the_api_and_prepares_in_the_background(launched: str) -> 
     while _get(f"{launched}/api/v1/prepare")["state"] != "ready":
         assert time.time() < deadline, "prep did not finish"
         time.sleep(0.5)
+
+
+def test_sigterm_stops_launch_and_its_job_worker(tmp_path: Path) -> None:
+    with _launch(tmp_path) as (proc, _url):
+        children = _children(proc.pid)
+        assert any("spawn_main" in cmd for cmd in children.values()), f"no job worker among {children}"
+        proc.terminate()
+        code = proc.wait(30)
+        survivors = _survivors(children, timeout=10)
+        assert survivors == {}, f"still running after the server stopped: {survivors}"
+        # 143 = 128 + SIGTERM, as a shell reports it: the server unwound through its cleanup
+        # (which stops the job manager) instead of being ended by the signal on the spot (-15).
+        assert code == 128 + signal.SIGTERM
 
 
 @pytest.mark.slow
