@@ -407,5 +407,13 @@ pushes to `main`, and nowhere else. It runs on `ubuntu-latest` and:
 
 - parsing the YAML and checking that its only triggers are `pull_request` and
   `push` to `main`;
-- the full `make ci` in the worktree before the PR;
-- the run on the pull request (see the PR).
+- the full `make ci` in the worktree before the PR (exit 0);
+- PR #1 on GitHub. The first run (43028851191) failed in one existing test,
+  `test_unusable_file_is_reported_clearly`, and only there: with
+  `GITHUB_ACTIONS` set, typer forces rich's terminal styling, which splits
+  `--x-is` with colour codes, so the plain-text assertion missed it. Locally,
+  `GITHUB_ACTIONS=true` reproduced it and `CI=true` did not. The `make ci`
+  step now runs with the variable removed (`env -u GITHUB_ACTIONS make ci`).
+  The test itself is unchanged. The second run (43030038492) passed in 6 min:
+  lint, mypy, 351 Python tests, the contract check, 36 web tests, the build
+  and the Playwright test.
