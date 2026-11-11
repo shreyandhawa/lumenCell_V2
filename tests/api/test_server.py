@@ -145,17 +145,25 @@ def test_launch_serves_the_api_and_prepares_in_the_background(launched: str) -> 
         time.sleep(0.5)
 
 
-def test_sigterm_stops_launch_and_its_job_worker(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("sig", "code"),
+    [
+        # 143 = 128 + SIGTERM, as a shell reports it: the server unwound through its cleanup
+        # (which stops the job manager) instead of being ended by the signal on the spot.
+        (signal.SIGTERM, 128 + signal.SIGTERM),
+        # Nothing runs in a killed server, so the worker has to notice by itself.
+        (signal.SIGKILL, -signal.SIGKILL),
+    ],
+    ids=["SIGTERM", "SIGKILL"],
+)
+def test_stopping_launch_stops_its_job_worker(tmp_path: Path, sig: signal.Signals, code: int) -> None:
     with _launch(tmp_path) as (proc, _url):
         children = _children(proc.pid)
         assert any("spawn_main" in cmd for cmd in children.values()), f"no job worker among {children}"
-        proc.terminate()
-        code = proc.wait(30)
+        proc.send_signal(sig)
+        assert proc.wait(30) == code
         survivors = _survivors(children, timeout=10)
         assert survivors == {}, f"still running after the server stopped: {survivors}"
-        # 143 = 128 + SIGTERM, as a shell reports it: the server unwound through its cleanup
-        # (which stops the job manager) instead of being ended by the signal on the spot (-15).
-        assert code == 128 + signal.SIGTERM
 
 
 @pytest.mark.slow
