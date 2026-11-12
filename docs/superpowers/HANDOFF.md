@@ -21,6 +21,10 @@ stale lines get corrected once, at the end of phase 1.
   web research. The research notes are in `docs/superpowers/research/`.
 - Baseline at 865ce22: `make install` exit 0. `make ci` exit 0 in 192 s, with 353 Python
   tests passed and 12 deselected, 36 web tests and 1 Playwright test.
+- Spec revision 2, after an independent method review and an architecture review (both on
+  Opus). Spec §11 lists what each review changed. The two method blockers were receptor genes
+  leaking clones in through HVGs, and the need for a lineage-free baseline, because T-cell
+  clones are transcriptionally coherent.
 - Shreyan's answers, all three the recommended options:
   - **Daniel truth:** the paper's state labels, with the root at Tpex.
   - **Case study:** Sheih 2020, after verifying it has per-cell barcodes; Cao 2025 is the
