@@ -169,14 +169,16 @@ was no `PayloadError` or `time_limit`).
 - If a job's own `done` event is already waiting when its limit is hit, the job
   is reported as timed out although its run was saved. The run is still found
   on disk the next time it is asked for.
-- Found while testing, older than this branch and not one of the six issues:
-  stopping `lumencell launch` with SIGTERM leaves its worker running for ever.
-  uvicorn re-raises the signal after shutting down, so `launch`'s
-  `finally: jobs.shutdown()` never runs, and the worker keeps waiting on its
-  queue. `tests/api/test_server.py` stops the server exactly this way, so every
-  test run leaves two orphaned process pairs behind. Those from the main checkout
-  and the frontend worktree were left alone, and the ones from this worktree
-  were stopped.
+
+**Fixed since, in PR #2** (`d660010`, `5c1410e`). Found while testing, older
+than this branch and not one of the six issues: stopping `lumencell launch` with
+SIGTERM left its worker running for ever. uvicorn re-raises the signal after
+shutting down, so `launch`'s `finally: jobs.shutdown()` never ran, and the
+worker kept waiting on its queue. `tests/api/test_server.py` stops the server
+exactly this way, so every test run left two orphaned process pairs behind. Now
+`launch` turns SIGTERM into an ordinary exit (code 143), so the shutdown runs,
+and the worker also exits by itself when the process that started it dies, which
+covers SIGKILL. `test_stopping_launch_stops_its_job_worker` checks both signals.
 
 **Fold into HANDOFF.** `LUMENCELL_JOB_TIME_LIMITS` sets the per-kind job time
 limits (seconds). The defaults are 3 h for prepare and infer.
@@ -384,8 +386,14 @@ pushes to `main`, and nowhere else. It runs on `ubuntu-latest` and:
   on `uv.lock`) and Node 22 (`actions/setup-node`, with the npm cache keyed on
   `web/package-lock.json`);
 - runs `make install`;
-- caches Playwright's Chromium, keyed on the lockfile, and on a cache hit only
-  installs the system libraries;
+- restores Playwright's Chromium from a cache keyed on the lockfile. On a miss
+  it downloads Chromium from Playwright's own server (no apt) and saves the cache
+  straight away, so a later failure still leaves one. This is how `main` gets a
+  cache: `actions/cache` saved only when the whole job passed, and a pull
+  request's cache can't be used on `main` (PR #3);
+- installs Chromium's system libraries with apt on every run: 3 tries, each
+  capped at 3 minutes, then an error that says apt could not reach the mirrors
+  (PR #3);
 - runs `make ci`, and keeps `web/test-results` as an artifact when it fails.
 
 - `UV_LOCKED=1`, so a `uv.lock` that is out of date fails instead of being
@@ -417,3 +425,19 @@ pushes to `main`, and nowhere else. It runs on `ubuntu-latest` and:
   The test itself is unchanged. The second run (43030038492) passed in 6 min:
   lint, mypy, 351 Python tests, the contract check, 36 web tests, the build
   and the Playwright test.
+
+**After the merge.** `main`'s first push run (43040969341) failed all 3
+attempts in "Install Playwright Chromium", before `make ci` started. From about
+13:48 UTC on 2026-11-11, GitHub's Ubuntu runners could not resolve Ubuntu's
+package mirrors (actions/runner-images#15296, a Canonical outage that GitHub
+called mitigated at 18:14 UTC). No test failed. PR #3 changed only `ci.yml`, to
+the Playwright steps described above. Its run (43052546403) failed twice on the
+outage, with the retries and the closing error working as intended, and passed
+on its third attempt, after the outage. Then, on GitHub:
+
+- 43130807421, `main` at `79e483e` (PR #3): the first green run on `main`. It
+  downloaded Chromium and saved `main`'s first Playwright cache.
+- 43130879682, PR #2 with `main` merged into it: green.
+- 43131513810, `main` at `5c1410e` (PR #2): green in 5 min, with Chromium
+  restored from `main`'s cache. 353 Python tests (12 deselected), 36 web tests
+  and the Playwright test passed.
