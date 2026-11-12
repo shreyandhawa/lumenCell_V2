@@ -6,22 +6,23 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 
 ## Current state (2026-11-12)
 
-- **Phase:** phase 1 is ready to start. Both approval gates are passed: Shreyan approved the
-  spec (PR #5) and the plans (PR #6) on 2026-11-12.
+- **Phase:** phase 1 has started. Both approval gates are passed: Shreyan approved the spec
+  (PR #5) and the plans (PR #6, merged as 153a7f0) on 2026-11-12. Task 1 (clonal definitions,
+  gates and runtime constants) is on branch `pivot/03-clonal-definitions`.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
-- **Plans**, on branch `pivot/02-phase-plans`, open as the plans PR:
+- **Plans**, merged in PR #6:
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 1 Task 1 (clonal-definitions), on branch `pivot/03-clonal-definitions`.
-  Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
-  - one task per subagent, on the model the task names
-  - TDD throughout
-  - a fresh reviewer per task, plus the pr-review-toolkit agents on each PR
-  - a squash-merge once CI is green
-  - branches `pivot/NN-<slug>`, numbered from 03 in execution order
+- **Next:** phase 1 Task 2, after Task 1's PR (#7) is reviewed and squash-merged.
+  - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
+    - one task per subagent, on the model the task names
+    - TDD throughout
+    - a fresh reviewer per task, plus the pr-review-toolkit agents on each PR
+    - a squash-merge once CI is green
+    - branches `pivot/NN-<slug>`, numbered from 03 in execution order
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
 ## Done
@@ -35,6 +36,19 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - Three phase plans, each written by its own Opus subagent with the phase 1 interfaces fixed
   first. One independent reviewer then cross-checked them (one blocker, eight should-fixes),
   and every finding was fixed.
+
+## Verified references
+
+Checked on 2026-11-12 against Crossref (`api.crossref.org`) and jmlr.org; nothing downloaded.
+The spec's §10 still lists them as unverified (the spec is not edited). They are cited in the
+Sources lines of `[clonal]` in `benchmarks/thresholds.toml`.
+
+| Reference | Journal, year | DOI or volume and pages |
+|---|---|---|
+| Phipson B, Smyth GK. "Permutation P-values Should Never Be Zero: Calculating Exact P-values When Permutations Are Randomly Drawn" | Stat Appl Genet Mol Biol 9(1), 2010 | 10.2202/1544-6115.1585 |
+| Vinh NX, Epps J, Bailey J. "Information Theoretic Measures for Clusterings Comparison: Variants, Properties, Normalization and Correction for Chance" | J Mach Learn Res 11(95), 2010 | no DOI; pp. 2837-2854 (jmlr.org/papers/v11/vinh10a.html) |
+| Sturm G, Szabo T, Fotakis G, Haider M, Rieder D, Trajanoski Z, Finotello F. "Scirpy: a Scanpy extension for analyzing single-cell T-cell receptor-sequencing data" | Bioinformatics 36(18), 2020 | 10.1093/bioinformatics/btaa611; pp. 4817-4818 |
+| Schattgen SA, Guion K, Crawford JC, Souquette A, et al. "Integrating T cell receptor sequences and transcriptional profiles by clonotype neighbor graph analysis (CoNGA)" | Nat Biotechnol 40, 2022 (online 2021-08-23) | 10.1038/s41587-021-00989-2; pp. 54-63 |
 
 ## Decisions
 
@@ -63,6 +77,10 @@ The spec's decisions are in its §8. Decisions made at plan time:
 - **ruff 0.17 formats Python code blocks inside Markdown files.** `make ci` fails on an
   unformatted ```` ```python ```` block in a doc, so run `uv run ruff format <file>.md` on new
   plans and docs.
+- **Clonal gates fail by design until Task 6 merges.** From the Task 1 commit until then every
+  synthetic row is `clonal_status` not_measured, so both clonal gates fail on every method.
+  The slow golden test `test_full_matrix_holds_baseline_and_experimental_flag_is_honest`
+  (deselected in `make ci`) and the `make bench-synth` gate report are red by design.
 - **Gate failures don't fail the benchmark commands.** `lumencell bench real` and
   `bench synth` exit 0 on gate failures; only regressions fail `bench-synth`.
 
@@ -76,7 +94,8 @@ The spec's decisions are in its §8. Decisions made at plan time:
 | Branch | PR | State |
 |---|---|---|
 | `pivot/01-tcell-spec` | #5 | merged (squash, 142a788) |
-| `pivot/02-phase-plans` | #6 | approved; squash-merged once CI is green |
+| `pivot/02-phase-plans` | #6 | merged (squash, 153a7f0) |
+| `pivot/03-clonal-definitions` | #7 | phase 1 Task 1, open for review |
 
 ## Verify the current state
 

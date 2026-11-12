@@ -1,9 +1,10 @@
 """Run a method on a benchmark case and score it against the truth."""
 
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from lumencell.bench.metrics import Scores, score
 from lumencell.bench.synth import generate, truth_from_adata
@@ -14,6 +15,30 @@ from lumencell.engine.roots import ClusterRoot
 from lumencell.prep.pipeline import run_pipeline
 from lumencell.prep.stages import PrepParams
 
+ClonalRowStatus = Literal[
+    "ok", "single_lineage", "too_few_clones", "not_assessable", "failed", "not_applicable", "not_measured"
+]
+
+_NAN = math.nan
+
+
+@dataclass(frozen=True)
+class ClonalRow:
+    """Clonal agreement of one case; see [clonal] in benchmarks/thresholds.toml."""
+
+    status: ClonalRowStatus
+    excess_ratio: float = _NAN
+    p: float = _NAN
+    delta_base: float = _NAN
+    eta_oracle: float = _NAN
+    eta_method: float = _NAN
+    n_clones: int = 0
+    n_cells: int = 0
+    effective_clones: float = _NAN
+    eta_m3: float = _NAN
+    p_m3: float = _NAN
+    reason: str | None = None
+
 
 @dataclass(frozen=True)
 class CaseResult:
@@ -23,9 +48,10 @@ class CaseResult:
     n_clusters: int
     runtime_seconds: float
     warnings: list[str] = field(default_factory=list)
+    clonal: ClonalRow = ClonalRow("not_measured")
 
     def row(self) -> dict[str, Any]:
-        s = self.scores
+        s, c = self.scores, self.clonal
         return {
             "case": self.case,
             "method": self.method,
@@ -41,6 +67,18 @@ class CaseResult:
             "coverage": round(s.coverage, 4),
             "n_clusters": self.n_clusters,
             "runtime_seconds": round(self.runtime_seconds, 2),
+            "clonal_excess_ratio": round(c.excess_ratio, 4),
+            "clonal_p": round(c.p, 4),
+            "clonal_delta_base": round(c.delta_base, 4),
+            "clonal_status": str(c.status),
+            "clonal_eta_oracle": round(c.eta_oracle, 4),
+            "clonal_eta_method": round(c.eta_method, 4),
+            "clonal_effective_clones": round(c.effective_clones, 4),
+            "clonal_eta_m3": round(c.eta_m3, 4),
+            "clonal_p_m3": round(c.p_m3, 4),
+            "clonal_n_clones": int(c.n_clones),
+            "clonal_n_cells": int(c.n_cells),
+            "clonal_reason": c.reason,
         }
 
 
