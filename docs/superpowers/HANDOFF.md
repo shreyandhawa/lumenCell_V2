@@ -72,8 +72,12 @@ Decisions taken in phase 1 Task 2 (`clonal/` package):
   in one k-means cluster), never the most significant value. A coupling pair with an all-zero
   column has NaN fields and is left out of the Benjamini-Hochberg adjustment. z is NaN when the
   N1 null sd is 0, to within the 1e-12 comparison slack, so rounding noise never yields a huge z.
-- **Under `single_lineage`, every float is NaN, `effective_clones` included**, as the plan says;
-  the integer counts are still reported. No scored clone gives the same NaN block.
+- **`single_lineage` also covers one lineage holding every scored cell** (controller ruling,
+  fix round 1): the status is `single_lineage` when L < 2, or when the scored weights put mass
+  in fewer than two lineages. Before, such a run read as perfect agreement (purity 1, η NaN,
+  p 1). The counts and `effective_clones` are reported, because the effective count depends only
+  on clone sizes; every other float is NaN, and `nulls` and `coupling` are empty. With no scored
+  clone the status stays `too_few_clones`, as the plan says, and the floats are NaN.
 - **`min_clone_size` below 2 is refused** (ValueError), because single-cell clones never
   contribute (spec §2). `min_clones`, `n_permutations` and `n_bins` must be at least 1.
 - **Normalised entropies are clipped to [0, 1]** against rounding, so P and both purity
@@ -81,8 +85,9 @@ Decisions taken in phase 1 Task 2 (`clonal/` package):
 - **The baseline's entropy is divided by log max(L, number of baseline groups)**; η_base is a
   ratio, so the constant cancels, and the clip never bites.
 - **Shuffles are scored in blocks of rows.** A block draws `rng.random((rows, n_scored))`, the
-  same stream as `rows` draws of `rng.random(n_scored)`, so the plan's shuffle is unchanged; the
-  block keeps memory near 2^18 elements per array.
+  same stream as `rows` draws of `rng.random(n_scored)`, so the plan's shuffle is unchanged. The
+  block keeps rows × cells × columns near 2^18 elements (one shuffle per block when a single
+  shuffle is larger).
 
 ## Found along the way
 

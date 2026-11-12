@@ -52,7 +52,8 @@ F64 = npt.NDArray[np.float64]
 _NAN = float("nan")
 # Slack on every comparison with an observed statistic, so that rounding never decides a count.
 _SLACK = 1e-12
-# Shuffles are scored in blocks of about this many array elements.
+# Shuffles are scored in blocks of rows: rows x cells x columns stays near this many elements (one
+# shuffle per block when a single shuffle is larger).
 _BLOCK_ELEMENTS = 1 << 18
 _NO_PAIRS = np.empty((0, 2), dtype=np.int64)
 
@@ -86,9 +87,12 @@ class ClonalResult:
     """One clonal score. Undefined values are NaN, never a stand-in number.
 
     ``nulls`` are N1, N2, then N3 when strata exist. ``eta`` is against N1; ``p`` is the largest
-    null p. ``n_donors`` and ``n_strata`` count values among the scored cells. Under
-    ``single_lineage`` every float is NaN and ``nulls`` and ``coupling`` are empty; so too when no
-    clone is scored. ``too_few_clones`` still reports every value.
+    null p. ``n_donors`` and ``n_strata`` count values among the scored cells.
+
+    ``single_lineage``: fewer than two lineages, or scored cells whose mass falls in only one
+    lineage. The counts and ``effective_clones`` are reported, every other float is NaN, and
+    ``nulls`` and ``coupling`` are empty. With no scored clone the status is ``too_few_clones``
+    and the floats are NaN too. Otherwise ``too_few_clones`` still reports every value.
     """
 
     status: ScoreStatus
@@ -125,8 +129,8 @@ def kmeans_partition(space: F64, k: int, seed: int) -> IntArray:
 
     T-cell clones are transcriptionally coherent (scirpy, Sturm et al., Bioinformatics 2020,
     doi:10.1093/bioinformatics/btaa611; CoNGA, Schattgen et al., Nat Biotechnol 2022,
-    doi:10.1038/s41587-021-00989-2), so any expression partition beats the shuffle nulls. Scoring
-    this partition on the same cells says how much of η the lineages add beyond that.
+    doi:10.1038/s41587-021-00989-2), so an expression partition can beat the shuffle nulls.
+    Scoring this partition on the same cells says how much of η the lineages add beyond that.
     """
     _, labels = kmeans2(space, k, minit="++", seed=seed)
     return np.asarray(labels, dtype=np.int64)
@@ -151,6 +155,7 @@ def score_clonal(
     Otherwise it is oracle-cells mode: the candidates are ``oracle_cells``, and each counts in the
     method's lineages as spec §3 says (one lineage 1; k lineages 1/k each; none 1/L each). The
     scored cells are the candidates with a clone that has at least ``min_clone_size`` candidates.
+    The status is ``single_lineage`` when fewer than two lineages hold scored mass.
     ``pseudotime`` defines N2's deciles (NaN: a stratum of its own); ``baseline`` is the
     lineage-free partition (``kmeans_partition``), scored on the same cells.
     """
@@ -170,16 +175,21 @@ def score_clonal(
     candidates = membership.sum(axis=0) == 1 if oracle_cells is None else np.asarray(oracle_cells, bool)
     cells, clone, sizes = _scored_cells(codes.clone, candidates, min_clone_size)
     n_clones = int(sizes.size)
-    status: ScoreStatus = (
-        "single_lineage" if n_lineages < 2 else "too_few_clones" if n_clones < min_clones else "ok"
-    )
+    weights = _lineage_weights(membership, cells) if n_lineages >= 2 else np.zeros((cells.size, 0))
+    # A score needs two lineages that hold scored mass; with one, every clone is trivially pure.
+    holding = int((weights.sum(axis=0) > 0).sum())
+    status: ScoreStatus
+    if n_lineages < 2 or (n_clones > 0 and holding < 2):
+        status = "single_lineage"
+    else:
+        status = "too_few_clones" if n_clones < min_clones else "ok"
     undefined = ClonalResult(
         status=status,
         mode="own_cells" if oracle_cells is None else "oracle_cells",
         n_lineages=n_lineages,
         n_cells=int(cells.size),
         n_clones=n_clones,
-        effective_clones=_NAN,
+        effective_clones=1.0 / float(np.sum((sizes / sizes.sum()) ** 2)) if n_clones else _NAN,
         n_donors=_n_distinct(codes.donor[cells]),
         n_strata=None if codes.stratum is None else _n_distinct(codes.stratum[cells]),
         min_clone_size=min_clone_size,
@@ -197,10 +207,10 @@ def score_clonal(
         purity_without_largest=_NAN,
         coupling=(),
     )
-    if n_lineages < 2 or n_clones == 0:
+    if status == "single_lineage" or n_clones == 0:
         return undefined
 
-    method = _Partition(_lineage_weights(membership, cells), n_lineages)
+    method = _Partition(weights, n_lineages)
     base_codes = np.unique(baseline[cells], return_inverse=True)[1].reshape(-1)
     n_base = int(base_codes.max()) + 1
     base = _Partition(np.eye(n_base)[base_codes], max(n_lineages, n_base))
@@ -239,7 +249,6 @@ def score_clonal(
     delta_eta = eta - eta_base
     return replace(
         undefined,
-        effective_clones=1.0 / float(np.sum((sizes / sizes.sum()) ** 2)),
         purity=1.0 - h_obs,
         mean_entropy=h_obs,
         nulls=tuple(nulls),
@@ -362,18 +371,19 @@ def _mean_entropy(h: F64, sizes: IntArray) -> F64:
 
 
 def _shuffles(
-    clone: IntArray, groups: IntArray, rng: np.random.Generator, n_permutations: int
+    clone: IntArray, groups: IntArray, rng: np.random.Generator, n_permutations: int, n_columns: int
 ) -> Iterator[IntArray]:
     """The B shuffles of clone ids within strata, as blocks of rows (one shuffle per row).
 
     Shuffle b draws ``u = rng.random(n_scored)`` over the scored cells in their original order, and
     permutes clone ids within strata by ``lexsort((u, groups))``: the cells of each stratum, in
     their original order, take the ids of that stratum's cells sorted by u. Drawing a block of
-    rows at once takes the same stream as drawing the rows one by one.
+    rows at once takes the same stream as drawing the rows one by one, so the block size (rows x
+    cells x ``n_columns`` near ``_BLOCK_ELEMENTS``) never changes a result.
     """
     n = clone.size
     grouped = np.argsort(groups, kind="stable")
-    block = max(1, _BLOCK_ELEMENTS // n)
+    block = max(1, _BLOCK_ELEMENTS // (n * n_columns))
     for start in range(0, n_permutations, block):
         u = rng.random((min(block, n_permutations - start), n))
         order = np.lexsort((u, np.broadcast_to(groups, u.shape)), axis=-1)
@@ -396,7 +406,8 @@ def _draw(
     on the same shuffled ids, which pairs the baseline comparison with the lineages'."""
     entropy: list[list[F64]] = [[] for _ in partitions]
     cosine: list[F64] = []
-    for ids in _shuffles(clone, groups, rng, n_permutations):
+    n_columns = max(partition.weights.shape[1] for partition in partitions)
+    for ids in _shuffles(clone, groups, rng, n_permutations, n_columns):
         for j, partition in enumerate(partitions):
             counts = _counts(ids, partition.weights, sizes.size)
             entropy[j].append(_mean_entropy(partition.clone_entropy(counts, sizes), sizes))

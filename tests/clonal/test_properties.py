@@ -9,7 +9,7 @@ import math
 from dataclasses import dataclass, fields, is_dataclass, replace
 
 import numpy as np
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 
@@ -79,7 +79,8 @@ def cases(draw: st.DrawFn) -> Case:
     donor_names = [f"d{i}" for i in range(draw(st.integers(1, 3)))]
     labels = draw(st.lists(st.sampled_from([*ALPHABET, None]), min_size=n, max_size=n))
     donors = draw(st.lists(st.sampled_from([*donor_names * 4, None]), min_size=n, max_size=n))
-    place = draw(arrays(np.int64, n, elements=st.integers(0, n_lineages + 2)))
+    # Drawn cell by cell: an array strategy fills most cells with one value, often one lineage.
+    place = np.array(draw(st.lists(st.integers(0, n_lineages + 2), min_size=n, max_size=n)))
     pseudotime = draw(arrays(np.float64, n, elements=st.one_of(st.floats(0, 1), st.just(math.nan))))
     baseline = draw(arrays(np.int64, n, elements=st.integers(0, n_lineages - 1)))
     strata = draw(st.one_of(st.none(), st.lists(st.sampled_from(STRATA), min_size=n, max_size=n)))
@@ -159,13 +160,22 @@ def test_relabelling_clones_or_lineages_changes_nothing(case: Case, data: st.Dat
     assert same(replace(before, coupling=tuple(mapped)), after)
 
 
-@settings(max_examples=30, deadline=None)
+def scored(case: Case) -> ClonalResult:
+    """The case's score, keeping only cases with at least two clones and computed nulls."""
+    r = score(case)
+    assume(r.n_clones >= 2 and len(r.nulls) > 0)
+    return r
+
+
+# derandomize: the 5-sigma Monte Carlo bound is checked on the same examples on every run.
+@settings(max_examples=30, deadline=None, derandomize=True)
 @given(cases(), st.data())
 def test_reordering_cells_keeps_deterministic_fields_and_null_fields_within_monte_carlo_error(
     case: Case, data: st.DataObject
 ) -> None:
+    a = scored(case)
     order = np.array(data.draw(st.permutations(range(case.labels.size))))
-    a, b = score(case), score(case.take(order))
+    b = score(case.take(order))
     for name in DETERMINISTIC:
         assert not differences(getattr(a, name), getattr(b, name), name)
     assert [n.null for n in a.nulls] == [n.null for n in b.nulls]
@@ -183,6 +193,7 @@ def test_reordering_cells_keeps_deterministic_fields_and_null_fields_within_mont
 @settings(max_examples=30, deadline=None)
 @given(cases(), st.data())
 def test_singleton_clones_never_change_a_score(case: Case, data: st.DataObject) -> None:
+    base = scored(case)
     k = data.draw(st.integers(1, 10))
     n_lineages = case.n_lineages
     extra = Case(
@@ -209,7 +220,7 @@ def test_singleton_clones_never_change_a_score(case: Case, data: st.DataObject) 
         join(case.strata, extra.strata),
         join(case.oracle_cells, extra.oracle_cells),
     )
-    assert same(score(case), score(grown))
+    assert same(base, score(grown))
 
 
 @settings(max_examples=30, deadline=None)

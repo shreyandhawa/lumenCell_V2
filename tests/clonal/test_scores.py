@@ -7,6 +7,7 @@ import pytest
 from scipy.stats import false_discovery_control
 
 import lumencell.clonal as clonal
+import lumencell.clonal.scores as scores
 from lumencell.clonal.labels import CloneCodes, encode_clones
 from lumencell.clonal.scores import (
     ClonalResult,
@@ -125,7 +126,7 @@ def test_oracle_cells_use_fractional_counts() -> None:
 
 def test_oracle_cells_outside_the_oracle_set_are_not_scored() -> None:
     r = score_clonal(
-        own([[1, 1, 1, 0], [0, 0, 0, 1]]),
+        own([[1, 0, 1, 0], [0, 1, 0, 1]]),
         codes(["A", "A", "B", "B"]),
         PT0,
         BASE0,
@@ -133,8 +134,67 @@ def test_oracle_cells_outside_the_oracle_set_are_not_scored() -> None:
         min_clones=1,
         n_permutations=9,
     )
-    # B keeps one oracle cell, so only A (two cells, pure) is scored.
-    assert (r.n_cells, r.n_clones) == (2, 1) and r.purity == pytest.approx(1.0)
+    # B keeps one oracle cell, so only A (one cell in each lineage) is scored.
+    assert (r.n_cells, r.n_clones) == (2, 1) and r.purity == pytest.approx(0.0)
+
+
+def test_entropy_is_normalised_by_log_l() -> None:
+    # L = 3. One clone with one cell in each lineage: H = 1, P = 0.
+    r = score_clonal(
+        own([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
+        codes(["A", "A", "A"]),
+        np.zeros(3),
+        np.zeros(3, np.int64),
+        min_clones=1,
+        n_permutations=9,
+    )
+    assert r.mean_entropy == pytest.approx(1.0) and r.purity == pytest.approx(0.0)
+    # One clone split 2:1 over lineages 0 and 1, still out of L = 3.
+    r = score_clonal(
+        own([[1, 1, 0], [0, 0, 1], [0, 0, 0]]),
+        codes(["B", "B", "B"]),
+        np.zeros(3),
+        np.zeros(3, np.int64),
+        min_clones=1,
+        n_permutations=9,
+    )
+    h = (2 / 3 * math.log(1.5) + 1 / 3 * math.log(3)) / math.log(3)
+    assert r.mean_entropy == pytest.approx(h) and r.purity == pytest.approx(1 - h)
+
+
+def test_oracle_cells_in_two_lineages_or_none_at_l_3() -> None:
+    # c0 is in lineages 0 and 1 (1/2 each), c1 in none (1/3 each): clone X counts [5/6, 5/6, 1/3].
+    r = score_clonal(
+        np.array([[1, 0], [1, 0], [0, 0]], bool),
+        codes(["X", "X"]),
+        np.zeros(2),
+        np.zeros(2, np.int64),
+        oracle_cells=np.ones(2, bool),
+        min_clones=1,
+        n_permutations=9,
+    )
+    p = np.array([5 / 12, 5 / 12, 1 / 6])
+    assert r.mean_entropy == pytest.approx(float(-(p * np.log(p)).sum() / math.log(3)))
+
+
+def test_coupling_in_oracle_cells_mode_uses_fractional_counts() -> None:
+    # Weights: c0 (1/2, 1/2) in both lineages, c1 (1, 0), c2 (1/2, 1/2) in none, c3 (0, 1).
+    # Clones X={c0,c1}, Y={c2,c3}: columns [1.5, 0.5] and [0.5, 1.5], cosine 1.5 / 2.5 = 0.6.
+    # Of the 6 pairings, 4 give cosine 0.6 and 2 ({c0,c2} together) give 1.
+    r = score_clonal(
+        np.array([[1, 1, 0, 0], [1, 0, 0, 1]], bool),
+        codes(["X", "X", "Y", "Y"]),
+        PT0,
+        BASE0,
+        oracle_cells=np.ones(4, bool),
+        min_clones=1,
+        n_permutations=9999,
+    )
+    (c,) = r.coupling
+    assert c.observed == pytest.approx(0.6) and c.null_mean == pytest.approx(0.6 + 0.4 / 3, abs=0.01)
+    assert c.p == 1.0
+    # null sd = 0.4 * sqrt(2/9), so z = -(0.4 / 3) / (0.4 * sqrt(2/9)) = -1 / sqrt(2)
+    assert c.z == pytest.approx(-1 / math.sqrt(2), abs=0.05)
 
 
 def test_own_cells_mode_scores_only_single_lineage_cells() -> None:
@@ -226,12 +286,58 @@ def test_a_partition_beyond_the_lineages_is_reported_against_the_same_shuffles()
     assert r.p_delta == pytest.approx(1 / 500)
 
 
+def assert_single_lineage(r: ClonalResult) -> None:
+    assert r.status == "single_lineage" and r.nulls == () and r.coupling == ()
+    # The effective clone count depends only on clone sizes, so it is still reported.
+    others = {k: v for k, v in floats(r).items() if k != "effective_clones"}
+    assert all(math.isnan(v) for v in others.values()), others
+
+
 def test_one_lineage_is_single_lineage_with_nan_values() -> None:
     r = score_clonal(own([[1, 1, 1, 1]]), codes(["A", "A", "B", "B"]), PT0, BASE0, n_permutations=9)
-    assert r.status == "single_lineage" and math.isnan(r.purity) and r.nulls == ()
-    assert r.coupling == ()
+    assert_single_lineage(r)
     assert (r.n_lineages, r.n_cells, r.n_clones, r.n_donors) == (1, 4, 2, 1)
-    assert all(math.isnan(v) for v in floats(r).values())
+    assert r.effective_clones == pytest.approx(2.0)
+
+
+def test_scored_cells_in_one_lineage_are_single_lineage() -> None:
+    # Own cells: both scored clones sit in lineage 0; lineage 1 holds only a single-cell clone.
+    r = score_clonal(
+        own([[1, 1, 1, 1, 0], [0, 0, 0, 0, 1]]),
+        codes(["A", "A", "B", "B", "C"]),
+        np.zeros(5),
+        np.zeros(5, np.int64),
+        min_clones=1,
+        n_permutations=9,
+    )
+    assert_single_lineage(r)
+    assert (r.n_lineages, r.n_cells, r.n_clones) == (2, 4, 2) and r.effective_clones == pytest.approx(2.0)
+
+
+def test_oracle_cells_in_one_method_lineage_are_single_lineage() -> None:
+    oracle = np.ones(4, bool)
+    r = score_clonal(
+        own([[1, 1, 1, 1], [0, 0, 0, 0]]),
+        codes(["A", "A", "B", "B"]),
+        PT0,
+        BASE0,
+        oracle_cells=oracle,
+        min_clones=1,
+        n_permutations=9,
+    )
+    assert_single_lineage(r)
+    assert r.n_cells == 4
+    # A cell in no method lineage counts 1/2 in each, so lineage 1 then holds scored mass.
+    r = score_clonal(
+        own([[1, 1, 1, 0], [0, 0, 0, 0]]),
+        codes(["A", "A", "B", "B"]),
+        PT0,
+        BASE0,
+        oracle_cells=oracle,
+        min_clones=1,
+        n_permutations=9,
+    )
+    assert r.status == "ok" and math.isfinite(r.purity)
 
 
 def test_too_few_clones_still_reports_values() -> None:
@@ -340,15 +446,71 @@ def test_n2_shuffles_within_donor_and_decile() -> None:
     assert n2.p == 1.0 and r.nulls[0].mean_entropy_sd > 0
 
 
-def test_n1_shuffles_only_within_donor() -> None:
-    # Donor d1's clones are all in lineage 0 and d2's in lineage 1. Shuffling within donor keeps
-    # every clone pure; shuffling across donors would not.
+def test_n1_and_n2_shuffle_only_within_donor() -> None:
+    # Donor d1's clones are all in lineage 0 and d2's in lineage 1, and every cell has the same
+    # pseudotime. Shuffling within donor (N1, and N2's one decile per donor) keeps every clone
+    # pure; shuffling across donors would not.
     membership = own([[1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 1, 1, 1]])
     c = codes(list("AABBCCDD"), ["d1"] * 4 + ["d2"] * 4)
     r = score_clonal(membership, c, np.zeros(8), np.zeros(8, np.int64), min_clones=1, n_permutations=99)
-    n1 = r.nulls[0]
+    n1, n2 = r.nulls
     assert n1.mean_entropy_mean == 0.0 and math.isnan(n1.eta) and n1.p == 1.0
+    assert n2.mean_entropy_mean == 0.0 and math.isnan(n2.eta) and n2.p == 1.0
     assert math.isnan(r.eta) and r.n_donors == 2
+
+
+def test_n3_shuffles_within_donor_and_declared_strata() -> None:
+    # The strata value is each cell's lineage, so an N3 shuffle only swaps clone ids between cells of
+    # one lineage and never changes a clone's lineage counts. N1 (donor only) does change them.
+    membership, _, pseudotime, lineage = biased()
+    k = np.repeat(np.arange(60), 3)
+    c = codes([f"c{i}" for i in k], [f"d{i % 2}" for i in k], [[f"t{v}" for v in lineage]])
+    r = score_clonal(membership, c, pseudotime, lineage, n_permutations=99)
+    n1, _, n3 = r.nulls
+    assert n3.null == "N3" and n3.mean_entropy_mean == pytest.approx(r.mean_entropy, abs=1e-12)
+    assert n3.mean_entropy_sd == pytest.approx(0.0, abs=1e-12) and n3.p == 1.0
+    assert abs(n1.mean_entropy_mean - r.mean_entropy) > 0.05
+
+
+@pytest.mark.parametrize("block_elements", [None, 600, 1])
+def test_each_null_has_its_own_seeded_stream(
+    block_elements: int | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # One donor, one pseudotime decile and one strata level: N1, N2 and N3 each shuffle every cell
+    # as one stratum, so they differ only through their streams default_rng([seed, i]). Shuffles
+    # drawn in blocks (here the default, 5 rows, or 1 row) match drawing them one by one.
+    if block_elements is not None:
+        monkeypatch.setattr(scores, "_BLOCK_ELEMENTS", block_elements)
+    rng = np.random.default_rng(3)
+    clone = np.repeat(np.arange(20), 3)
+    n = clone.size
+    lineage = rng.integers(2, size=n)
+    c = codes([f"c{i}" for i in clone], None, [["t1"] * n])
+    b, seed = 199, 7
+    r = score_clonal(np.eye(2, dtype=bool)[lineage].T, c, np.zeros(n), lineage, n_permutations=b, seed=seed)
+
+    def null_entropies(stream: int) -> np.ndarray:
+        groups = np.zeros(n, dtype=np.int64)
+        gen = np.random.default_rng([seed, stream])
+        out = []
+        for _ in range(b):
+            u = gen.random(n)
+            shuffled = np.empty_like(clone)
+            shuffled[np.argsort(groups, kind="stable")] = clone[np.lexsort((u, groups))]
+            counts = np.zeros((20, 2))
+            np.add.at(counts, (shuffled, lineage), 1.0)
+            p = counts / counts.sum(axis=1, keepdims=True)
+            h = -np.where(p > 0, p * np.log(np.where(p > 0, p, 1.0)), 0.0).sum(axis=1) / np.log(2)
+            out.append(float(h @ counts.sum(axis=1) / n))
+        return np.array(out)
+
+    assert [x.null for x in r.nulls] == ["N1", "N2", "N3"]
+    for stream, null in enumerate(r.nulls, start=1):
+        expected = null_entropies(stream)
+        assert null.mean_entropy_mean == pytest.approx(expected.mean(), abs=1e-12)
+        assert null.mean_entropy_sd == pytest.approx(expected.std(ddof=1), abs=1e-12)
+        assert null.p == (1 + int((expected <= r.mean_entropy + 1e-12).sum())) / (b + 1)
+    assert len({x.mean_entropy_mean for x in r.nulls}) == 3
 
 
 def test_scores_depend_on_the_seed_only_through_the_nulls() -> None:
@@ -401,4 +563,4 @@ def test_sources_are_cited() -> None:
         "10.1038/s41587-021-00989-2",  # CoNGA
     ):
         assert doi in doc, doi
-    assert "Vinh" in doc and "11" in doc and "2837" in doc
+    assert "Vinh, Epps & Bailey, JMLR 11(95):2837-2854, 2010" in doc
