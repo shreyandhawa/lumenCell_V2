@@ -8,7 +8,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 
 - **Phase:** phase 1 has started. Both approval gates are passed: Shreyan approved the spec
   (PR #5) and the plans (PR #6, merged as 153a7f0) on 2026-11-12. Task 1 (clonal definitions,
-  gates and runtime constants) is on branch `pivot/03-clonal-definitions`.
+  gates and runtime constants) merged as 6ff4676 (PR #7). Task 2 (the `clonal/` package: clone
+  codes, scores, nulls, baseline, coupling) is on branch `pivot/04-clonal-scores`.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -16,7 +17,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 1 Task 2, after Task 1's PR (#7) is reviewed and squash-merged.
+- **Next:** phase 1 Task 3 (synthetic clones), after Task 2's PR is reviewed and squash-merged.
   - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
     - one task per subagent, on the model the task names
     - TDD throughout
@@ -65,6 +66,24 @@ The spec's decisions are in its §8. Decisions made at plan time:
 - **Each plan lists its own resolved ambiguities**, each with its cost. Read them before
   executing a task.
 
+Decisions taken in phase 1 Task 2 (`clonal/` package):
+- **Undefined statistics are NaN.** η against a null is NaN when that null's mean H is 0, and
+  so is η_base. `p_delta` is NaN whenever Δη is NaN (a constant baseline, or every scored cell
+  in one k-means cluster), never the most significant value. A coupling pair with an all-zero
+  column has NaN fields and is left out of the Benjamini-Hochberg adjustment. z is NaN when the
+  N1 null sd is 0, to within the 1e-12 comparison slack, so rounding noise never yields a huge z.
+- **Under `single_lineage`, every float is NaN, `effective_clones` included**, as the plan says;
+  the integer counts are still reported. No scored clone gives the same NaN block.
+- **`min_clone_size` below 2 is refused** (ValueError), because single-cell clones never
+  contribute (spec §2). `min_clones`, `n_permutations` and `n_bins` must be at least 1.
+- **Normalised entropies are clipped to [0, 1]** against rounding, so P and both purity
+  diagnostics stay in the unit interval exactly.
+- **The baseline's entropy is divided by log max(L, number of baseline groups)**; η_base is a
+  ratio, so the constant cancels, and the clip never bites.
+- **Shuffles are scored in blocks of rows.** A block draws `rng.random((rows, n_scored))`, the
+  same stream as `rows` draws of `rng.random(n_scored)`, so the plan's shuffle is unchanged; the
+  block keeps memory near 2^18 elements per array.
+
 ## Found along the way
 
 - **Local `main` was 13 commits behind `origin/main`** on 2026-11-12. Check
@@ -86,6 +105,18 @@ The spec's decisions are in its §8. Decisions made at plan time:
 
 ## Open questions for Shreyan
 
+- **Reordering cells: exact or within Monte Carlo error?** Spec §4.5 says η, P and the p-values
+  are "unchanged" when cells are reordered. Task 2 keeps the plan's shuffle: each null draws one
+  random key per scored cell, in the cells' original order. That makes relabelling clones or
+  lineages and adding single-cell clones leave every field exactly unchanged, but reordering
+  cells moves the keys between cells. Reordering then leaves the deterministic fields (cells,
+  clones, effective clones, P, H, both purity diagnostics) exactly unchanged and the null-based
+  fields (null mean and sd, η, p, η_base, Δη, p_delta, coupling) within Monte Carlo error;
+  `test_reordering_cells_keeps_deterministic_fields_and_null_fields_within_monte_carlo_error`
+  bounds each null's p and η. Exact invariance to both relabelling and reordering can't hold together with this
+  shuffle. Needs your sign-off. If you want exact reordering invariance, the cost is reworking
+  the shuffle to draw keys in a canonical cell order (for example by cell barcode, which callers
+  would then pass in), then re-checking the relabelling and singleton properties.
 - Commit 33c281d and PR #5 were created at 07:57 under your account, not by the orchestrating
   session. Was that you, or a tool?
 
@@ -95,7 +126,8 @@ The spec's decisions are in its §8. Decisions made at plan time:
 |---|---|---|
 | `pivot/01-tcell-spec` | #5 | merged (squash, 142a788) |
 | `pivot/02-phase-plans` | #6 | merged (squash, 153a7f0) |
-| `pivot/03-clonal-definitions` | #7 | phase 1 Task 1, open for review |
+| `pivot/03-clonal-definitions` | #7 | merged (squash, 6ff4676) |
+| `pivot/04-clonal-scores` | see the PR list | phase 1 Task 2, open for review |
 
 ## Verify the current state
 
