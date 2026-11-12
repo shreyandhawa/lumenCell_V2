@@ -19,6 +19,8 @@ branch_accuracy = { min = 0.90 }  # NaN (single-lineage topologies) is skipped
 lineage_recall = { min = 1.0 }
 n_spurious = { max = 1 }
 root_pt_excess = { max = 0.10 }
+clonal_excess_ratio = { min = 0.5, nan = "fail", status = "clonal_status" }  # see [clonal]
+clonal_p = { max = 0.01, nan = "fail", status = "clonal_status" }
 
 # Real datasets: a release gate (make bench-real), never run in CI. Set from the
 # approved M1 plan and written down before the first real run (2026-11-10).
@@ -35,6 +37,77 @@ lineage_recall = { min = 1.0 }
 [real.gastrulation_erythroid.gates]
 pt_spearman_global = { min = 0.60 }   # against real embryo time (E7.0-E8.5)
 terminal_share = { min = 0.80 }       # Erythroid3 cells on one inferred lineage
+
+# ---- clonal agreement (spec docs/superpowers/specs/2026-11-12-tcell-clonotypes-design.md §4.3-4.5)
+# Defined before any clonal score was computed. src/lumencell/trust/constants.py mirrors what the
+# worker needs at run time; tests/unit/test_trust_constants.py keeps the two equal.
+# Clone: the pair (donor, label). A missing, empty, "nan" or "None" label means no receptor.
+# Scored cells: single-lineage cells with a label whose clone has >= m such cells.
+#   own-cells mode (API): the run's single-lineage cells, counted in their lineage.
+#   oracle-cells mode (gates): the true lineages' single-lineage cells, weighted by the method's
+#   masks: one lineage 1, k lineages 1/k each, none 1/L each (L = the method's lineages).
+# H_k = -sum_l p_kl log p_kl / log L; H = sum_k n_k H_k / sum_k n_k; purity P = 1 - H.
+# Clone-weighted purity = 1 - (1/K) sum_k H_k: every clone weighted equally (spec §4.3).
+# Purity without the largest clone leaves out the clone with the most scored cells; on a size
+#   tie, the purer one (lower H_k) is left out; NaN with one clone.
+# eta = 1 - H_obs / E_null[H], reported against each null; headline eta is against N1.
+# Nulls shuffle clone identities among the scored cells, B times, seeded, within:
+#   N1 donor; N2 donor x decile of pseudotime (the run's own; the truth's order for the oracle;
+#   cells without pseudotime form their own stratum); N3 donor x strata_keys, when declared.
+# N2 deciles are taken over the scored cells' finite pseudotime by average rank:
+#   decile = min(bins - 1, floor(bins * (average rank - 1) / n_finite)); cells with NaN
+#   pseudotime form a bin of their own.
+# p = (1 + #{H_b <= H_obs}) / (B + 1), one-sided; headline p = the largest over computed nulls.
+# Lineage-free baseline: scipy.cluster.vq.kmeans2 with k = L, seeded, on the PCs the kNN graph
+#   uses, scored on the same cells: eta_base, delta_eta = eta - eta_base, and a paired
+#   permutation p for delta_eta over the same N1 shuffles.
+# Coupling (reported, never gated): cosine similarity of the raw scored-cell count columns of
+#   each lineage pair, against N1: z, p and Benjamini-Hochberg p_adj. Not CoSpar's normalised
+#   default. It says two lineages share clones, never which came first.
+# Every score also reports cells and clones scored, the effective clone count (inverse Simpson
+#   index of scored mass, 1 / sum_k (n_k / N)^2) and the same block at m = 3.
+# Sources: STARTRAC, Zhang et al., Nature 2018, doi:10.1038/s41586-018-0694-x (purity);
+#   LRT, Xie et al., PLoS Comput Biol 2023, doi:10.1371/journal.pcbi.1011300 (lineage bias);
+#   CoSpar, Wang et al., Nat Biotechnol 2022, doi:10.1038/s41587-022-01209-1 (coupling);
+#   Vinh, Epps & Bailey, JMLR 11(95):2837-2854, 2010, jmlr.org/papers/v11/vinh10a.html, no DOI,
+#   checked 2026-11-12 (chance-corrected eta);
+#   Phipson & Smyth, Stat Appl Genet Mol Biol 9(1), 2010, doi:10.2202/1544-6115.1585, checked
+#   2026-11-12 (p never zero);
+#   Sturm et al., Bioinformatics 36(18):4817-4818, 2020, doi:10.1093/bioinformatics/btaa611, and
+#   Schattgen et al., Nat Biotechnol 40:54-63, 2022, doi:10.1038/s41587-021-00989-2, both checked
+#   2026-11-12 (clones are transcriptionally coherent, hence the lineage-free baseline).
+[clonal]
+metric_version = 1
+min_clone_size = 2          # primary m; single-cell clones never contribute
+sensitivity_clone_size = 3  # always reported alongside
+min_clones = 20             # fewer scored clones: too_few_clones, values reported, never a pass
+n_permutations = 1000       # B per null
+seed = 0
+pseudotime_bins = 10
+p_max = 0.01                # the clonal_p gate, and phase 2's C5
+
+[clonal.synthetic]
+fate_bias = 0.7             # every branching matrix case gets this clonal layer
+n_donors = 3
+label_rate = 0.85           # share of cells with a receptor, near 10x capture rates
+singleton_share = 0.5       # clone size: 1 with this probability, else 1 + Zipf(zipf_a)
+zipf_a = 2.2
+donor_confound_share = 0.8  # donor-confound control: share of lineage j's cells in donor j mod D
+oracle_eta_min = 0.05       # below either oracle floor the case is not_assessable (and fails)
+oracle_p_max = 0.01
+
+[clonal.calibration]
+# Slow, run once and recorded (tests/clonal/test_calibration.py), at the [synthetic] preset and
+# size. Seeds are disjoint from the gated matrix. Seed s uses topologies[(s - seed_start) % 3].
+seed_start = 100
+n_seeds = 200
+topologies = ["bifurcation", "trifurcation", "binary2"]
+depth_only_topology = "binary2"   # the topology whose lineages occupy different depths
+alpha = 0.05
+binomial_quantile = 0.99          # binom.ppf(0.99, 200, 0.05) = 18 rejections at most
+monotonic_fate_bias = [0.0, 0.35, 0.7, 1.0]
+monotonic_seeds = [0, 1, 2]
+monotonic_topologies = ["bifurcation", "trifurcation", "binary2"]
 
 [regression]
 # CI fails if a synthetic metric falls further than this below benchmarks/baseline.json.
@@ -64,3 +137,15 @@ max_drop = 0.03
 #   The plan's "share of Erythroid3 cells on the main lineage" is implemented as
 #   terminal_share (worst expected lineage's terminal-stage cells held by one
 #   inferred lineage).
+#
+# 2026-11-12  Clonal agreement: definitions above and two synthetic gates, set before any
+#   clonal score was computed. clonal_excess_ratio = eta_method / eta_oracle >= 0.5: a method
+#   whose lineages capture less than half of the chance-corrected clonal signal of the true
+#   lineages is not separating the fates the clones show. clonal_p <= 0.01: with B = 1000 the
+#   smallest p is about 0.001 and its Monte Carlo error at the boundary about 0.003. A case is
+#   assessable only if the oracle has eta >= 0.05 and headline p <= 0.01. These two gates fail
+#   on NaN and on every status but ok (too_few_clones, failed, not_assessable, single_lineage,
+#   not_measured), except not_applicable (fewer than 2 true lineages, or a real dataset with
+#   no clone data); a synthetic branching truth with no clone data is not_measured and fails.
+#   Every other gate still skips NaN. The clonal gate is not a branch gate: merging two true
+#   lineages can push the ratio above 1, and lineage_recall catches that.
