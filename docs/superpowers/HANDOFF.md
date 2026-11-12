@@ -17,7 +17,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 1 Task 3 (synthetic clones), after Task 2's PR is reviewed and squash-merged.
+- **Next:** phase 1 Task 3 (synthetic clones), after Task 2's PR (#8) is reviewed and squash-merged.
   - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
     - one task per subagent, on the model the task names
     - TDD throughout
@@ -127,7 +127,7 @@ Decisions taken in phase 1 Task 2 (`clonal/` package):
 | `pivot/01-tcell-spec` | #5 | merged (squash, 142a788) |
 | `pivot/02-phase-plans` | #6 | merged (squash, 153a7f0) |
 | `pivot/03-clonal-definitions` | #7 | merged (squash, 6ff4676) |
-| `pivot/04-clonal-scores` | see the PR list | phase 1 Task 2, open for review |
+| `pivot/04-clonal-scores` | #8 | phase 1 Task 2, open for review |
 
 ## Verify the current state
 
