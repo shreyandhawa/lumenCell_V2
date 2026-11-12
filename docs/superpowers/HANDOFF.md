@@ -6,7 +6,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 
 ## Current state (2026-11-12)
 
-- **Phase:** design, specifically approval gate 2, the plans.
+- **Phase:** phase 1 is ready to start. Both approval gates are passed: Shreyan approved the
+  spec (PR #5) and the plans (PR #6) on 2026-11-12.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -14,8 +15,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** once Shreyan approves the plans PR, squash-merge it. Then execute phase 1 with
-  `superpowers:subagent-driven-development`, which Shreyan chose:
+- **Next:** phase 1 Task 1 (clonal-definitions), on branch `pivot/03-clonal-definitions`.
+  Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
   - one task per subagent, on the model the task names
   - TDD throughout
   - a fresh reviewer per task, plus the pr-review-toolkit agents on each PR
@@ -75,7 +76,7 @@ The spec's decisions are in its §8. Decisions made at plan time:
 | Branch | PR | State |
 |---|---|---|
 | `pivot/01-tcell-spec` | #5 | merged (squash, 142a788) |
-| `pivot/02-phase-plans` | plans PR | open, awaiting approval |
+| `pivot/02-phase-plans` | #6 | approved; squash-merged once CI is green |
 
 ## Verify the current state
 
