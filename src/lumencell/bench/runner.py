@@ -78,6 +78,7 @@ class CaseResult:
             "clonal_p_m3": round(c.p_m3, 4),
             "clonal_n_clones": int(c.n_clones),
             "clonal_n_cells": int(c.n_cells),
+            "clonal_reason": c.reason,
         }
 
 

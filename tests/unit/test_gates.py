@@ -4,7 +4,7 @@ import pytest
 
 from lumencell.bench.gates import check_gates, check_regression, load_thresholds
 from lumencell.bench.metrics import Scores
-from lumencell.bench.runner import CaseResult
+from lumencell.bench.runner import CaseResult, ClonalRow
 
 GATES = load_thresholds()["synthetic"]["gates"]
 
@@ -137,3 +137,91 @@ def test_case_rows_always_carry_the_clonal_fields() -> None:
     assert row["clonal_n_cells"] == 0
     assert math.isnan(row["clonal_effective_clones"]) and math.isnan(row["clonal_p_m3"])
     assert "clonal_n_cells" not in load_thresholds()["synthetic"]["gates"]  # reported only
+
+
+def _scores() -> Scores:
+    return Scores(
+        pt_spearman_global=0.0,
+        pt_spearman_lineage=0.0,
+        pt_spearman_by_lineage={},
+        branch_accuracy=0.0,
+        branch_accuracy_all=0.0,
+        lineage_recall=0.0,
+        n_spurious=0,
+        n_inferred_lineages=0,
+        root_pt_median=0.0,
+        root_pt_excess=0.0,
+        terminal_share=0.0,
+        coverage=0.0,
+        matches=[],
+    )
+
+
+def test_row_reports_every_clonal_field_with_its_own_value() -> None:
+    clonal = ClonalRow(
+        "ok",
+        excess_ratio=0.812345,
+        p=0.0011,
+        delta_base=0.123456,
+        eta_oracle=0.4,
+        eta_method=0.3,
+        n_clones=21,
+        n_cells=99,
+        effective_clones=7.5,
+        eta_m3=0.2,
+        p_m3=0.02,
+        reason="x",
+    )
+    row = CaseResult("c", "m", _scores(), 1, 0.0, clonal=clonal).row()
+    got = {k: v for k, v in row.items() if k.startswith("clonal_")}
+    assert got == {
+        "clonal_excess_ratio": 0.8123,
+        "clonal_p": 0.0011,
+        "clonal_delta_base": 0.1235,
+        "clonal_status": "ok",
+        "clonal_eta_oracle": 0.4,
+        "clonal_eta_method": 0.3,
+        "clonal_effective_clones": 7.5,
+        "clonal_eta_m3": 0.2,
+        "clonal_p_m3": 0.02,
+        "clonal_n_clones": 21,
+        "clonal_n_cells": 99,
+        "clonal_reason": "x",
+    }
+    assert CaseResult("c", "m", _scores(), 1, 0.0).row()["clonal_reason"] is None
+
+
+def test_status_ok_still_enforces_the_bounds() -> None:
+    failed = check_gates(_row(clonal_excess_ratio=0.3, clonal_p=0.02), GATES)
+    assert {(f.metric, f.reason) for f in failed} == {("clonal_excess_ratio", None), ("clonal_p", None)}
+    assert check_gates(_row(clonal_excess_ratio=0.5, clonal_p=0.01), GATES) == []
+
+
+def test_nan_fail_without_status_fails_with_reason_nan() -> None:
+    gate = {"m": {"min": 0.5, "nan": "fail"}}
+    (f,) = check_gates({"case": "c", "m": math.nan}, gate)
+    assert (f.metric, f.reason) == ("m", "nan")
+
+
+def test_status_ok_with_nan_skip_skips_a_nan() -> None:
+    gate = {"m": {"min": 0.5, "nan": "skip", "status": "s"}}
+    assert check_gates({"case": "c", "m": math.nan, "s": "ok"}, gate) == []
+
+
+def test_missing_metric_under_status_ok_fails_as_nan() -> None:
+    gate = {"m": {"min": 0.5, "nan": "fail", "status": "s"}}
+    (f,) = check_gates({"case": "c", "s": "ok"}, gate)
+    assert (f.metric, f.reason) == ("m", "nan")
+
+
+@pytest.mark.parametrize(
+    ("gate", "match"),
+    [
+        ({"min": 0.5, "status": "s"}, "nan"),
+        ({"mim": 0.5}, "mim"),
+        ({"nan": "fail"}, "min or max"),
+    ],
+)
+def test_malformed_gates_raise(gate: dict[str, object], match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        check_gates({"case": "c", "m": 1.0, "s": "ok"}, {"m": gate})

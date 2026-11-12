@@ -26,3 +26,14 @@ def test_runtime_constants_equal_the_thresholds_file() -> None:
         assert getattr(constants, name) == value, name
     declared = {n for n in vars(constants) if n.isupper()} - {"MAX_DONORS"}
     assert set(MIRRORED) == declared
+
+
+def test_every_scalar_clonal_key_is_mirrored() -> None:
+    clonal = load_thresholds()["clonal"]
+    scalars = {k for k, v in clonal.items() if not isinstance(v, dict)}
+    assert scalars == {path[1] for path in MIRRORED.values() if len(path) == 2}
+
+
+def test_the_clonal_p_gate_equals_the_runtime_p_max() -> None:
+    gates = load_thresholds()["synthetic"]["gates"]
+    assert gates["clonal_p"]["max"] == constants.CLONAL_P_MAX

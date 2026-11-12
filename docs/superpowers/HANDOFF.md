@@ -16,12 +16,13 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 1 Task 2, after Task 1's PR is reviewed and squash-merged. Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
-  - one task per subagent, on the model the task names
-  - TDD throughout
-  - a fresh reviewer per task, plus the pr-review-toolkit agents on each PR
-  - a squash-merge once CI is green
-  - branches `pivot/NN-<slug>`, numbered from 03 in execution order
+- **Next:** phase 1 Task 2, after Task 1's PR (#7) is reviewed and squash-merged.
+  - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
+    - one task per subagent, on the model the task names
+    - TDD throughout
+    - a fresh reviewer per task, plus the pr-review-toolkit agents on each PR
+    - a squash-merge once CI is green
+    - branches `pivot/NN-<slug>`, numbered from 03 in execution order
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
 ## Done
@@ -76,6 +77,10 @@ The spec's decisions are in its §8. Decisions made at plan time:
 - **ruff 0.17 formats Python code blocks inside Markdown files.** `make ci` fails on an
   unformatted ```` ```python ```` block in a doc, so run `uv run ruff format <file>.md` on new
   plans and docs.
+- **Clonal gates fail by design until Task 6 merges.** From the Task 1 commit until then every
+  synthetic row is `clonal_status` not_measured, so both clonal gates fail on every method.
+  The slow golden test `test_full_matrix_holds_baseline_and_experimental_flag_is_honest`
+  (deselected in `make ci`) and the `make bench-synth` gate report are red by design.
 - **Gate failures don't fail the benchmark commands.** `lumencell bench real` and
   `bench synth` exit 0 on gate failures; only regressions fail `bench-synth`.
 
@@ -90,7 +95,7 @@ The spec's decisions are in its §8. Decisions made at plan time:
 |---|---|---|
 | `pivot/01-tcell-spec` | #5 | merged (squash, 142a788) |
 | `pivot/02-phase-plans` | #6 | merged (squash, 153a7f0) |
-| `pivot/03-clonal-definitions` | see the PR list | phase 1 Task 1, open for review |
+| `pivot/03-clonal-definitions` | #7 | phase 1 Task 1, open for review |
 
 ## Verify the current state
 
