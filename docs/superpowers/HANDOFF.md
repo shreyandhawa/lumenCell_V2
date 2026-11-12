@@ -2,62 +2,80 @@
 
 A new session starts with: "Read docs/superpowers/HANDOFF.md and continue."
 This file is updated inside every task's PR. `docs/HANDOFF.md` is the milestone 1 note; its
-stale lines get corrected once, at the end of phase 1.
+stale lines are corrected once, by phase 1's handoff-corrections task.
 
 ## Current state (2026-11-12)
 
-- **Phase:** design, specifically approval gate 1, the spec.
-- **Spec:** [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
-  on branch `pivot/01-tcell-spec` with its own PR.
-- **Next:** once Shreyan approves the spec PR, squash-merge it. Then run
-  `superpowers:writing-plans` and write one plan per phase in `docs/superpowers/plans/`. Each
-  plan has Global Constraints, Review Focus, Not in This Plan, a File Map and Done when, with
-  tasks small enough for one subagent each. Open the plans as a PR and stop for approval
-  gate 2.
+- **Phase:** design, specifically approval gate 2, the plans.
+- **Spec:** approved and merged in PR #5 (142a788):
+  [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
+  Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
+- **Plans**, on branch `pivot/02-phase-plans`, open as the plans PR:
+  - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
+  - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
+  - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
+- **Next:** once Shreyan approves the plans PR, squash-merge it. Then execute phase 1 with
+  `superpowers:subagent-driven-development`, which Shreyan chose:
+  - one task per subagent, on the model the task names
+  - TDD throughout
+  - a fresh reviewer per task, plus the pr-review-toolkit agents on each PR
+  - a squash-merge once CI is green
+  - branches `pivot/NN-<slug>`, numbered from 03 in execution order
+- **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
 ## Done
 
-- Reconnaissance by read-only subagents covering loader, bench, prep, API, robustness-2 and
-  web research. The research notes are in `docs/superpowers/research/`.
-- Baseline at 865ce22: `make install` exit 0. `make ci` exit 0 in 192 s, with 353 Python
-  tests passed and 12 deselected, 36 web tests and 1 Playwright test.
-- Spec revision 2, after an independent method review and an architecture review (both on
-  Opus). Spec §11 lists what each review changed. The two method blockers were receptor genes
-  leaking clones in through HVGs, and the need for a lineage-free baseline, because T-cell
-  clones are transcriptionally coherent.
-- Shreyan's answers, all three the recommended options:
-  - **Daniel truth:** the paper's state labels, with the root at Tpex.
-  - **Case study:** Sheih 2020, after verifying it has per-cell barcodes; Cao 2025 is the
-    fallback.
-  - **Stability:** runs automatically as a follow-on job.
-
-## Found along the way
-
-- **Local `main` was 13 commits behind `origin/main`** on 2026-11-12, so it had no CI and no
-  `docs/backend-robustness-2.md`. It was fast-forwarded to 865ce22. Check
-  `git rev-list --left-right --count main...origin/main` before reading code.
-- **`main` has no branch protection.** Keeping work on PRs is discipline, not enforcement.
-- **The `need_from_me` section of the brief was missing.** It is taken to mean dataset
-  downloads and new runtime dependencies (spec §8, decision 16).
-- **Large categorical columns are described one way and served another.** Above 1,000
-  categories, `dataset_view.py` lists a column as `string` but serves it as categorical codes.
-  Phase 1 fixes this.
-- **Gate failures don't fail the benchmark commands.** `lumencell bench real` and
-  `bench synth` exit 0 on gate failures; only regressions fail `bench-synth`.
+- Reconnaissance (loader, bench, prep, API, robustness-2, web research). The notes are in
+  `research/`.
+- Baseline at 865ce22: `make ci` exit 0, with 353 Python tests passed and 12 deselected, 36
+  web tests and 1 Playwright test.
+- Spec revisions 1 and 2. Revision 2 went through an independent method review and an
+  architecture review. Shreyan approved it, and it merged as PR #5.
+- Three phase plans, each written by its own Opus subagent with the phase 1 interfaces fixed
+  first. One independent reviewer then cross-checked them (one blocker, eight should-fixes),
+  and every finding was fixed.
 
 ## Decisions
 
-See spec §8 for each decision and what it costs if wrong.
+The spec's decisions are in its §8. Decisions made at plan time:
+- **Spec amendment 1:** the receptor-gene regex is `^TR[ABDG]([VDJ]\d|C\d*$)`. The original
+  also caught TRADD.
+- **Spec amendment 2:** `strata_keys` columns are not scoring-only, so Sheih's time point may
+  define a root.
+- **Sheih runs per patient.** Pooled patients would make batch structure look like "no tree".
+  A pooled run is a labelled diagnostic only. Cost: 12 runs instead of 3, with fewer cells
+  each.
+- **Daniel's "not assessable" is shown explicitly** in the results JSON and the README, never
+  omitted.
+- **Each plan lists its own resolved ambiguities**, each with its cost. Read them before
+  executing a task.
+
+## Found along the way
+
+- **Local `main` was 13 commits behind `origin/main`** on 2026-11-12. Check
+  `git rev-list --left-right --count main...origin/main` before reading code.
+- **`main` has no branch protection.** Keeping work on PRs is discipline, not enforcement.
+- **The `need_from_me` section of the brief was missing.** It is taken to mean dataset
+  downloads and new runtime dependencies (spec §8, decision 20).
+- **`make bench-baseline` measures only paga_dpt today.** Phase 1 Task 7 adds
+  `BENCH_METHODS`.
+- **ruff 0.17 formats Python code blocks inside Markdown files.** `make ci` fails on an
+  unformatted ```` ```python ```` block in a doc, so run `uv run ruff format <file>.md` on new
+  plans and docs.
+- **Gate failures don't fail the benchmark commands.** `lumencell bench real` and
+  `bench synth` exit 0 on gate failures; only regressions fail `bench-synth`.
 
 ## Open questions for Shreyan
 
-- None beyond the spec review.
+- Commit 33c281d and PR #5 were created at 07:57 under your account, not by the orchestrating
+  session. Was that you, or a tool?
 
 ## Branches and PRs
 
 | Branch | PR | State |
 |---|---|---|
-| `pivot/01-tcell-spec` | see `gh pr list` | open, awaiting approval |
+| `pivot/01-tcell-spec` | #5 | merged (squash, 142a788) |
+| `pivot/02-phase-plans` | plans PR | open, awaiting approval |
 
 ## Verify the current state
 

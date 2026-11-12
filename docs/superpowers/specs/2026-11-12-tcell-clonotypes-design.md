@@ -154,7 +154,9 @@ loader needs no change, because obs is always kept in the server.
 There are two routes by which clone identity could reach inference. Both are closed.
 
 **Obs.** `InferenceContext.obs` today carries every obs column (`engine/context.py`).
-- The columns in `ClonalSettings`, plus any column matching the receptor patterns
+- The clone and donor columns in `ClonalSettings`, plus any column matching the receptor
+  patterns. `strata_keys` columns (for example time point) carry no clone information, so they
+  stay visible to methods and may define a root (amended at plan time)
   (`clone_id*`, `clonotype*`, `raw_clonotype_id`, `IR_*`, `airr:*`, `receptor_*`,
   `chain_pairing`, `cdr3*`), become **scoring-only**. They are removed from the obs that
   methods receive.
@@ -168,8 +170,10 @@ There are two routes by which clone identity could reach inference. Both are clo
 
 **Expression.** TCR segment genes are in the count matrix, and in T-cell data they can become
 highly variable genes (HVGs). That would pull clone-mates together in the PCA and kNN graph.
-- A new `PrepParams.exclude_receptor_genes = True` drops genes matching `^TR[ABDG][VDJC]`
-  (case-insensitive, which covers human and mouse symbols) from HVG selection. This covers
+- A new `PrepParams.exclude_receptor_genes = True` drops genes matching
+  `^TR[ABDG]([VDJ]\d|C\d*$)` from HVG selection. The match is case-insensitive, so it covers
+  human and mouse symbols. The pattern was tightened at plan time from `^TR[ABDG][VDJC]`, which
+  also caught the signalling gene TRADD. This covers
   V, D and J segments and the constant genes, because TRBC1 against TRBC2 usage is clonal.
 - The prep info records how many receptor genes would otherwise have been HVGs.
 - The change alters the HVG stage key, so every dataset is re-prepared once. Synthetic gene
