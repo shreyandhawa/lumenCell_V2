@@ -27,7 +27,7 @@ from lumencell.jobs.manager import Job, JobManager
 from lumencell.jobs.worker import HANDLERS
 from lumencell.prep.cache import PrepCache
 from lumencell.prep.stages import PrepParams
-from lumencell.trust.clonal import trust_hash, trust_name
+from lumencell.trust.clonal import settings_columns, settings_from_state, trust_hash, trust_name
 from lumencell.trust.constants import N_PERMUTATIONS
 
 ROOT = {"kind": "cluster", "key": "true_label", "value": "trunk_early"}
@@ -342,11 +342,101 @@ def test_an_infer_job_for_another_file_queues_nothing(
     session = _session(prepared, cache_root, jobs, tmp_path)
     session.set_clonal(ClonalSettings(**A))
     _save_run(session, "r1")
-    base = Job(job_id="x", kind="infer", key="k", payload={"path": str(session.path)}, result_id="r1")
-    session._on_job_done(replace(base, payload={"path": "/elsewhere.h5ad"}))
-    session._on_job_done(replace(base, kind="score_clonal"))
+    mine = {"path": str(session.path), "cache_root": str(cache_root)}
+    base = Job(job_id="x", kind="infer", key="k", payload=mine, result_id="r1")
+    session._on_job_done(replace(base, payload={**mine, "path": "/elsewhere.h5ad"}))
+    session._on_job_done(replace(base, payload={**mine, "cache_root": str(tmp_path / "other")}))
+    session._on_job_done(replace(base, payload={"path": str(session.path)}))  # the default cache
+    for kind in ("score_clonal", "prepare", "heatmap", "sleep"):
+        session._on_job_done(replace(base, kind=kind))
     session._on_job_done(replace(base, result_id=None))
     assert _scoring(session) == []
     session._on_job_done(base)
     (job,) = _scoring(session)
     assert job.key == f"score_clonal:r1:{trust_hash(ClonalSettings(**A))}"
+
+
+def test_submit_trust_jobs_queues_clonal_only_with_settings(
+    prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
+) -> None:
+    session = _session(prepared, cache_root, jobs, tmp_path)
+    _save_run(session, "r1")
+    assert session.runs.submit_trust_jobs("r1") == []
+    assert _scoring(session) == []
+    session.set_clonal(ClonalSettings(**A))
+    (queued,) = _scoring(session)
+    assert session.runs.submit_trust_jobs("r1") == [queued]  # the queued job, not a second one
+    assert queued.key == f"score_clonal:r1:{trust_hash(ClonalSettings(**A))}"
+    assert len(_scoring(session)) == 1
+
+
+def test_submit_clonal_all_counts_the_runs_it_queues(
+    prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
+) -> None:
+    session = _session(prepared, cache_root, jobs, tmp_path)
+    _save_run(session, "r1")
+    _save_run(session, "r2", {"n_dcs": 8})
+    assert session.runs.submit_clonal_all() == 0
+    assert _scoring(session) == []
+    session._clonal = ClonalSettings(**A)  # settings in place without set_clonal's own submit
+    assert session.runs.submit_clonal_all() == 2
+    hb = trust_hash(ClonalSettings(**A))
+    assert {j.key for j in _scoring(session)} == {f"score_clonal:r1:{hb}", f"score_clonal:r2:{hb}"}
+
+
+@pytest.mark.parametrize("second", ["put", "delete"])
+def test_concurrent_settings_writes_leave_memory_disk_and_view_in_agreement(
+    prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path, second: str
+) -> None:
+    session = _session(prepared, cache_root, jobs, tmp_path)
+    _save_run(session, "r1")
+    client = _client(session)
+    inside = entries = 0
+    overlapped = False
+    count = threading.Lock()
+    both_entered = threading.Event()
+    update = session.state.update
+
+    def held_update(change: Any) -> None:
+        # The first writer waits inside its state write until the second enters one (up to 1 s):
+        # without serialising, the two writes overlap; with it, the wait runs out alone.
+        nonlocal inside, entries, overlapped
+        with count:
+            inside += 1
+            entries += 1
+            overlapped = overlapped or inside > 1
+            if entries == 2:
+                both_entered.set()
+        try:
+            update(change)
+            both_entered.wait(1.0)
+        finally:
+            with count:
+                inside -= 1
+
+    session.state.update = held_update  # type: ignore[method-assign]
+    barrier = threading.Barrier(2, timeout=30)
+
+    def write(which: str) -> int:
+        barrier.wait()
+        if which == "A":
+            return client.put("/api/v1/dataset/clonal", json=A).status_code
+        if second == "put":
+            return client.put("/api/v1/dataset/clonal", json=B).status_code
+        return client.delete("/api/v1/dataset/clonal").status_code
+
+    with ThreadPoolExecutor(2) as pool:
+        codes = list(pool.map(write, ["A", "B"]))
+    assert codes == [200, 200 if second == "put" else 204]
+    assert not overlapped, "two settings writes ran at once"
+    memory = session.clonal_settings()
+    on_disk = settings_from_state(session.state.read())
+    assert memory == on_disk
+    assert session.view.clonal_columns == (settings_columns(memory) if memory else ())
+    clonal = _clonal(client, "r1")
+    if memory is None:
+        assert clonal["status"] == "not_configured"
+    else:
+        assert clonal["status"] == "pending" and clonal["settings"] == memory.model_dump(mode="json")
+        key = f"score_clonal:r1:{trust_hash(memory)}"
+        assert [j.state for j in _scoring(session) if j.key == key] == ["queued"]
