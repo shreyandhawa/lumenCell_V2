@@ -270,18 +270,25 @@ def test_a_method_needs_two_lineages_to_be_scored(
     assert (row.status == "single_lineage") == (n_lineages == 1)
 
 
+@pytest.mark.parametrize(
+    ("topology", "n_method"), [("bifurcation", 2), ("trifurcation", 2), ("trifurcation", 3)]
+)
 def test_oracle_and_method_get_their_own_k_and_the_oracle_cells(
-    monkeypatch: pytest.MonkeyPatch, real_result: ClonalResult, truth3: Truth
+    monkeypatch: pytest.MonkeyPatch, real_result: ClonalResult, truth3: Truth, topology: str, n_method: int
 ) -> None:
-    assert len(truth3.names) == 3
+    truth = truth3 if topology == "trifurcation" else _clone_truth()
+    n_truth = len(truth.names)
+    assert n_truth == (3 if topology == "trifurcation" else 2)
     spy = _scripted(monkeypatch, real_result, {"eta": 0.6, "p": 0.001}, {"status": "ok"}, {"status": "ok"})
-    _run_row(truth3, n_lineages=2)
-    cells = truth3.exclusive() >= 0
-    (oracle_args, oracle_kw), (method_args, method_kw), _ = spy.calls
-    assert oracle_args[5] == 3 and method_args[5] == 2
-    assert oracle_args[0].shape[0] == 3 and method_args[0].shape[0] == 2
+    _run_row(truth, n_lineages=n_method)
+    cells = truth.exclusive() >= 0
+    assert len(spy.calls) == 3
+    (oracle_args, oracle_kw), (method_args, method_kw), (m3_args, m3_kw) = spy.calls
+    assert oracle_args[5] == n_truth and oracle_args[0].shape[0] == n_truth
+    for args, kw in ((method_args, method_kw), (m3_args, m3_kw)):
+        assert args[5] == n_method and args[0].shape[0] == n_method
+        assert np.array_equal(kw["oracle_cells"], cells)
     assert np.array_equal(oracle_kw["oracle_cells"], cells)
-    assert np.array_equal(method_kw["oracle_cells"], cells)
 
 
 def test_the_helper_passes_k_and_the_scoring_inputs_through(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -348,7 +355,7 @@ def test_inference_is_told_the_clone_columns_only_when_the_layer_was_applied(
     assert seen == [expected]
 
 
-def test_a_real_case_has_no_clone_truth(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_a_real_case_row_is_not_applicable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     truth = _clone_truth()
     spec = SimpleNamespace(root_spec="r", label_key=None)
     monkeypatch.setattr("lumencell.bench.datasets.DATASETS", {"d": spec})
