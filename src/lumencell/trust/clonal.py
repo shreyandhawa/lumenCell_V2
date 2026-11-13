@@ -57,6 +57,7 @@ def check_settings(obs: pd.DataFrame, settings: ClonalSettings) -> list[str]:
         if key == settings.clone_key or key == settings.donor_key:
             problems.append(f"strata column {key!r} is also the clone or donor column")
 
+    clone_ok = False
     if settings.clone_key in obs.columns:
         clone = obs[settings.clone_key]
         if not _is_label_column(clone):
@@ -66,6 +67,9 @@ def check_settings(obs: pd.DataFrame, settings: ClonalSettings) -> list[str]:
             )
         elif bool(is_missing(_present(clone)).all()):
             problems.append(f"the clone column {settings.clone_key!r} has no clone label in any cell")
+        else:
+            clone_ok = True
+    donors_ok = settings.donor_key is None
     if settings.donor_key is not None and settings.donor_key in obs.columns:
         donors = _present(obs[settings.donor_key])
         n = len({str(v) for v in donors[~is_missing(donors)]})
@@ -74,6 +78,12 @@ def check_settings(obs: pd.DataFrame, settings: ClonalSettings) -> list[str]:
                 f"the donor column {settings.donor_key!r} has {n} distinct values; "
                 f"it needs between 1 and {MAX_DONORS}"
             )
+        else:
+            donors_ok = True
+    if clone_ok and donors_ok and settings.donor_key is not None:
+        labelled = ~is_missing(_present(obs[settings.clone_key]))
+        if not bool((labelled & ~is_missing(_present(obs[settings.donor_key]))).any()):
+            problems.append("no cell has both a clone label and a donor")
     return problems
 
 
@@ -85,8 +95,11 @@ def settings_summary(obs: pd.DataFrame, settings: ClonalSettings) -> ClonalSumma
     sizes = np.bincount(codes.clone[codes.clone >= 0])
     present_donors = np.unique(codes.donor[codes.donor >= 0])
 
-    def pct(q: float) -> float:
-        return float(np.percentile(sizes, q)) if sizes.size else 0.0
+    if not sizes.size:
+        # check_settings refuses settings with no labelled cell that has a donor.
+        raise ValueError(
+            "no cell has both a clone label and a donor; check_settings should have refused this"
+        )
 
     return ClonalSummary(
         settings=settings,
@@ -94,10 +107,10 @@ def settings_summary(obs: pd.DataFrame, settings: ClonalSettings) -> ClonalSumma
         n_clones=int(sizes.size),
         n_clones_2plus=int((sizes >= 2).sum()),
         n_donors=int(present_donors.size),
-        size_median=float(np.median(sizes)) if sizes.size else 0.0,
-        size_p90=pct(90),
-        size_p99=pct(99),
-        size_max=int(sizes.max()) if sizes.size else 0,
+        size_median=float(np.median(sizes)),
+        size_p90=float(np.percentile(sizes, 90)),
+        size_p99=float(np.percentile(sizes, 99)),
+        size_max=int(sizes.max()),
     )
 
 

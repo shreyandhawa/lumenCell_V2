@@ -3,6 +3,7 @@
 The job manager is never started: a run is only ever created, never executed.
 """
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,14 @@ def prepared(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
     )
     adata.obs["cat_donor"] = pd.Categorical(
         adata.obs["donor"].astype(object), categories=["d0", "d1", "d2", "unused_a", "unused_b"]
+    )
+    # Label-key detection looks for these names; the second is the next candidate once the first is
+    # a donor column.
+    adata.obs["cell_type"] = adata.obs["donor"].astype(str).astype("category")
+    adata.obs["celltype"] = adata.obs["true_segment"].astype(str).astype("category")
+    # A donor only where there is no clone label: every labelled cell lacks a donor.
+    adata.obs["donor_of_unlabelled"] = pd.Categorical(
+        adata.obs["donor"].astype(object).where(adata.obs["clone_id"].isna())
     )
     adata.write_h5ad(path)
     PrepCache(load(path), base / "cache").run(PrepParams())
@@ -230,3 +239,175 @@ def test_run_id_unchanged_without_columns() -> None:
     assert run_id(*args) == run_id(*args, clonal_columns=())
     assert run_id(*args, clonal_columns=("b", "a")) == run_id(*args, clonal_columns=("a", "b"))
     assert run_id(*args, clonal_columns=("a",)) != run_id(*args)
+
+
+# ---- fix round 1 -----------------------------------------------------------------------
+
+
+def _state(session: Session) -> dict[str, Any]:
+    return session.state.read()
+
+
+@pytest.mark.parametrize(
+    "body, word",
+    [
+        ({**SETTINGS, "strata_keys": ["true_segment", "true_segment"]}, "distinct"),
+        ({**SETTINGS, "strata_keys": ["donor"]}, "strata"),
+        ({"clone_key": "clone_id", "donor_key": "donor_of_unlabelled"}, "no cell has both"),
+    ],
+)
+def test_more_invalid_settings(client: TestClient, body: dict[str, Any], word: str) -> None:
+    res = _put(client, body)
+    assert res.status_code == 422
+    error = res.json()["error"]
+    assert error["code"] == "invalid_clonal_settings"
+    assert any(word in p for p in error["detail"]["problems"]), error["detail"]
+
+
+def test_single_donor_through_the_api(client: TestClient, session: Session) -> None:
+    res = _put(client, {"clone_key": "clone_id", "single_donor": True})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["n_donors"] == 1
+    labelled = session.ds.obs["clone_id"].dropna().astype(str)
+    assert body["n_clones"] == labelled.nunique()
+    assert body["n_cells_labelled"] == len(labelled)
+    assert session.view.clonal_columns == ("clone_id",)
+    assert "donor" in session.view.ctx().obs
+    assert client.get("/api/v1/dataset").json()["clonal"]["single_donor"] is True
+
+
+@pytest.mark.parametrize("key", ["cat_clone", "donor"])
+def test_a_saved_root_on_the_clone_or_donor_column_is_refused(
+    client: TestClient, session: Session, key: str
+) -> None:
+    value = "c0" if key != "donor" else "d0"
+    root = {"kind": "cluster", "key": key, "value": value}
+    assert client.put("/api/v1/root", json={"root": root}).status_code == 200
+    body = {"clone_key": "cat_clone", "donor_key": "donor"}
+    res = _put(client, body)
+    assert res.status_code == 422 and res.json()["error"]["code"] == "scoring_only_column"
+    assert client.get("/api/v1/dataset").json()["clonal"] is None
+    assert "clonal" not in _state(session)
+    assert session.view.clonal_columns == ()
+
+
+def test_a_root_on_an_unrelated_or_strata_column_is_accepted(client: TestClient) -> None:
+    assert client.put("/api/v1/root", json={"root": TRUNK}).status_code == 200
+    assert _put(client, SETTINGS).status_code == 200
+    assert _put(client, {**SETTINGS, "strata_keys": ["true_segment"]}).status_code == 200
+
+
+def test_refusals_leave_the_saved_state_alone(
+    client: TestClient, session: Session, prepared: tuple[Path, Path], jobs: JobManager, tmp_path: Path
+) -> None:
+    assert _put(client, {"clone_key": "nope", "donor_key": "donor"}).status_code == 422
+    assert "clonal" not in _state(session)
+    again = _session(prepared, jobs, tmp_path / "state")
+    assert again.clonal_settings() is None
+
+
+def test_an_unparseable_saved_root_does_not_block_the_settings(client: TestClient, session: Session) -> None:
+    session.state.update(lambda s: s.update(root="garbage"))
+    assert _put(client, SETTINGS).status_code == 200
+
+
+def test_label_key_is_detected_again_after_set_and_clear(client: TestClient, session: Session) -> None:
+    assert session.view.label_key == "cell_type"
+    assert _put(client, {"clone_key": "clone_id", "donor_key": "cell_type"}).status_code == 200
+    assert session.view.label_key == "celltype"
+    assert client.get("/api/v1/dataset").json()["label_key"] == "celltype"
+    assert client.delete("/api/v1/dataset/clonal").status_code == 204
+    assert session.view.label_key == "cell_type"
+
+
+def test_delete_puts_the_donor_column_back_in_the_context(client: TestClient, session: Session) -> None:
+    assert _put(client, SETTINGS).status_code == 200
+    assert "donor" not in session.view.ctx().obs
+    assert client.delete("/api/v1/dataset/clonal").status_code == 204
+    ctx = session.view.ctx()
+    assert "donor" in ctx.obs and "donor" not in ctx.scoring_only
+
+
+def test_delete_is_remembered_by_a_new_session(
+    client: TestClient, session: Session, prepared: tuple[Path, Path], jobs: JobManager, tmp_path: Path
+) -> None:
+    assert _put(client, SETTINGS).status_code == 200
+    assert client.delete("/api/v1/dataset/clonal").status_code == 204
+    assert "clonal" not in _state(session)
+    again = _session(prepared, jobs, tmp_path / "state")
+    assert again.clonal_settings() is None and again.view.clonal_columns == ()
+
+
+def _write_state(session: Session, state: dict[str, Any]) -> None:
+    session.state.path.parent.mkdir(parents=True, exist_ok=True)
+    session.state.path.write_text(json.dumps(state), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "saved",
+    [
+        {"clonal": {"clone_key": "clone_id"}},  # neither donor_key nor single_donor
+        {"clonal": "x"},
+    ],
+)
+def test_an_invalid_saved_value_is_ignored_with_one_line(
+    session: Session,
+    prepared: tuple[Path, Path],
+    jobs: JobManager,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    saved: dict[str, Any],
+) -> None:
+    _write_state(session, saved)
+    capsys.readouterr()
+    again = _session(prepared, jobs, tmp_path / "state")
+    assert again.clonal_settings() is None and again.view.clonal_columns == ()
+    lines = [x for x in capsys.readouterr().err.splitlines() if "ignoring the saved clonal settings" in x]
+    assert len(lines) == 1
+
+
+@pytest.mark.parametrize("saved", [{}, {"clonal": None}])
+def test_a_missing_saved_value_is_silent(
+    session: Session,
+    prepared: tuple[Path, Path],
+    jobs: JobManager,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    saved: dict[str, Any],
+) -> None:
+    _write_state(session, saved)
+    capsys.readouterr()
+    again = _session(prepared, jobs, tmp_path / "state")
+    assert again.clonal_settings() is None
+    assert capsys.readouterr().err == ""
+
+
+def test_saved_settings_that_fail_the_check_are_ignored(
+    session: Session,
+    prepared: tuple[Path, Path],
+    jobs: JobManager,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_state(session, {"clonal": {"clone_key": "not_a_column", "donor_key": "donor"}})
+    capsys.readouterr()
+    again = _session(prepared, jobs, tmp_path / "state")
+    assert again.clonal_settings() is None and again.view.clonal_columns == ()
+    assert "ignoring the saved clonal settings" in capsys.readouterr().err
+    assert again.dataset_info().clonal is None
+
+
+def test_run_id_hashes_every_column_in_sorted_order() -> None:
+    args = ("paga_dpt", {"a": 1}, "cluster:k=v", None, "prepkey")
+    assert run_id(*args, ("a", "b")) != run_id(*args, ("a", "c"))
+    assert run_id(*args, ("a", "b")) != run_id(*args, ("a",))
+    assert run_id(*args, ("b", "a")) == run_id(*args, ("a", "b"))
+
+
+def test_run_id_without_columns_is_the_id_from_before_this_task() -> None:
+    # Computed at 4a8cd8a, before run_id took clonal columns. It also depends on the store
+    # version and the package version: if either changes, this literal changes with it.
+    args = ("paga_dpt", {"a": 1}, "cluster:k=v", None, "prepkey")
+    assert run_id(*args) == "443cbd44c784478d"
+    assert run_id(*args, ()) == "443cbd44c784478d"
