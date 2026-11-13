@@ -118,7 +118,7 @@ def handle_score_clonal(payload: dict[str, Any], emit: Emit) -> str | None:
     from lumencell.api.models import ClonalSettings
     from lumencell.engine.store import STORE_VERSION, RunStore
     from lumencell.prep.cache import PrepCache, dataset_dir, prep_key
-    from lumencell.trust.clonal import agreement_for_run, not_scored
+    from lumencell.trust.clonal import agreement_for_run, not_scored, trust_name
 
     missing = [k for k in SCORE_CLONAL_KEYS if k not in payload]
     if missing:
@@ -127,6 +127,12 @@ def handle_score_clonal(payload: dict[str, Any], emit: Emit) -> str | None:
     params = payload["prep_params"]
     settings = ClonalSettings.model_validate(payload["settings"])
     rid: str = payload["run_id"]
+    expected = trust_name(settings)
+    if payload["trust_name"] != expected:
+        raise ValueError(
+            f"the score_clonal job's trust_name {payload['trust_name']!r} is not the one for its "
+            f"settings ({expected!r}); nothing was written"
+        )
     store = RunStore(dataset_dir(ds.fingerprint, _cache_root(payload)))
     gone = f"run {rid} was replaced or is incomplete; not scored"
     emit("load", 0, 2)
@@ -136,14 +142,17 @@ def handle_score_clonal(payload: dict[str, Any], emit: Emit) -> str | None:
         graph = store.graph(rid)
         current = graph.get("store_version") == STORE_VERSION
         same_prep = graph.get("prep_key") == prep_key(ds, params)
-        result = store.load(rid) if current and same_prep else None
     except FileNotFoundError:
         raise RuntimeError(gone) from None
     if not current:
         agreement = not_scored("refused", settings, "made before inference isolation; run it again")
-    elif result is None:
+    elif not same_prep:
         agreement = not_scored("failed", settings, "the run was prepared with other settings")
     else:
+        try:
+            result = store.load(rid)
+        except FileNotFoundError:
+            raise RuntimeError(gone) from None
         prep = PrepCache(ds, _cache_root(payload)).run(params)
         emit("score", 1, 2)
         agreement = agreement_for_run(
@@ -155,7 +164,7 @@ def handle_score_clonal(payload: dict[str, Any], emit: Emit) -> str | None:
             graph["obs_keys"],
         )
     try:
-        store.write_trust(rid, payload["trust_name"], agreement.model_dump(mode="json"))
+        store.write_trust(rid, expected, agreement.model_dump(mode="json"))
     except FileNotFoundError:
         raise RuntimeError(gone) from None
     return rid

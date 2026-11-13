@@ -218,12 +218,18 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
   metric version and a params dict built from `trust/constants.py`, never hand-typed (F20).
 - `api/models.py`: `NullComparison`, `ClonalScore` (with its own `status`, F27), `LineageCoupling`,
   `ClonalStatus`, `ClonalAgreement`, `RunTrust`. No route uses them yet; `make contract` has no diff.
-- Notes: `COUPLING_NOTE` on every scored result (not on `refused` or `single_lineage`, which carry
-  their one reason); the missing-donor count; the too-few-clones count. None claims direction.
+- Notes: `COUPLING_NOTE` only on an agreement that carries a coupling (controller ruling, fix
+  round 1); a reason note for `refused`, `failed` and both `single_lineage` cases (one lineage, or
+  scored clones in one lineage); the missing-donor count; the too-few-clones count from the primary.
+  None claims direction. Non-finite values (NaN, infinity) map to null; `p_delta` is null whenever
+  `delta_eta` is.
+- Settings that `check_settings` rejects against the file give a `failed` agreement naming the
+  problems, never a bare `KeyError`.
 - `handle_score_clonal`: a payload missing a key fails naming it (`{}` names `'path'`). A missing or
   incomplete run, at read or at `write_trust`, fails the job with
   `run <rid> was replaced or is incomplete; not scored`; nothing is written elsewhere. Store version
-  other than 2 writes `refused`; another prep key writes `failed`.
+  other than 2 writes `refused`; another prep key writes `failed`. A payload `trust_name` that is
+  not `trust_name(settings)` fails the job and writes nothing.
 - `JobKind` in the API still lacks `score_clonal`; Task 14 adds it with the route.
 
 ## Task 12 decisions

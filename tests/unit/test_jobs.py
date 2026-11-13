@@ -443,12 +443,12 @@ def _clonal_file(tmp_path: Path, n_cells: int = 500, n_genes: int = 300) -> Path
     return path
 
 
-def _score_payload(base: dict[str, object], rid: str) -> dict[str, object]:
+def _score_payload(base: dict[str, object], rid: str, settings: ClonalSettings = CLONAL) -> dict[str, object]:
     return {
         **base,
         "run_id": rid,
-        "settings": CLONAL.model_dump(mode="json"),
-        "trust_name": trust_name(CLONAL),
+        "settings": settings.model_dump(mode="json"),
+        "trust_name": trust_name(settings),
     }
 
 
@@ -477,9 +477,14 @@ def test_score_clonal_job_writes_the_trust_file(jobs: JobManager, tmp_path: Path
     assert trust["primary"]["mode"] == "own_cells"
 
 
-def test_an_empty_score_clonal_payload_names_the_missing_key() -> None:
-    with pytest.raises(ValueError, match="'path'"):
+def test_an_empty_score_clonal_payload_names_every_missing_key() -> None:
+    with pytest.raises(ValueError) as e:
         HANDLERS["score_clonal"]({}, lambda *_: None)
+    for key in ("path", "prep_params", "run_id", "settings", "trust_name"):
+        assert repr(key) in str(e.value)
+    partial = {"path": "x", "prep_params": PrepParams(), "run_id": "r", "settings": {}}
+    with pytest.raises(ValueError, match=r"payload has no 'trust_name'$"):
+        HANDLERS["score_clonal"](partial, lambda *_: None)
 
 
 @pytest.fixture
@@ -540,3 +545,73 @@ def test_a_run_on_another_prep_fails(prepared_run: tuple[dict[str, object], RunS
     assert trust is not None and trust["status"] == "failed"
     assert trust["notes"] == ["the run was prepared with other settings"]
     assert trust["primary"] is None
+
+
+def test_a_trust_name_that_does_not_match_the_settings_is_refused(
+    prepared_run: tuple[dict[str, object], RunStore],
+) -> None:
+    base, store = prepared_run
+    other = ClonalSettings(clone_key="clone_id", single_donor=True)
+    payload = {**_score_payload(base, "r4"), "trust_name": trust_name(other)}
+    with pytest.raises(ValueError, match="is not the one for its settings"):
+        HANDLERS["score_clonal"](payload, lambda *_: None)
+    assert not (store.path("r4") / "trust").exists()
+
+
+def test_the_handler_scores_with_the_runs_own_inputs(
+    prepared_run: tuple[dict[str, object], RunStore],
+) -> None:
+    from lumencell.trust.clonal import agreement_for_run
+
+    base, store = prepared_run
+    settings = ClonalSettings(clone_key="clone_id", donor_key="donor", strata_keys=["true_segment"])
+    calls: list[tuple[str, int, int]] = []
+    assert HANDLERS["score_clonal"](_score_payload(base, "r4", settings), lambda *a: calls.append(a)) == "r4"
+    assert calls == [("load", 0, 2), ("score", 1, 2)]
+    ds = load(Path(str(base["path"])))
+    pp = PrepParams()
+    pca = PrepCache(ds, Path(str(base["cache_root"]))).run(pp).artifacts["pca"]
+    expected = agreement_for_run(
+        store.load("r4"), ds.obs, settings, pca, pp.neighbors_pcs, store.graph("r4")["obs_keys"]
+    )
+    trust = store.read_trust("r4", trust_name(settings))
+    assert trust == expected.model_dump(mode="json")
+    assert trust["settings"]["strata_keys"] == ["true_segment"]
+    assert [n["null"] for n in trust["primary"]["nulls"]] == ["N1", "N2", "N3"]
+
+
+def test_the_handler_checks_the_runs_obs_keys(prepared_run: tuple[dict[str, object], RunStore]) -> None:
+    base, store = prepared_run
+    store.update_graph("r4", {**store.graph("r4"), "obs_keys": ["clone_id"]})
+    HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None)
+    trust = store.read_trust("r4", trust_name(CLONAL))
+    assert trust is not None and trust["status"] == "refused"
+    assert "'clone_id'" in trust["notes"][0]
+
+
+def test_a_stale_run_emits_only_the_load_step(prepared_run: tuple[dict[str, object], RunStore]) -> None:
+    base, store = prepared_run
+    store.update_graph("r4", {**store.graph("r4"), "store_version": 1})
+    calls: list[tuple[str, int, int]] = []
+    HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *a: calls.append(a))
+    assert calls == [("load", 0, 2)]
+
+
+def test_an_incomplete_stale_run_is_not_scored(prepared_run: tuple[dict[str, object], RunStore]) -> None:
+    base, store = prepared_run
+    store.update_graph("r4", {**store.graph("r4"), "store_version": 1})
+    (store.path("r4") / ".complete").unlink()
+    with pytest.raises(RuntimeError, match=r"^run r4 was replaced or is incomplete; not scored$"):
+        HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None)
+    assert not (store.path("r4") / "trust").exists()
+
+
+def test_settings_that_do_not_fit_the_file_write_a_failed_agreement(
+    prepared_run: tuple[dict[str, object], RunStore],
+) -> None:
+    base, store = prepared_run
+    settings = ClonalSettings(clone_key="no_such_column", donor_key="donor")
+    assert HANDLERS["score_clonal"](_score_payload(base, "r4", settings), lambda *_: None) == "r4"
+    trust = store.read_trust("r4", trust_name(settings))
+    assert trust is not None and trust["status"] == "failed" and trust["primary"] is None
+    assert "there is no obs column named 'no_such_column'" in trust["notes"][0]

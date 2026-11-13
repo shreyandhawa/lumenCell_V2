@@ -188,10 +188,12 @@ def trust_name(settings: ClonalSettings) -> str:
 
 
 def _num(x: float) -> float | None:
-    return None if math.isnan(x) else float(x)
+    """A finite value as a float; NaN and infinity become ``None``, so the file stays strict JSON."""
+    return float(x) if math.isfinite(x) else None
 
 
 def to_api_score(r: ClonalResult) -> ClonalScore:
+    delta_eta = _num(r.delta_eta)
     return ClonalScore(
         status=r.status,
         mode=r.mode,
@@ -219,8 +221,9 @@ def to_api_score(r: ClonalResult) -> ClonalScore:
         eta=_num(r.eta),
         p=_num(r.p),
         eta_base=_num(r.eta_base),
-        delta_eta=_num(r.delta_eta),
-        p_delta=_num(r.p_delta),
+        delta_eta=delta_eta,
+        # A p for an undefined difference would be a stand-in number.
+        p_delta=None if delta_eta is None else _num(r.p_delta),
         clone_weighted_purity=_num(r.clone_weighted_purity),
         purity_without_largest=_num(r.purity_without_largest),
     )
@@ -256,9 +259,15 @@ def agreement_for_run(
     """Own-cells clonal agreement of ``result`` with the clones named by ``settings``.
 
     ``obs_keys`` are the obs columns that steered the run; a run steered by a scoring-only column
-    is refused. Scores at m = 2 (primary) and m = 3 (sensitivity), each against a k-means baseline
+    is refused, and settings that do not fit ``obs`` (``check_settings``) fail with the problems in
+    the note. Scores at m = 2 (primary) and m = 3 (sensitivity), each against a k-means baseline
     with k = the number of lineages, on ``baseline_space(pca, neighbors_pcs)``.
     """
+    problems = check_settings(obs, settings)
+    if problems:
+        return not_scored(
+            "failed", settings, f"The clonal settings do not fit this file: {'; '.join(problems)}."
+        )
     scoring_only = scoring_only_columns(obs.columns, settings_columns(settings))
     steered = [k for k in dict.fromkeys(obs_keys) if k in scoring_only]
     if steered:
@@ -293,7 +302,11 @@ def agreement_for_run(
         )
 
     primary, m3 = score(MIN_CLONE_SIZE), score(SENSITIVITY_CLONE_SIZE)
-    notes = [COUPLING_NOTE]
+    coupling = [to_api_coupling(c) for c in primary.coupling]
+    # The coupling note only goes with a coupling.
+    notes = [COUPLING_NOTE] if coupling else []
+    if primary.status == "single_lineage":
+        notes.append("The scored clones fall in only one lineage; clones are scored over two or more.")
     if codes.n_missing_donor > 0:
         notes.append(f"{codes.n_missing_donor} cells with a receptor have no donor and were not scored.")
     if primary.status == "too_few_clones":
@@ -306,6 +319,6 @@ def agreement_for_run(
         settings=settings,
         primary=to_api_score(primary),
         sensitivity_m3=to_api_score(m3),
-        coupling=[to_api_coupling(c) for c in primary.coupling],
+        coupling=coupling,
         notes=notes,
     )
