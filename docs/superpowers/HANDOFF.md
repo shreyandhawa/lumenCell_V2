@@ -23,6 +23,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   stacked on `pivot/12-clonal-settings`.
   Task 12 (two job priorities, done-callbacks) is on branch `pivot/14-job-priorities`,
   stacked on `pivot/13-run-trust-store`.
+  Task 13 (the `score_clonal` worker job and the clonal agreement models) is on branch
+  `pivot/15-score-clonal-job`, stacked on `pivot/14-job-priorities`.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -208,6 +210,22 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
 - **`terminal_share: NaN`** is on every synthetic baseline row. Expected: the key was added to
   `runner.py` in 0621edc (real datasets); main's baseline predates it.
 
+## Task 13 decisions
+
+- `trust/clonal.py`: `agreement_for_run` (own-cells mode, m = 2 primary and m = 3 sensitivity, via
+  `score_with_baseline`), `to_api_score` and `to_api_coupling` (NaN to `None`), `not_scored`, and
+  `trust_hash`/`trust_name` (`clonal-<16 hex>`). The hash covers the settings (strata sorted), the
+  metric version and a params dict built from `trust/constants.py`, never hand-typed (F20).
+- `api/models.py`: `NullComparison`, `ClonalScore` (with its own `status`, F27), `LineageCoupling`,
+  `ClonalStatus`, `ClonalAgreement`, `RunTrust`. No route uses them yet; `make contract` has no diff.
+- Notes: `COUPLING_NOTE` on every scored result (not on `refused` or `single_lineage`, which carry
+  their one reason); the missing-donor count; the too-few-clones count. None claims direction.
+- `handle_score_clonal`: a payload missing a key fails naming it (`{}` names `'path'`). A missing or
+  incomplete run, at read or at `write_trust`, fails the job with
+  `run <rid> was replaced or is incomplete; not scored`; nothing is written elsewhere. Store version
+  other than 2 writes `refused`; another prep key writes `failed`.
+- `JobKind` in the API still lacks `score_clonal`; Task 14 adds it with the route.
+
 ## Task 12 decisions
 
 - `BACKGROUND_KINDS` (`score_clonal`, `stability`) queue in `_background`; every other kind goes to
@@ -217,7 +235,7 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
   released. Callbacks must be quick and may only submit jobs: while one runs the listener reads no
   worker events, so it delays the next dispatch. An exception is printed to stderr with its traceback.
 - Callbacks are never removed, so a superseded scoring job still runs (ruling F21, parked).
-- `score_clonal` has no worker handler until Task 13; submitting it now fails the job.
+- `score_clonal` had no worker handler until Task 13.
 
 ## Task 11 decisions
 
@@ -434,7 +452,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/11-bench-real-rerun` | #15 | phase 1 Task 9: real re-run, stacked on #14 |
 | `pivot/12-clonal-settings` | #16 | phase 1 Task 10: clonal settings, stacked on #15 |
 | `pivot/13-run-trust-store` | #17 | phase 1 Task 11: run trust store, stacked on #16 |
-| `pivot/14-job-priorities` | (this PR) | phase 1 Task 12: job priorities and done-callbacks, stacked on #17 |
+| `pivot/14-job-priorities` | #18 | phase 1 Task 12: job priorities and done-callbacks, stacked on #17 |
+| `pivot/15-score-clonal-job` | (this PR) | phase 1 Task 13: score_clonal job, stacked on #18 |
 
 ## Verify the current state
 

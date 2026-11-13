@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from lumencell.api.models import ClonalSettings
 from lumencell.bench.synth import generate
+from lumencell.bench.synth_clones import DEFAULT_LAYER, add_clones
 from lumencell.data.loader import load
 from lumencell.engine.roots import RootError
 from lumencell.engine.store import RunStore
@@ -15,6 +17,7 @@ from lumencell.jobs.manager import JobManager
 from lumencell.jobs.worker import HANDLERS
 from lumencell.prep.cache import PrepCache, dataset_dir, prep_key
 from lumencell.prep.stages import STAGES, PrepParams
+from lumencell.trust.clonal import trust_name
 
 
 @pytest.fixture
@@ -270,7 +273,7 @@ def test_foreground_jobs_overtake_queued_background_jobs(jobs: JobManager) -> No
     bg = jobs.submit("score_clonal", "bg", {})
     fg = jobs.submit("sleep", "fg", {"steps": 1, "seconds": 0.01})
     for job in (block, bg, fg):
-        jobs.wait(job.job_id, timeout=60)  # score_clonal has no handler yet, so it fails
+        jobs.wait(job.job_id, timeout=60)  # an empty score_clonal payload fails at once
     bg, fg = jobs.get(bg.job_id), jobs.get(fg.job_id)  # type: ignore[assignment]
     assert fg.started is not None and bg.started is not None and fg.started < bg.started  # type: ignore[union-attr]
 
@@ -428,3 +431,112 @@ def test_a_callback_that_raises_systemexit_does_not_kill_the_listener(
     assert after.wait(10)
     err = capsys.readouterr().err
     assert f"callback after job {first.job_id}" in err and "SystemExit" in err
+
+
+CLONAL = ClonalSettings(clone_key="clone_id", donor_key="donor")
+
+
+def _clonal_file(tmp_path: Path, n_cells: int = 500, n_genes: int = 300) -> Path:
+    path = tmp_path / "d.h5ad"
+    adata = generate("bifurcation", "realistic", n_cells=n_cells, n_genes=n_genes, seed=0)
+    add_clones(adata, DEFAULT_LAYER, seed=0).write_h5ad(path)
+    return path
+
+
+def _score_payload(base: dict[str, object], rid: str) -> dict[str, object]:
+    return {
+        **base,
+        "run_id": rid,
+        "settings": CLONAL.model_dump(mode="json"),
+        "trust_name": trust_name(CLONAL),
+    }
+
+
+def test_score_clonal_job_writes_the_trust_file(jobs: JobManager, tmp_path: Path) -> None:
+    path = _clonal_file(tmp_path)
+    cache_root = tmp_path / "cache"
+    base = {"path": str(path), "prep_params": PrepParams(), "cache_root": str(cache_root)}
+    assert jobs.wait(jobs.submit("prepare", "prep", base).job_id, timeout=120).state == "done"
+    infer = {
+        **base,
+        "method": "paga_dpt",
+        "root": "cluster:true_label=trunk_early",
+        "run_id": "r1",
+        "clonal_columns": ["clone_id", "donor"],
+    }
+    done = jobs.wait(jobs.submit("infer", "run", infer).job_id, timeout=120)
+    assert done.state == "done", done.error
+
+    scored = jobs.wait(jobs.submit("score_clonal", "r1", _score_payload(base, "r1")).job_id, timeout=300)
+    assert scored.state == "done", scored.error
+    assert scored.result_id == "r1"
+    trust = RunStore(dataset_dir(load(path).fingerprint, cache_root)).read_trust("r1", trust_name(CLONAL))
+    assert trust is not None
+    assert trust["status"] in ("ok", "too_few_clones")
+    assert trust["settings"] == CLONAL.model_dump(mode="json")
+    assert trust["primary"]["mode"] == "own_cells"
+
+
+def test_an_empty_score_clonal_payload_names_the_missing_key() -> None:
+    with pytest.raises(ValueError, match="'path'"):
+        HANDLERS["score_clonal"]({}, lambda *_: None)
+
+
+@pytest.fixture
+def prepared_run(tmp_path: Path) -> tuple[dict[str, object], RunStore]:
+    """A run computed in-process, with clone and donor columns, ready to score."""
+    path = _clonal_file(tmp_path, n_cells=400, n_genes=200)
+    base = {"path": str(path), "prep_params": PrepParams(), "cache_root": str(tmp_path / "cache")}
+    infer = {
+        **base,
+        "method": "paga_dpt",
+        "root": "cluster:true_label=trunk_early",
+        "run_id": "r4",
+        "clonal_columns": ["clone_id", "donor"],
+    }
+    HANDLERS["infer"](infer, lambda *_: None)
+    return base, RunStore(dataset_dir(load(path).fingerprint, tmp_path / "cache"))
+
+
+def test_a_run_replaced_before_the_write_is_not_scored(
+    prepared_run: tuple[dict[str, object], RunStore], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base, store = prepared_run
+
+    def replaced(*_: object) -> None:
+        raise FileNotFoundError("no complete run 'r4'")
+
+    monkeypatch.setattr(RunStore, "write_trust", replaced)
+    with pytest.raises(RuntimeError, match=r"^run r4 was replaced or is incomplete; not scored$"):
+        HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None)
+    assert not (store.path("r4") / "trust").exists()
+
+
+def test_a_missing_or_incomplete_run_is_not_scored(prepared_run: tuple[dict[str, object], RunStore]) -> None:
+    base, store = prepared_run
+    with pytest.raises(RuntimeError, match=r"^run nope was replaced or is incomplete; not scored$"):
+        HANDLERS["score_clonal"](_score_payload(base, "nope"), lambda *_: None)
+    (store.path("r4") / ".complete").unlink()
+    with pytest.raises(RuntimeError, match=r"^run r4 was replaced or is incomplete; not scored$"):
+        HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None)
+    assert not (store.path("r4") / "trust").exists()
+
+
+def test_a_run_from_before_isolation_is_refused(prepared_run: tuple[dict[str, object], RunStore]) -> None:
+    base, store = prepared_run
+    graph = store.graph("r4")
+    store.update_graph("r4", {**graph, "store_version": 1})
+    assert HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None) == "r4"
+    trust = store.read_trust("r4", trust_name(CLONAL))
+    assert trust is not None and trust["status"] == "refused"
+    assert trust["notes"] == ["made before inference isolation; run it again"]
+
+
+def test_a_run_on_another_prep_fails(prepared_run: tuple[dict[str, object], RunStore]) -> None:
+    base, store = prepared_run
+    store.update_graph("r4", {**store.graph("r4"), "prep_key": "0" * 16})
+    assert HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None) == "r4"
+    trust = store.read_trust("r4", trust_name(CLONAL))
+    assert trust is not None and trust["status"] == "failed"
+    assert trust["notes"] == ["the run was prepared with other settings"]
+    assert trust["primary"] is None

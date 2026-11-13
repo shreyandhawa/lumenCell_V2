@@ -1,12 +1,20 @@
-"""Dataset-level clonal settings: what a user may name, whether it is usable, and what it holds.
+"""Clonal settings for a dataset, and the clonal agreement of a run.
 
 The settings only say which obs columns carry clone labels, donors and strata. Candidates are
 suggested by name and never applied; the user names the columns.
+
+The agreement (``agreement_for_run``) scores a finished run's lineages against the clones in
+own-cells mode and maps the result to the API models, NaN to ``None``. The score_clonal worker job
+stores it as a per-run trust file named by ``trust_name``, a hash: column names never reach a path.
+Clone sharing says two lineages are related, never which came first.
 """
 
+import hashlib
+import json
+import math
 import re
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 import numpy as np
@@ -14,9 +22,29 @@ import numpy.typing as npt
 import pandas as pd
 from pydantic import ValidationError
 
-from lumencell.api.models import ClonalSettings, ClonalSummary
+from lumencell.api.models import (
+    ClonalAgreement,
+    ClonalScore,
+    ClonalSettings,
+    ClonalStatus,
+    ClonalSummary,
+    LineageCoupling,
+    NullComparison,
+)
+from lumencell.clonal.isolation import scoring_only_columns
 from lumencell.clonal.labels import encode_clones, is_missing
-from lumencell.trust.constants import MAX_DONORS
+from lumencell.clonal.scores import ClonalResult, Coupling, score_with_baseline
+from lumencell.engine.schema import TrajectoryResult
+from lumencell.trust.constants import (
+    CLONAL_METRIC_VERSION,
+    CLONAL_SEED,
+    MAX_DONORS,
+    MIN_CLONE_SIZE,
+    MIN_CLONES,
+    N_PERMUTATIONS,
+    PSEUDOTIME_BINS,
+    SENSITIVITY_CLONE_SIZE,
+)
 
 CANDIDATE = re.compile(r"^(?:airr:)?(?:clone_id|raw_clonotype_id|clonotype)$", re.IGNORECASE)
 
@@ -126,3 +154,158 @@ def settings_from_state(state: dict[str, Any]) -> ClonalSettings | None:
             file=sys.stderr,
         )
         return None
+
+
+# ---- the agreement of a run -----------------------------------------------------------
+
+COUPLING_NOTE = (
+    "Coupling is the cosine similarity of raw scored-cell counts per clone, not CoSpar's normalised "
+    "default. A high z says two lineages share more clones than chance; it does not say which came first."
+)
+
+
+def trust_hash(settings: ClonalSettings) -> str:
+    """16 hex characters over the settings, the metric version and the scoring parameters."""
+    dumped = settings.model_dump(mode="json")
+    dumped["strata_keys"] = sorted(dumped["strata_keys"])
+    params = {
+        "min_clone_size": MIN_CLONE_SIZE,
+        "sensitivity_clone_size": SENSITIVITY_CLONE_SIZE,
+        "min_clones": MIN_CLONES,
+        "n_permutations": N_PERMUTATIONS,
+        "seed": CLONAL_SEED,
+        "pseudotime_bins": PSEUDOTIME_BINS,
+    }
+    text = json.dumps(
+        {"settings": dumped, "metric_version": CLONAL_METRIC_VERSION, "params": params}, sort_keys=True
+    )
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def trust_name(settings: ClonalSettings) -> str:
+    """The trust file name for these settings; it never holds a column name."""
+    return f"clonal-{trust_hash(settings)}"
+
+
+def _num(x: float) -> float | None:
+    return None if math.isnan(x) else float(x)
+
+
+def to_api_score(r: ClonalResult) -> ClonalScore:
+    return ClonalScore(
+        status=r.status,
+        mode=r.mode,
+        n_lineages=r.n_lineages,
+        min_clone_size=r.min_clone_size,
+        n_cells=r.n_cells,
+        n_clones=r.n_clones,
+        effective_clones=_num(r.effective_clones),
+        n_donors=r.n_donors,
+        n_strata=r.n_strata,
+        n_permutations=r.n_permutations,
+        seed=r.seed,
+        purity=_num(r.purity),
+        mean_entropy=_num(r.mean_entropy),
+        nulls=[
+            NullComparison(
+                null=n.null,
+                mean_entropy_mean=_num(n.mean_entropy_mean),
+                mean_entropy_sd=_num(n.mean_entropy_sd),
+                eta=_num(n.eta),
+                p=_num(n.p),
+            )
+            for n in r.nulls
+        ],
+        eta=_num(r.eta),
+        p=_num(r.p),
+        eta_base=_num(r.eta_base),
+        delta_eta=_num(r.delta_eta),
+        p_delta=_num(r.p_delta),
+        clone_weighted_purity=_num(r.clone_weighted_purity),
+        purity_without_largest=_num(r.purity_without_largest),
+    )
+
+
+def to_api_coupling(c: Coupling) -> LineageCoupling:
+    return LineageCoupling(
+        a=c.a,
+        b=c.b,
+        observed=_num(c.observed),
+        null_mean=_num(c.null_mean),
+        z=_num(c.z),
+        p=_num(c.p),
+        p_adj=_num(c.p_adj),
+    )
+
+
+def not_scored(status: ClonalStatus, settings: ClonalSettings | None, note: str) -> ClonalAgreement:
+    """An agreement with no score: the status and the one note that says why."""
+    return ClonalAgreement(
+        status=status, settings=settings, primary=None, sensitivity_m3=None, coupling=[], notes=[note]
+    )
+
+
+def agreement_for_run(
+    result: TrajectoryResult,
+    obs: pd.DataFrame,
+    settings: ClonalSettings,
+    pca: npt.NDArray[np.floating[Any]],
+    neighbors_pcs: int,
+    obs_keys: Sequence[str],
+) -> ClonalAgreement:
+    """Own-cells clonal agreement of ``result`` with the clones named by ``settings``.
+
+    ``obs_keys`` are the obs columns that steered the run; a run steered by a scoring-only column
+    is refused. Scores at m = 2 (primary) and m = 3 (sensitivity), each against a k-means baseline
+    with k = the number of lineages, on ``baseline_space(pca, neighbors_pcs)``.
+    """
+    scoring_only = scoring_only_columns(obs.columns, settings_columns(settings))
+    steered = [k for k in dict.fromkeys(obs_keys) if k in scoring_only]
+    if steered:
+        named = ", ".join(repr(k) for k in steered)
+        return not_scored(
+            "refused",
+            settings,
+            f"The run used {named}, which lumenCell keeps only for scoring; run it again without it.",
+        )
+    n_lineages = int(result.membership.shape[0])
+    if n_lineages < 2:
+        return not_scored(
+            "single_lineage", settings, "The run has one lineage; clones are scored over two or more."
+        )
+
+    codes = encode_clones(
+        _present(obs[settings.clone_key]),
+        None if settings.donor_key is None else _present(obs[settings.donor_key]),
+        [_present(obs[k]) for k in settings.strata_keys],
+    )
+
+    def score(min_clone_size: int) -> ClonalResult:
+        return score_with_baseline(
+            result.membership,
+            codes,
+            result.pseudotime,
+            pca,
+            neighbors_pcs,
+            n_lineages,
+            min_clone_size=min_clone_size,
+            seed=CLONAL_SEED,
+        )
+
+    primary, m3 = score(MIN_CLONE_SIZE), score(SENSITIVITY_CLONE_SIZE)
+    notes = [COUPLING_NOTE]
+    if codes.n_missing_donor > 0:
+        notes.append(f"{codes.n_missing_donor} cells with a receptor have no donor and were not scored.")
+    if primary.status == "too_few_clones":
+        notes.append(
+            f"Only {primary.n_clones} clones were scored; "
+            f"at least {MIN_CLONES} are needed before the score counts."
+        )
+    return ClonalAgreement(
+        status=primary.status,
+        settings=settings,
+        primary=to_api_score(primary),
+        sensitivity_m3=to_api_score(m3),
+        coupling=[to_api_coupling(c) for c in primary.coupling],
+        notes=notes,
+    )
