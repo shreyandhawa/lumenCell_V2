@@ -65,13 +65,15 @@ contract-check:
 
 # ---- Benchmarks -----------------------------------------------------------
 
+BENCH_METHODS ?= paga_dpt,palantir,scfates_ppt
+
 # Full synthetic matrix: reports gates, fails on regressions against the baseline.
 bench-synth:
-	uv run lumencell bench synth
+	uv run lumencell bench synth --methods $(BENCH_METHODS)
 
 # Re-measure and replace benchmarks/baseline.json (commit the result deliberately).
 bench-baseline:
-	uv run lumencell bench synth --write-baseline
+	uv run lumencell bench synth --methods $(BENCH_METHODS) --write-baseline
 
 # Real datasets (download first: uv run lumencell bench fetch all). A release gate, not CI.
 bench-real:

@@ -133,7 +133,8 @@ class ScFates:
     experimental_note: ClassVar[str | None] = (
         "On the synthetic benchmark it misses one gate: global Spearman on two-fork cases (0.87-0.88), "
         "where branches of different length progress at different speeds. Branch accuracy 0.97+ and "
-        "every lineage found on all cases."
+        "every lineage found on all cases. On the synthetic clone layer its lineages captured 0.44-0.62 "
+        "of the chance-corrected clonal signal of the true lineages (gate: 0.5) on 5 of 9 branching cases."
     )
 
     def available(self) -> Availability:

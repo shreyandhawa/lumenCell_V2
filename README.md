@@ -56,13 +56,15 @@ in CI; real datasets are a release gate (`lumencell bench fetch all`, then
 [`benchmarks/thresholds.toml`](benchmarks/thresholds.toml).
 
 <!-- bench:start -->
-**Synthetic** (4 topologies × 3 seeds, `realistic` preset; baseline from commit `2071de6`). Ranges over all cases:
+**Synthetic** (4 topologies × 3 seeds, `realistic` preset; baseline from commit `857d03d`). Ranges over all cases:
 
-| Method | Pseudotime (global) | Pseudotime (per lineage) | Branch accuracy | Gates failed |
-|---|---|---|---|---|
-| PAGA + DPT | 0.86–0.99 | 0.95–0.99 | 0.81–0.99 | 7 of 12 cases |
-| Palantir | 0.90–0.99 | 0.91–0.99 | 0.90–0.99 | 2 of 12 cases |
-| scFates | 0.87–0.99 | 0.98–0.99 | 0.97–1.00 | 2 of 12 cases |
+| Method | Pseudotime (global) | Pseudotime (per lineage) | Branch accuracy | Clonal excess ratio | Gates failed |
+|---|---|---|---|---|---|
+| PAGA + DPT | 0.86–0.99 | 0.95–0.99 | 0.81–0.99 | 0.30–0.54 | 9 of 12 cases |
+| Palantir | 0.90–0.99 | 0.91–0.99 | 0.90–0.99 | 0.37–0.56 | 7 of 12 cases |
+| scFates | 0.87–0.99 | 0.98–0.99 | 0.97–1.00 | 0.44–0.62 | 7 of 12 cases |
+
+The clonal gate is not a branch gate: a method that merges two true lineages can score a clonal ratio above 1, and lineage recall catches that.
 
 **Real datasets** (`benchmarks/results/real-2026-11-10.json`, commit `abe3f73`). Spearman is against stage order (embryo time for gastrulation):
 

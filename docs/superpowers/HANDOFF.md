@@ -13,7 +13,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   layer and its two controls) merged as 744a0a8 (PR #9). Task 4 (receptor genes out of HVG
   selection) merged as 7b6254b (PR #10). Task 5 (clone and receptor columns scoring-only,
   store version 2) merged as 3f7e93d (PR #11). Task 6 (clonal scoring in the synthetic
-  benchmark) is on branch `pivot/08-bench-clonal`, awaiting review.
+  benchmark) merged as 857d03d (PR #12). Task 7 (re-measured baseline) is on branch
+  `pivot/09-bench-remeasure` (PR #13), awaiting review.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -21,7 +22,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 1 Task 7, after Task 6's PR is reviewed and squash-merged.
+- **Next:** phase 1 Task 8, after Task 7's PR is reviewed and squash-merged.
   - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
     - one task per subagent, on the model the task names
     - TDD throughout
@@ -176,6 +177,25 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
   (slow, not run here) now sees real clonal rows. Its regression check skips the clonal ratio
   (no baseline value yet); the flag check may move until Task 7 re-baselines.
 
+## Task 7 decisions
+
+- **Makefile.** `BENCH_METHODS ?= paga_dpt,palantir,scfates_ppt` is passed as `--methods` by
+  `bench-synth` and `bench-baseline` (both defaulted to `paga_dpt` only). Tested by
+  `tests/unit/test_makefile.py` (`make -n`, cwd = repo root).
+- **Existing metrics did not move.** Compared with main's `baseline.json` (unchanged since
+  142a788), every non-runtime field is identical on all 36 rows (`0 []`). So neither the clone
+  layer nor the receptor exclusion leaks into synthetic inference.
+- **Clonal ranges, 27 branching rows** (linear: 9 rows, `not_applicable`):
+  - excess ratio 0.30-0.62 (gate 0.5): paga_dpt 0.30-0.54, palantir 0.37-0.56, scfates_ppt 0.44-0.62;
+  - below the gate: paga_dpt 6 of 9, palantir 7 of 9, scfates_ppt 5 of 9;
+  - eta method 0.22-0.47, eta oracle 0.73-0.83, eta m=3 0.21-0.49;
+  - effective clones 68-207; p = 0.001 on every row (the B = 1000 floor);
+  - no NaN where status is `ok`; cells >= 2 x clones everywhere.
+- **Experimental flags unchanged**; each method already failed a branch gate. The three
+  `experimental_note`s now also name the clonal gate. No method code, default or threshold changed.
+- **README bench table** regenerated: new "Clonal excess ratio" column; gates failed now 9, 7, 7
+  of 12 (was 7, 2, 2).
+
 ## Verified references
 
 Checked on 2026-11-12 against Crossref (`api.crossref.org`) and jmlr.org; nothing downloaded.
@@ -283,7 +303,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/05-synth-clones` | #9 | merged (squash, 744a0a8) |
 | `pivot/06-receptor-genes` | #10 | merged (squash, 7b6254b) |
 | `pivot/07-inference-isolation` | #11 | merged (squash, 3f7e93d) |
-| `pivot/08-bench-clonal` | #12 | phase 1 Task 6: awaiting review |
+| `pivot/08-bench-clonal` | #12 | merged (squash, 857d03d) |
+| `pivot/09-bench-remeasure` | #13 | phase 1 Task 7: awaiting review |
 
 ## Verify the current state
 
