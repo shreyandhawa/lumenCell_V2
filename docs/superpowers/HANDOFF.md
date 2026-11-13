@@ -9,7 +9,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - **Phase:** phase 1 has started. Both approval gates are passed: Shreyan approved the spec
   (PR #5) and the plans (PR #6, merged as 153a7f0) on 2026-11-12. Task 1 (clonal definitions,
   gates and runtime constants) merged as 6ff4676 (PR #7). Task 2 (the `clonal/` package: clone
-  codes, scores, nulls, baseline, coupling) is on branch `pivot/04-clonal-scores`.
+  codes, scores, nulls, baseline, coupling) merged as f0715b6 (PR #8). Task 3 (synthetic clone
+  layer and its two controls) is on branch `pivot/05-synth-clones`.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -17,7 +18,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 1 Task 3 (synthetic clones), after Task 2's PR (#8) is reviewed and squash-merged.
+- **Next:** phase 1 Task 4, after Task 3's PR is reviewed and squash-merged.
   - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
     - one task per subagent, on the model the task names
     - TDD throughout
@@ -89,6 +90,17 @@ Decisions taken in phase 1 Task 2 (`clonal/` package):
   block keeps rows × cells × columns near 2^18 elements (one shuffle per block when a single
   shuffle is larger).
 
+Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
+- **"Lineage j" is the index in sorted leaf-name order** (controller ruling F16), in `add_clones`
+  and in the tests. `Truth.names` follows topology order, which differs for binary2 (B, A1, A2
+  against sorted A1, A2, B); the donor-confound test has a binary2 case so a mix-up fails.
+- **Donor-confound draws.** After the uniform donor draw, the control draws `rng.random(n)`
+  (keep the home donor, probability 0.8) and `rng.integers(D - 1, size=n)` (which other donor),
+  used only for cells on exactly one lineage; the brief fixed the model but not these draws.
+- **Exclusive cells** are found from the segment tree (a segment on exactly one leaf's path), so
+  `add_clones` needs only `true_segment`, `true_pseudotime` and `segments`.
+- `Truth.clone_ids` and `Truth.donors` are set together or not at all, each of shape `(n,)`.
+
 ## Found along the way
 
 - **Local `main` was 13 commits behind `origin/main`** on 2026-11-12. Check
@@ -132,7 +144,8 @@ Decisions taken in phase 1 Task 2 (`clonal/` package):
 | `pivot/01-tcell-spec` | #5 | merged (squash, 142a788) |
 | `pivot/02-phase-plans` | #6 | merged (squash, 153a7f0) |
 | `pivot/03-clonal-definitions` | #7 | merged (squash, 6ff4676) |
-| `pivot/04-clonal-scores` | #8 | phase 1 Task 2, open for review |
+| `pivot/04-clonal-scores` | #8 | merged (squash, f0715b6) |
+| `pivot/05-synth-clones` | PRNUM | phase 1 Task 3, open for review |
 
 ## Verify the current state
 

@@ -32,6 +32,10 @@ class Truth:
     resolvable: BoolArray | None = None
     # Cells of each lineage's terminal stage (real datasets), for terminal_share.
     terminals: dict[str, BoolArray] | None = None
+    # Per-cell clone label (NaN where the cell has no receptor) and donor. Used only to score
+    # clonal agreement; both are set or neither is.
+    clone_ids: npt.NDArray[np.object_] | None = None
+    donors: npt.NDArray[np.object_] | None = None
 
     def __post_init__(self) -> None:
         n = self.order.shape[0]
@@ -46,6 +50,11 @@ class Truth:
             self.resolvable.shape != (n,) or self.resolvable.dtype != np.bool_
         ):
             raise ValueError("resolvable must be a bool array matching order")
+        if (self.clone_ids is None) != (self.donors is None):
+            raise ValueError("clone_ids and donors are set together or not at all")
+        for name, column in (("clone_ids", self.clone_ids), ("donors", self.donors)):
+            if column is not None and column.shape != (n,):
+                raise ValueError(f"{name} must have shape ({n},)")
 
     @property
     def n_obs(self) -> int:
