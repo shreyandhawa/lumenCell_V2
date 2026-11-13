@@ -380,3 +380,18 @@ def test_a_real_case_row_is_not_applicable(monkeypatch: pytest.MonkeyPatch, tmp_
     )
     res = run_real_case("d")
     assert repr(res.clonal) == repr(ClonalRow("not_applicable"))
+
+
+def test_the_report_counts_failures_per_gate() -> None:
+    text = render()
+    line = next(x for x in text.splitlines() if x.startswith("Cases failing each gate"))
+    assert "`clonal_excess_ratio`" in line
+    assert "PAGA + DPT" in line
+
+
+def test_the_clonal_column_never_rounds_up_across_the_gate() -> None:
+    from lumencell.bench.report import _range
+
+    rows = [{"clonal_excess_ratio": 0.4996}, {"clonal_excess_ratio": 0.5004}]
+    assert _range(rows, "clonal_excess_ratio", floor=True) == "0.499–0.500"
+    assert _range([{"clonal_excess_ratio": 0.4996}], "clonal_excess_ratio", floor=True) == "0.499–0.499"

@@ -66,7 +66,9 @@ class PagaDpt:
     experimental_note: ClassVar[str | None] = (
         "On the synthetic benchmark it places cells near forks less reliably (branch accuracy 0.81-0.92 "
         "on three-way splits) and runs at different speeds on branches of different length (global "
-        "Spearman 0.86-0.88). Pseudotime within each lineage scored 0.95-0.99."
+        "Spearman 0.86-0.88). Pseudotime within each lineage scored 0.95-0.99. "
+        "On the synthetic clone layer its lineages captured 0.30-0.54 "
+        "of the chance-corrected clonal signal of the true lineages (gate: 0.5) on 6 of 9 branching cases."
     )
 
     def available(self) -> Availability:

@@ -92,7 +92,9 @@ class Palantir:
     experimental: ClassVar[bool] = True
     experimental_note: ClassVar[str | None] = (
         "On the synthetic benchmark its pseudotime is compressed near the start on 2 of 12 cases (root "
-        "excess 0.16-0.18 against 0.10). Branch accuracy 0.90-0.99 and every lineage found on all cases."
+        "excess 0.16-0.18 against 0.10). Branch accuracy 0.90-0.99 and every lineage found on all cases. "
+        "On the synthetic clone layer its lineages captured 0.37-0.56 "
+        "of the chance-corrected clonal signal of the true lineages (gate: 0.5) on 7 of 9 branching cases."
     )
 
     def available(self) -> Availability:
