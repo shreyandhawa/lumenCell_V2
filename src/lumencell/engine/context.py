@@ -1,6 +1,11 @@
-"""What a method sees: the dataset's annotations plus the shared prep artifacts."""
+"""What a method sees: the dataset's annotations plus the shared prep artifacts.
 
-from collections.abc import Mapping
+Clone and receptor columns, and any column the caller names as clonal (a donor column, say),
+are scoring-only: they are left out of the annotations a method sees, and refused as a root,
+cluster column or label column.
+"""
+
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -8,6 +13,12 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from lumencell.clonal.isolation import (
+    RECEPTOR_COLUMN,
+    column_names,
+    scoring_only_columns,
+    scoring_only_message,
+)
 from lumencell.data.loader import Dataset
 from lumencell.prep.pipeline import PrepResult
 from lumencell.prep.stages import PrepParams
@@ -30,6 +41,30 @@ LABEL_CANDIDATES = (
 )
 
 
+class ScoringOnlyColumnError(ValueError):
+    """A run was asked to use a column that is only for scoring runs."""
+
+
+def inference_obs(
+    obs: pd.DataFrame, clonal_columns: Iterable[str] = ()
+) -> tuple[pd.DataFrame, frozenset[str]]:
+    """A copy of ``obs`` without its scoring-only columns, and the set of scoring-only names.
+
+    Every name in ``clonal_columns`` must be an obs column: a misspelt name would otherwise
+    leave the real column visible to methods.
+    """
+    named = column_names(clonal_columns)
+    present = {str(c) for c in obs.columns}
+    missing = [n for n in named if n not in present]
+    if missing:
+        raise ValueError(
+            f"clonal column(s) {', '.join(repr(n) for n in missing)} are not in the file's obs columns"
+        )
+    scoring_only = scoring_only_columns(obs.columns, named)
+    kept = obs.drop(columns=[c for c in obs.columns if str(c) in scoring_only])
+    return kept, scoring_only
+
+
 def detect_label_key(obs: pd.DataFrame) -> str:
     lowered = {c.lower(): c for c in obs.columns}
     for name in LABEL_CANDIDATES:
@@ -45,7 +80,7 @@ def detect_label_key(obs: pd.DataFrame) -> str:
 @dataclass(frozen=True)
 class InferenceContext:
     n_obs: int
-    obs: pd.DataFrame  # the file's obs plus LEIDEN_KEY
+    obs: pd.DataFrame  # the file's obs without its scoring-only columns, plus LEIDEN_KEY
     obs_names: pd.Index
     artifacts: Mapping[str, Any]
     prep_params: PrepParams
@@ -53,11 +88,27 @@ class InferenceContext:
     uns_root: int | None
     fingerprint: str
     label_key: str
+    scoring_only: frozenset[str] = frozenset()  # left out of obs; never a root, cluster or label column
+
+    def __post_init__(self) -> None:
+        # However a context is built (from_prep, directly, dataclasses.replace), methods never see
+        # a scoring-only column.
+        leaked = [
+            str(c) for c in self.obs.columns if str(c) in self.scoring_only or RECEPTOR_COLUMN.match(str(c))
+        ]
+        if leaked:
+            raise ScoringOnlyColumnError(
+                f"the annotations given to methods hold scoring-only column(s) {', '.join(map(repr, leaked))}"
+            )
 
     @classmethod
-    def from_prep(cls, ds: Dataset, prep: PrepResult, params: PrepParams) -> "InferenceContext":
+    def from_prep(
+        cls, ds: Dataset, prep: PrepResult, params: PrepParams, clonal_columns: Iterable[str] = ()
+    ) -> "InferenceContext":
+        """``clonal_columns`` names columns that are scoring-only besides the receptor-pattern ones."""
         leiden = np.asarray(prep.artifacts["leiden"])
-        obs = ds.obs.copy()
+        obs, scoring_only = inference_obs(ds.obs, clonal_columns)
+        label_key = detect_label_key(obs)
         obs[LEIDEN_KEY] = pd.Categorical(
             leiden.astype(str), categories=[str(i) for i in range(int(leiden.max()) + 1)]
         )
@@ -70,7 +121,8 @@ class InferenceContext:
             genes_detected=ds.genes_detected if ds.x_kind == "counts" else None,
             uns_root=ds.uns_root,
             fingerprint=ds.fingerprint,
-            label_key=detect_label_key(ds.obs),
+            label_key=label_key,
+            scoring_only=scoring_only,
         )
 
     def labels(self, key: str) -> npt.NDArray[np.str_]:
@@ -90,3 +142,9 @@ class InferenceContext:
         k = min(n_dcs, dm.shape[1] - 1)
         out: npt.NDArray[np.float64] = dm[:, 1 : k + 1] * evals[1 : k + 1][None, :]
         return out
+
+
+def check_inference_column(ctx: InferenceContext, column: str, role: str) -> None:
+    """Refuse a scoring-only column as the ``role`` of a run (e.g. "cluster column")."""
+    if column in ctx.scoring_only:
+        raise ScoringOnlyColumnError(scoring_only_message(column, role))

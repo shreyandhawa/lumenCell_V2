@@ -23,7 +23,9 @@ ROOT = {"kind": "cluster", "key": "true_label", "value": "trunk_early"}
 def session(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Session]:
     base = tmp_path_factory.mktemp("api")
     path = base / "synthetic.h5ad"
-    generate("bifurcation", "realistic", n_cells=800, n_genes=400, seed=0, store_root=True).write_h5ad(path)
+    adata = generate("bifurcation", "realistic", n_cells=800, n_genes=400, seed=0, store_root=True)
+    adata.obs["clone_id"] = adata.obs["true_lineage"].copy()  # scoring-only: no run may use it
+    adata.write_h5ad(path)
     jobs = JobManager().start()
     s = Session(path, jobs, cache_root=base / "cache", state_dir=base / "state")
     yield s
@@ -290,12 +292,13 @@ def test_a_root_is_never_changed_on_its_way_to_the_worker(client: TestClient) ->
     assert "no cell has true_label = 'trunk_early '" in res.json()["error"]["message"], "refused at resolve"
 
 
-def test_a_root_the_plain_text_cannot_carry_reaches_the_worker_unchanged() -> None:
+def _runs_without_a_server(
+    columns: list[str], clonal_columns: tuple[str, ...] = (), label_key: str = "l"
+) -> tuple[object, list[dict[str, object]], list[object]]:
+    """Runs over a stand-in dataset view: (runs, submitted job payloads, roots resolved)."""
     from types import SimpleNamespace
 
-    from lumencell.api import models
     from lumencell.api.runs import Runs
-    from lumencell.engine.roots import ClusterRoot, parse_root
 
     submitted: list[dict[str, object]] = []
     resolved: list[object] = []
@@ -304,19 +307,109 @@ def test_a_root_the_plain_text_cannot_carry_reaches_the_worker_unchanged() -> No
         submitted.append(payload)
         return SimpleNamespace(job_id="j", state="queued")
 
-    jobs = SimpleNamespace(submit=submit)
+    view = SimpleNamespace(
+        prep_key="p",
+        label_key=label_key,
+        ds=SimpleNamespace(obs=pd.DataFrame(columns=columns)),
+        clonal_columns=clonal_columns,
+    )
     runs = Runs(
-        SimpleNamespace(prep_key="p", label_key="l"),  # type: ignore[arg-type]
+        view,  # type: ignore[arg-type]
         SimpleNamespace(exists=lambda rid: False),  # type: ignore[arg-type]
-        jobs,  # type: ignore[arg-type]
+        SimpleNamespace(submit=submit),  # type: ignore[arg-type]
         SimpleNamespace(read=lambda: {}),  # type: ignore[arg-type]
         dict,
         resolved.append,  # type: ignore[arg-type]
     )
+    return runs, submitted, resolved
+
+
+def test_a_root_the_plain_text_cannot_carry_reaches_the_worker_unchanged() -> None:
+    from lumencell.api import models
+    from lumencell.engine.roots import ClusterRoot, parse_root
+
+    runs, submitted, resolved = _runs_without_a_server(["batch=1"])
     root = models.ClusterRoot(kind="cluster", key="batch=1", value="A ")
-    runs.create_run(models.TrajectoryRequest(method="paga_dpt", root=root))
+    runs.create_run(models.TrajectoryRequest(method="paga_dpt", root=root))  # type: ignore[attr-defined]
     assert resolved == [ClusterRoot("batch=1", "A ")]
     assert parse_root(str(submitted[0]["root"])) == ClusterRoot("batch=1", "A ")
+    assert submitted[0]["clonal_columns"] == []
+
+    named, sent, _ = _runs_without_a_server(["batch=1", "donor"], ("donor",))
+    named.create_run(models.TrajectoryRequest(method="paga_dpt", root=root))  # type: ignore[attr-defined]
+    assert sent[0]["clonal_columns"] == ["donor"], "the view's clonal columns reach the worker"
+
+
+# ---- clone columns are scoring-only ------------------------------------------------------
+
+
+def test_create_run_refuses_a_scoring_only_root_or_cluster_key(
+    client: TestClient, session: Session, run: dict[str, object]
+) -> None:
+    assert "clone_id" in session.view.ds.obs.columns
+    for body in (
+        {"method": "paga_dpt", "root": {"kind": "cluster", "key": "clone_id", "value": "A"}},
+        {"method": "paga_dpt", "root": ROOT, "params": {"cluster_key": "clone_id"}},
+    ):
+        res = client.post("/api/v1/trajectories", json=body)
+        assert res.status_code == 422, res.text
+        error = res.json()["error"]
+        assert error["code"] == "scoring_only_column"
+        assert error["detail"]["columns"] == ["clone_id"]
+        assert "'clone_id' holds clone or receptor data" in error["message"]
+    # The run made with clone_id in the file was steered by other columns only, and says so.
+    graph = session.runs.store.graph(str(run["run_id"]))
+    assert graph["store_version"] == 2 and graph["inference_isolation"] == 1
+    assert graph["prep_key"] == session.prep_key
+    assert "clone_id" not in graph["obs_keys"] and "true_label" in graph["obs_keys"]
+
+
+def test_every_scoring_only_column_is_named_once_and_nothing_starts() -> None:
+    from lumencell.api import models
+    from lumencell.api.errors import ApiError
+
+    runs, submitted, resolved = _runs_without_a_server(["clone_id", "donor", "cell_type"], ("donor",))
+    root = models.ClusterRoot(kind="cluster", key="clone_id", value="A")
+    with pytest.raises(ApiError) as caught:
+        runs.create_run(  # type: ignore[attr-defined]
+            models.TrajectoryRequest(method="paga_dpt", root=root, params={"cluster_key": "donor"})
+        )
+    assert caught.value.status == 422 and caught.value.code == "scoring_only_column"
+    assert caught.value.detail == {"columns": ["clone_id", "donor"]}
+    assert caught.value.message.endswith("it cannot be the root column")
+    assert submitted == [] and resolved == [], "refused before the root is resolved"
+
+    with pytest.raises(ApiError) as caught:
+        runs.create_run(  # type: ignore[attr-defined]
+            models.TrajectoryRequest(method="paga_dpt", root=root, params={"cluster_key": "clone_id"})
+        )
+    assert caught.value.detail == {"columns": ["clone_id"]}, "each column is named once"
+
+    donor_root = models.ClusterRoot(kind="cluster", key="donor", value="d1")
+    with pytest.raises(ApiError) as caught:
+        runs.create_run(  # type: ignore[attr-defined]
+            models.TrajectoryRequest(method="paga_dpt", root=donor_root, params={"cluster_key": "donor"})
+        )
+    assert caught.value.detail == {"columns": ["donor"]}
+    assert caught.value.message == (
+        "'donor' is set as a clone or donor column, which lumenCell uses only to score runs; "
+        "it cannot be the root column"
+    )
+    with pytest.raises(ApiError, match="it cannot be the cluster column"):
+        runs.create_run(  # type: ignore[attr-defined]
+            models.TrajectoryRequest(
+                method="paga_dpt",
+                root=models.ClusterRoot(kind="cluster", key="cell_type", value="t"),
+                params={"cluster_key": "donor"},
+            )
+        )
+    labelled, _, _ = _runs_without_a_server(["clone_id", "cell_type"], label_key="clone_id")
+    with pytest.raises(ApiError, match="it cannot be the label column"):
+        labelled.create_run(  # type: ignore[attr-defined]
+            models.TrajectoryRequest(
+                method="paga_dpt", root=models.ClusterRoot(kind="cluster", key="cell_type", value="t")
+            )
+        )
 
 
 def test_unexpected_errors_use_the_error_body() -> None:
@@ -453,3 +546,30 @@ def test_what_depends_only_on_the_file_is_worked_out_once(
     monkeypatch.setattr(session.view.cache, "status", no_more_checks)
     assert session.view.prep_ready()
     assert client.get("/api/v1/embeddings/dc12").status_code == 200
+
+
+def test_the_view_keeps_named_columns_out_of_label_detection(tmp_path: Path) -> None:
+    from lumencell.api.dataset_view import DatasetView
+    from lumencell.data.loader import load
+    from lumencell.prep.cache import PrepCache
+    from lumencell.prep.stages import PrepParams
+
+    adata = generate("linear", "easy", n_cells=120, n_genes=60, seed=0)
+    adata.obs["cell_type"] = adata.obs["true_label"].copy()
+    path = tmp_path / "ct.h5ad"
+    adata.write_h5ad(path)
+    ds = load(path, keep_matrix=False)
+    cache = PrepCache(ds, tmp_path / "cache")
+    assert DatasetView(path, ds, cache, PrepParams()).label_key == "cell_type"
+    named = DatasetView(path, ds, cache, PrepParams(), clonal_columns=("cell_type",))
+    assert named.label_key != "cell_type"
+
+
+def test_the_views_context_holds_its_named_columns(session: Session) -> None:
+    from lumencell.api.dataset_view import DatasetView
+
+    view = DatasetView(
+        session.path, session.ds, session.cache, session.params, clonal_columns=("true_segment",)
+    )
+    assert {"true_segment", "clone_id"} <= view.ctx().scoring_only
+    assert "true_segment" not in view.ctx().obs.columns

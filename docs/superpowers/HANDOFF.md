@@ -11,8 +11,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   gates and runtime constants) merged as 6ff4676 (PR #7). Task 2 (the `clonal/` package: clone
   codes, scores, nulls, baseline, coupling) merged as f0715b6 (PR #8). Task 3 (synthetic clone
   layer and its two controls) merged as 744a0a8 (PR #9). Task 4 (receptor genes out of HVG
-  selection) is reviewed, with CI green, on branch `pivot/06-receptor-genes` (PR #10). It
-  merges once Shreyan approves.
+  selection) merged as 7b6254b (PR #10). Task 5 (clone and receptor columns scoring-only,
+  store version 2) is on branch `pivot/07-inference-isolation` (PR #11), awaiting review.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -20,7 +20,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 1 Task 5, after Task 4's PR is reviewed and squash-merged.
+- **Next:** phase 1 Task 6, after Task 5's PR is reviewed and squash-merged.
   - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
     - one task per subagent, on the model the task names
     - TDD throughout
@@ -72,12 +72,22 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
 
   The test analyzer mutation-tests a scratch copy, and every task so far had surviving mutants
   that the fix round closed.
+- **Process change (2026-11-13), from Task 6 on.** Shreyan asked: "Use token efficient agents
+  for the tasks so that it can finish quickly on less usage". So:
+  - reviews are two seats: a Sonnet task reviewer that also covers silent failures and
+    NaN/fallback paths, and pr-test-analyzer on Sonnet, mutation-testing a scratch copy;
+  - no separate code-reviewer or type-design-analyzer; an Opus reviewer only for Task 8;
+  - implementers run on Sonnet by default, on Opus only for Tasks 13 and 14, and on Haiku for
+    mechanical or docs-only work;
+  - scoped re-reviews run on Haiku when the fix is mostly tests;
+  - subagents stop after replying, never watch CI, and keep replies under 15 lines.
 - **Merges need Shreyan's word.** The auto-mode permission check blocks `gh pr merge`
   ("Merge Without Review"), so Shreyan approved each of #7, #8 and #9 in chat. Ask before every
   merge, or have Shreyan add an allow rule for `Bash(gh pr merge:*)`.
 - **Check the 5-hour usage window** (`get_usage`) before starting a five-agent review set. On
   2026-11-12 it reached 91%, and the Task 2 review waited for the reset.
-- **Next:** once #10 is merged, Task 5 on `pivot/07-inference-isolation`, on Opus.
+- **Next:** review Task 5 (PR #11, `pivot/07-inference-isolation`; type-design-analyzer is in its
+  set), merge on Shreyan's word, then Task 6 on `pivot/08-<slug>`.
 
 ## Done
 
@@ -109,6 +119,40 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
 - A dataset whose every gene matches the pattern raises `DatasetError` from the hvg stage.
 - The regex is unchanged; genome-prefixed or versioned symbols (e.g. `GRCh38_TRAC`) stay unmatched.
   Deferred.
+
+## Task 5 decisions
+
+- **Scoring-only columns** are those matching `RECEPTOR_COLUMN` (clone_id, clonotype, cdr3,
+  ir_, airr:, receptor_ prefixes; raw_clonotype_id, chain_pairing), plus any the caller names
+  in `clonal_columns`. `InferenceContext.obs` leaves them out; `ctx.scoring_only` lists them.
+  The label key is detected without them.
+- **One refusal helper**, `scoring_only_message(column, role)` in `clonal/isolation.py`
+  (ruling F24): a pattern match "holds clone or receptor data"; a named column "is set as a
+  clone or donor column". Roles: root, cluster, label column. Engine and API both use it.
+- **Refused before any work.** `resolve_root` checks before the existence check. `run_method`
+  checks the method's `cluster_key` and the label key it uses before resolving the root.
+  `create_run` checks root, `cluster_key`, label key (422 `scoring_only_column`); `detail.columns`
+  names each offender once, in that order.
+- **The label key used** is `label_key`, else the `cluster_key` when terminals are named, else
+  `ctx.label_key`, which `name_lineages` already fell back to. It is checked and recorded.
+- **`obs_keys`** is the sorted set of the resolved root's `cluster_key` (lumencell_leiden for a
+  cell or file root), the method's `cluster_key` and the label key used.
+- **`clonal_columns` is required in the infer payload** (ruling F4). Without it, or as anything
+  but a list of names, the job fails with a message naming the key. `create_run` sends
+  `list(view.clonal_columns)`, empty until Task 10.
+- **Store version 2.** `result.json` gains `prep_key`, `inference_isolation` (1) and
+  `obs_keys`; version 1 runs drop out of the list. Run ids change (`STORE_VERSION` is hashed).
+  `clonal_columns` is not part of the run id.
+- **Fix round 1:**
+  - `InferenceContext.__post_init__` raises `ScoringOnlyColumnError` when `obs` holds a column in
+    `scoring_only` or one matching `RECEPTOR_COLUMN`, so `dataclasses.replace` cannot leak one.
+  - A bare string as `clonal_columns` (in `scoring_only_columns`, `inference_obs`, `from_prep`,
+    `DatasetView`) is a `TypeError`, via `column_names`.
+  - `inference_obs` raises `ValueError` for a named column the obs lacks (a typo such as
+    "Donor" would leave the real column visible). The isolation test now names `clone_id` only
+    for the clonal file.
+  - A run from another store version is absent: `exists()` is False and `load()` raises
+    `FileNotFoundError`, so it is recomputed. `list()` logs one warning with the count it skips.
 
 ## Verified references
 
@@ -217,7 +261,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/03-clonal-definitions` | #7 | merged (squash, 6ff4676) |
 | `pivot/04-clonal-scores` | #8 | merged (squash, f0715b6) |
 | `pivot/05-synth-clones` | #9 | merged (squash, 744a0a8) |
-| `pivot/06-receptor-genes` | #10 | phase 1 Task 4: reviewed, CI green, merge awaits Shreyan |
+| `pivot/06-receptor-genes` | #10 | merged (squash, 7b6254b) |
+| `pivot/07-inference-isolation` | #11 | phase 1 Task 5: awaiting review |
 
 ## Verify the current state
 

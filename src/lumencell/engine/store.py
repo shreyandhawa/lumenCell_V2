@@ -14,6 +14,7 @@ run twice finds the existing one instead of recomputing it.
 
 import hashlib
 import json
+import logging
 import shutil
 import tempfile
 from dataclasses import asdict
@@ -26,6 +27,7 @@ from scipy import sparse
 
 from lumencell import __version__
 from lumencell.api import binary
+from lumencell.clonal.isolation import ISOLATION_VERSION
 from lumencell.engine.schema import (
     Divergence,
     Lineage,
@@ -36,7 +38,10 @@ from lumencell.engine.schema import (
     TrajectoryResult,
 )
 
-STORE_VERSION = 1
+log = logging.getLogger(__name__)
+
+# 2: result.json records the prep key, the clone-isolation version and the obs keys used.
+STORE_VERSION = 2
 
 
 def run_id(
@@ -75,7 +80,11 @@ def cells_payload(result: TrajectoryResult) -> bytes:
 
 
 def _graph_json(
-    result: TrajectoryResult, rid: str, created_at: str, terminals: list[str] | None
+    result: TrajectoryResult,
+    rid: str,
+    created_at: str,
+    terminals: list[str] | None,
+    prep_key: str | None,
 ) -> dict[str, Any]:
     root = asdict(result.root)
     return {
@@ -84,6 +93,11 @@ def _graph_json(
         "created_at": created_at,
         # Provenance: whether the terminals were named by the user or found by the method.
         "terminals_source": "user" if terminals else "auto",
+        # Provenance: the prep the run was computed on, how clone columns were kept out of
+        # inference, and which obs columns steered it.
+        "prep_key": prep_key,
+        "inference_isolation": ISOLATION_VERSION,
+        "obs_keys": result.obs_keys,
         "method": result.method,
         "method_version": result.method_version,
         "lumencell_version": __version__,
@@ -114,17 +128,31 @@ class RunStore:
         return self.dir / rid
 
     def exists(self, rid: str) -> bool:
-        return (self.path(rid) / ".complete").exists()
+        """A completed run written by this store version. Any other is absent, so it is recomputed."""
+        if not (self.path(rid) / ".complete").exists():
+            return False
+        try:
+            return bool(self.graph(rid).get("store_version") == STORE_VERSION)
+        except (OSError, ValueError, AttributeError):
+            return False
 
-    def save(self, rid: str, result: TrajectoryResult, terminals: list[str] | None = None) -> None:
-        """Save a run. ``terminals`` are the terminal labels the run was asked for, if any."""
+    def save(
+        self,
+        rid: str,
+        result: TrajectoryResult,
+        terminals: list[str] | None = None,
+        prep_key: str | None = None,
+    ) -> None:
+        """Save a run. ``terminals`` are the terminal labels the run was asked for, if any;
+        ``prep_key`` is the prep cache key the run was computed on."""
         self.dir.mkdir(parents=True, exist_ok=True)
         final = self.path(rid)
         tmp = Path(tempfile.mkdtemp(prefix=f".{rid}-", dir=self.dir))
         try:
             created = datetime.now(UTC).isoformat(timespec="seconds")
             (tmp / "result.json").write_text(
-                json.dumps(_graph_json(result, rid, created, terminals), indent=2), encoding="utf-8"
+                json.dumps(_graph_json(result, rid, created, terminals, prep_key), indent=2),
+                encoding="utf-8",
             )
             (tmp / "cells.lcb").write_bytes(cells_payload(result))
             sparse.save_npz(
@@ -156,6 +184,8 @@ class RunStore:
         tmp.replace(p)
 
     def load(self, rid: str) -> TrajectoryResult:
+        if not self.exists(rid):
+            raise FileNotFoundError(f"no run {rid!r} saved by store version {STORE_VERSION}")
         g = self.graph(rid)
         cells = binary.decode(self.cells_bytes(rid)).arrays
         fate = np.array(cells["fate"]) if "fate" in cells else None
@@ -189,6 +219,7 @@ class RunStore:
                 else None
             ),
             curve_paths=g.get("curve_paths"),
+            obs_keys=list(g["obs_keys"]),
         )
 
     def list(self) -> list[dict[str, Any]]:
@@ -200,12 +231,14 @@ class RunStore:
         if not self.dir.exists():
             return []
         out = []
+        other_version = 0
         for d in self.dir.iterdir():
             if d.name.startswith(".") or not (d / ".complete").exists():
                 continue
             try:
                 g = self.graph(d.name)
                 if g.get("store_version") != STORE_VERSION:
+                    other_version += 1
                     continue
                 datetime.fromisoformat(g["created_at"])
                 summary = {
@@ -217,4 +250,11 @@ class RunStore:
             except (OSError, ValueError, KeyError, TypeError, AttributeError):
                 continue
             out.append(summary)
+        if other_version:
+            log.warning(
+                "%d saved run(s) in %s were written by another store version and are not listed; "
+                "running them again recomputes them",
+                other_version,
+                self.dir,
+            )
         return sorted(out, key=lambda r: r["created_at"], reverse=True)

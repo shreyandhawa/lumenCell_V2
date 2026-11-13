@@ -136,8 +136,9 @@ def run(
         result = run_method(ctx, method, spec, terminals=terms)
     except (RootError, UnknownMethodError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
-    rid = run_id(method, result.params, format_root(spec), terms, prep_key(ds, params))
-    RunStore(dataset_dir(ds.fingerprint)).save(rid, result, terminals=terms)
+    key = prep_key(ds, params)
+    rid = run_id(method, result.params, format_root(spec), terms, key)
+    RunStore(dataset_dir(ds.fingerprint)).save(rid, result, terminals=terms, prep_key=key)
     typer.echo(f"run {rid}: {len(result.lineages)} lineages, {result.n_unassigned} cells unassigned")
     for lin in result.lineages:
         typer.echo(f"  {lin.name}: {lin.n_cells:,} cells")

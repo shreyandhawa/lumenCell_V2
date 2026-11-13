@@ -5,10 +5,11 @@ import numpy as np
 import pytest
 
 from lumencell.api import binary
+from lumencell.clonal.isolation import ISOLATION_VERSION
 from lumencell.engine.registry import run_method
 from lumencell.engine.roots import ClusterRoot
 from lumencell.engine.schema import TrajectoryResult
-from lumencell.engine.store import RunStore, run_id
+from lumencell.engine.store import STORE_VERSION, RunStore, run_id
 from tests.conftest import Prepared
 
 
@@ -109,3 +110,36 @@ def test_failed_save_leaves_nothing(
         store.save("abc", result)
     assert not store.exists("abc")
     assert list(store.dir.iterdir()) == []
+
+
+def test_result_json_records_isolation(tmp_path: Path, result: TrajectoryResult) -> None:
+    store = RunStore(tmp_path)
+    assert result.obs_keys, "run_method records what steered the run"
+    store.save("abc", result, prep_key="prep123")
+    graph = store.graph("abc")
+    assert graph["store_version"] == STORE_VERSION == 2
+    assert graph["prep_key"] == "prep123"
+    assert graph["inference_isolation"] == ISOLATION_VERSION == 1
+    assert graph["obs_keys"] == result.obs_keys
+    assert store.load("abc").obs_keys == result.obs_keys
+    store.save("unkeyed", result)
+    assert store.graph("unkeyed")["prep_key"] is None
+
+
+def test_a_run_from_another_store_version_is_absent(
+    tmp_path: Path, result: TrajectoryResult, caplog: pytest.LogCaptureFixture
+) -> None:
+    store = RunStore(tmp_path)
+    store.save("old", result)
+    store.save("new", result)
+    old = store.graph("old")
+    old["store_version"] = 1
+    del old["obs_keys"]
+    store.update_graph("old", old)
+    assert store.exists("new") and not store.exists("old"), "so a request recomputes it"
+    with pytest.raises(FileNotFoundError, match="no run 'old'"):
+        store.load("old")
+    with caplog.at_level("WARNING", logger="lumencell.engine.store"):
+        assert [r["run_id"] for r in store.list()] == ["new"]
+    [record] = caplog.records
+    assert "1 saved run(s)" in record.getMessage() and "another store version" in record.getMessage()

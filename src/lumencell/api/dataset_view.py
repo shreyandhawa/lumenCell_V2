@@ -20,8 +20,9 @@ from scipy import sparse
 
 from lumencell.api import binary, models
 from lumencell.api.errors import ApiError
+from lumencell.clonal.isolation import column_names
 from lumencell.data.loader import Dataset
-from lumencell.engine.context import LEIDEN_KEY, InferenceContext, detect_label_key
+from lumencell.engine.context import LEIDEN_KEY, InferenceContext, detect_label_key, inference_obs
 from lumencell.prep.cache import CacheMiss, PrepCache, prep_key
 from lumencell.prep.pipeline import PrepResult
 from lumencell.prep.stages import PrepParams
@@ -48,6 +49,7 @@ class DatasetView:
         cache: PrepCache,
         params: PrepParams,
         on_cache_miss: Callable[[], object] | None = None,
+        clonal_columns: tuple[str, ...] = (),
     ) -> None:
         """``on_cache_miss`` is called when prep turns out not to be in the cache after all
         (the session starts a prepare job)."""
@@ -57,7 +59,10 @@ class DatasetView:
         self.params = params
         self._on_cache_miss = on_cache_miss
         self._healing: set[str] = set()  # stages already sent back to the worker once
-        self.label_key = detect_label_key(ds.obs)
+        # Columns that are only for scoring runs besides the receptor-pattern ones (a donor
+        # column, say). Empty until phase 1 Task 10 lets the user name them.
+        self.clonal_columns: tuple[str, ...] = column_names(clonal_columns)
+        self.label_key = detect_label_key(inference_obs(ds.obs, self.clonal_columns)[0])
         self._lock = threading.RLock()
         self._ready = False
         self._prep: PrepResult | None = None
@@ -133,7 +138,9 @@ class DatasetView:
     def ctx(self) -> InferenceContext:
         with self._lock:
             if self._ctx is None:
-                self._ctx = InferenceContext.from_prep(self.ds, self.prep(), self.params)
+                self._ctx = InferenceContext.from_prep(
+                    self.ds, self.prep(), self.params, clonal_columns=self.clonal_columns
+                )
             return self._ctx
 
     def obs_columns(self) -> list[models.ObsColumn]:

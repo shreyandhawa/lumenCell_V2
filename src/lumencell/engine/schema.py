@@ -123,6 +123,8 @@ class TrajectoryResult:
     curve_paths: list[list[int]] | None = None  # one ordered node list per lineage
     warnings: list[Notice] = field(default_factory=list)
     runtime_seconds: float = 0.0
+    # The obs columns that steered the run (root, cluster and label columns), sorted.
+    obs_keys: list[str] = field(default_factory=list)
 
     @property
     def n_obs(self) -> int:

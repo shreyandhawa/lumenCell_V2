@@ -207,6 +207,22 @@ def test_unknown_column(bifurcation: Prepared) -> None:
         resolve_root(bifurcation.ctx, ClusterRoot("nope", "x"))
 
 
+def test_a_scoring_only_column_is_refused_as_a_root(bifurcation: Prepared) -> None:
+    obs = bifurcation.ds.obs.copy()
+    obs["clone_id"] = obs["true_lineage"].astype(str)
+    ds = replace(bifurcation.ds, obs=obs)
+    ctx = InferenceContext.from_prep(ds, bifurcation.prep, bifurcation.ctx.prep_params)
+    # clone_id is not in what methods see, so this is checked before "no obs column".
+    with pytest.raises(RootError, match="only to score") as caught:
+        resolve_root(ctx, ClusterRoot("clone_id", "A"))
+    assert "cannot be the root column" in str(caught.value)
+    named = InferenceContext.from_prep(
+        bifurcation.ds, bifurcation.prep, bifurcation.ctx.prep_params, clonal_columns=("true_label",)
+    )
+    with pytest.raises(RootError, match="'true_label' is set as a clone or donor column"):
+        resolve_root(named, ClusterRoot("true_label", "trunk_early"))
+
+
 def test_file_root(bifurcation: Prepared) -> None:
     r = resolve_root(bifurcation.ctx, FileRoot())
     assert r.cell_index == bifurcation.ds.uns_root

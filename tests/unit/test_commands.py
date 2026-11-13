@@ -10,6 +10,10 @@ from typer.testing import CliRunner
 
 from lumencell.bench.synth import generate
 from lumencell.cli import app
+from lumencell.data.loader import load
+from lumencell.engine.store import RunStore
+from lumencell.prep.cache import dataset_dir, prep_key
+from lumencell.prep.stages import PrepParams
 
 runner = CliRunner()
 
@@ -19,7 +23,9 @@ def data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("LUMENCELL_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setenv("LUMENCELL_DATA_DIR", str(tmp_path / "state"))
     path = tmp_path / "d.h5ad"
-    generate("bifurcation", "realistic", n_cells=600, n_genes=300, seed=0, store_root=True).write_h5ad(path)
+    adata = generate("bifurcation", "realistic", n_cells=600, n_genes=300, seed=0, store_root=True)
+    adata.obs["clone_id"] = adata.obs["true_lineage"].copy()  # scoring-only: no run may use it
+    adata.write_h5ad(path)
     return path
 
 
@@ -41,6 +47,10 @@ def test_run_and_export(data: Path, tmp_path: Path) -> None:
     result = runner.invoke(app, ["run", str(data), "--root", "cluster:true_label=trunk_early"])
     assert result.exit_code == 0, result.output
     run_id = result.output.split("run ")[1].split(":")[0]
+    ds = load(data)
+    graph = RunStore(dataset_dir(ds.fingerprint)).graph(run_id)
+    assert graph["prep_key"] == prep_key(ds, PrepParams())
+    assert graph["obs_keys"] == ["lumencell_leiden", "true_label"]
     out = tmp_path / "exported.h5ad"
     exported = runner.invoke(app, ["export", str(data), run_id, str(out)])
     assert exported.exit_code == 0, exported.output
@@ -59,6 +69,13 @@ def test_export_refuses_to_overwrite_the_input(data: Path) -> None:
     refused = runner.invoke(app, ["export", str(data), run_id, str(data)])
     assert refused.exit_code != 0
     assert "refusing to overwrite" in refused.output
+
+
+def test_run_refuses_a_clone_column_as_the_root(data: Path) -> None:
+    result = runner.invoke(app, ["run", str(data), "--root", "cluster:clone_id=A"])
+    assert result.exit_code != 0
+    message = " ".join(result.output.replace("│", " ").split())
+    assert "'clone_id' holds clone or receptor data, which lumenCell uses only to score runs" in message
 
 
 def test_run_rejects_a_bad_root(data: Path) -> None:
