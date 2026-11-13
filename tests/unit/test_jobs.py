@@ -12,7 +12,7 @@ from lumencell.engine.store import RunStore
 from lumencell.jobs import manager as jobs_mod
 from lumencell.jobs.manager import JobManager
 from lumencell.jobs.worker import HANDLERS
-from lumencell.prep.cache import PrepCache, dataset_dir
+from lumencell.prep.cache import PrepCache, dataset_dir, prep_key
 from lumencell.prep.stages import STAGES, PrepParams
 
 
@@ -125,7 +125,13 @@ def test_prepare_then_infer_through_the_worker(jobs: JobManager, tmp_path: Path)
     infer = jobs.submit(
         "infer",
         "run",
-        {**base, "method": "paga_dpt", "root": "cluster:true_label=trunk_early", "run_id": "r1"},
+        {
+            **base,
+            "method": "paga_dpt",
+            "root": "cluster:true_label=trunk_early",
+            "run_id": "r1",
+            "clonal_columns": [],
+        },
     )
     done = jobs.wait(infer.job_id, timeout=120)
     assert done.state == "done", done.error
@@ -133,6 +139,29 @@ def test_prepare_then_infer_through_the_worker(jobs: JobManager, tmp_path: Path)
     store = RunStore(dataset_dir(ds.fingerprint, cache_root))
     assert store.exists("r1")
     store.load("r1").validate()
+    assert store.graph("r1")["prep_key"] == prep_key(ds, params)
+
+
+def test_an_infer_job_must_say_which_columns_are_scoring_only(jobs: JobManager, tmp_path: Path) -> None:
+    # No default: a payload that forgot the key would otherwise let methods see clone columns.
+    payload = {
+        "path": str(tmp_path / "never-read.h5ad"),
+        "prep_params": PrepParams(),
+        "method": "paga_dpt",
+        "root": "cluster:true_label=trunk_early",
+        "run_id": "r2",
+    }
+    done = jobs.wait(jobs.submit("infer", "no-columns", payload).job_id, timeout=120)
+    assert done.state == "failed"
+    assert done.error is not None and "clonal_columns" in done.error
+    assert not done.error.startswith("KeyError"), done.error
+
+
+def test_clonal_columns_must_be_a_list_of_names() -> None:
+    # A bare string would be read as one column per character, leaving the real column visible.
+    payload = {"path": "never-read.h5ad", "prep_params": PrepParams(), "clonal_columns": "donor"}
+    with pytest.raises(ValueError, match="must be a list of column names"):
+        HANDLERS["infer"](payload, lambda *_: None)
 
 
 # ---- time limits and payloads -------------------------------------------------------------

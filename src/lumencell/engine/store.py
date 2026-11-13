@@ -26,6 +26,7 @@ from scipy import sparse
 
 from lumencell import __version__
 from lumencell.api import binary
+from lumencell.clonal.isolation import ISOLATION_VERSION
 from lumencell.engine.schema import (
     Divergence,
     Lineage,
@@ -36,7 +37,8 @@ from lumencell.engine.schema import (
     TrajectoryResult,
 )
 
-STORE_VERSION = 1
+# 2: result.json records the prep key, the clone-isolation version and the obs keys used.
+STORE_VERSION = 2
 
 
 def run_id(
@@ -75,7 +77,11 @@ def cells_payload(result: TrajectoryResult) -> bytes:
 
 
 def _graph_json(
-    result: TrajectoryResult, rid: str, created_at: str, terminals: list[str] | None
+    result: TrajectoryResult,
+    rid: str,
+    created_at: str,
+    terminals: list[str] | None,
+    prep_key: str | None,
 ) -> dict[str, Any]:
     root = asdict(result.root)
     return {
@@ -84,6 +90,11 @@ def _graph_json(
         "created_at": created_at,
         # Provenance: whether the terminals were named by the user or found by the method.
         "terminals_source": "user" if terminals else "auto",
+        # Provenance: the prep the run was computed on, how clone columns were kept out of
+        # inference, and which obs columns steered it.
+        "prep_key": prep_key,
+        "inference_isolation": ISOLATION_VERSION,
+        "obs_keys": result.obs_keys,
         "method": result.method,
         "method_version": result.method_version,
         "lumencell_version": __version__,
@@ -116,15 +127,23 @@ class RunStore:
     def exists(self, rid: str) -> bool:
         return (self.path(rid) / ".complete").exists()
 
-    def save(self, rid: str, result: TrajectoryResult, terminals: list[str] | None = None) -> None:
-        """Save a run. ``terminals`` are the terminal labels the run was asked for, if any."""
+    def save(
+        self,
+        rid: str,
+        result: TrajectoryResult,
+        terminals: list[str] | None = None,
+        prep_key: str | None = None,
+    ) -> None:
+        """Save a run. ``terminals`` are the terminal labels the run was asked for, if any;
+        ``prep_key`` is the prep cache key the run was computed on."""
         self.dir.mkdir(parents=True, exist_ok=True)
         final = self.path(rid)
         tmp = Path(tempfile.mkdtemp(prefix=f".{rid}-", dir=self.dir))
         try:
             created = datetime.now(UTC).isoformat(timespec="seconds")
             (tmp / "result.json").write_text(
-                json.dumps(_graph_json(result, rid, created, terminals), indent=2), encoding="utf-8"
+                json.dumps(_graph_json(result, rid, created, terminals, prep_key), indent=2),
+                encoding="utf-8",
             )
             (tmp / "cells.lcb").write_bytes(cells_payload(result))
             sparse.save_npz(
@@ -189,6 +208,7 @@ class RunStore:
                 else None
             ),
             curve_paths=g.get("curve_paths"),
+            obs_keys=list(g.get("obs_keys", [])),
         )
 
     def list(self) -> list[dict[str, Any]]:

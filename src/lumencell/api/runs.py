@@ -16,10 +16,11 @@ from lumencell.api.convert import from_api_spec, to_api_root
 from lumencell.api.dataset_view import DatasetView
 from lumencell.api.errors import ApiError, root_required
 from lumencell.api.state import StateStore
+from lumencell.clonal.isolation import scoring_only_columns, scoring_only_message
 from lumencell.engine.compare import RunComparison, compare
 from lumencell.engine.projection import project
 from lumencell.engine.registry import get_method
-from lumencell.engine.roots import RootError, RootSpec, format_root, parse_root
+from lumencell.engine.roots import ClusterRoot, RootError, RootSpec, format_root, parse_root
 from lumencell.engine.schema import ResolvedRoot, TrajectoryResult
 from lumencell.engine.store import RunStore, run_id
 from lumencell.engine.trends import gene_trends, temporal_heatmap
@@ -105,6 +106,7 @@ class Runs:
             spec = parse_root(spec_text)
         except RootError as exc:
             raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "invalid_root", str(exc)) from exc
+        self._refuse_scoring_only(spec, params)
         self._resolve(spec)  # fail fast on a bad root
         rid = run_id(req.method, params, spec_text, req.terminals, self.view.prep_key)
         if self.store.exists(rid):
@@ -117,10 +119,33 @@ class Runs:
             "params": params,
             "run_id": rid,
             "label_key": self.view.label_key,
+            "clonal_columns": list(self.view.clonal_columns),
         }
         job = self.jobs.submit("infer", f"infer:{rid}", payload)
         state = "running" if job.state == "running" else "queued"
         return models.RunCreated(run_id=rid, job_id=job.job_id, state=state), True
+
+    def _refuse_scoring_only(self, spec: RootSpec, params: dict[str, Any]) -> None:
+        """Refuse a run whose root, cluster column or label column is only for scoring runs.
+
+        Checked here, before the root is resolved, so the answer names every such column
+        at once; the worker checks again.
+        """
+        scoring_only = scoring_only_columns(self.view.ds.obs.columns, self.view.clonal_columns)
+        asked: list[tuple[str | None, str]] = [
+            (spec.key if isinstance(spec, ClusterRoot) else None, "root column"),
+            (params.get("cluster_key"), "cluster column"),
+            (self.view.label_key, "label column"),
+        ]
+        refused = [(column, role) for column, role in asked if column is not None and column in scoring_only]
+        if refused:
+            column, role = refused[0]
+            raise ApiError(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                "scoring_only_column",
+                scoring_only_message(column, role),
+                {"columns": list(dict.fromkeys(c for c, _ in refused))},
+            )
 
     def _renames(self, rid: str) -> dict[str, str]:
         renames: dict[str, str] = self.state.read().get("lineage_names", {}).get(rid, {})

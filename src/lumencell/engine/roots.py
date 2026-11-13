@@ -30,6 +30,7 @@ import numpy.typing as npt
 from scipy import sparse, stats
 from scipy.sparse.csgraph import connected_components
 
+from lumencell.clonal.isolation import scoring_only_message
 from lumencell.engine.context import LEIDEN_KEY, InferenceContext
 from lumencell.engine.schema import Notice, ResolvedRoot
 
@@ -185,6 +186,9 @@ def resolve_root(ctx: InferenceContext, spec: RootSpec) -> ResolvedRoot:
         key: str | None = None
         label: str | None = None
     elif isinstance(spec, ClusterRoot):
+        # Before the existence check: a scoring-only column is absent from ctx.obs by design.
+        if spec.key in ctx.scoring_only:
+            raise RootError(scoring_only_message(spec.key, "root column"))
         if spec.key not in ctx.obs.columns:
             raise RootError(f"there is no obs column {spec.key!r}")
         labels = ctx.labels(spec.key)

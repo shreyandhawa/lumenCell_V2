@@ -69,13 +69,25 @@ def handle_infer(payload: dict[str, Any], emit: Emit) -> str | None:
     from lumencell.engine.registry import run_method
     from lumencell.engine.roots import parse_root
     from lumencell.engine.store import RunStore
-    from lumencell.prep.cache import PrepCache, dataset_dir
+    from lumencell.prep.cache import PrepCache, dataset_dir, prep_key
 
+    # Required, with no default: a job that forgot it would let methods see clone columns.
+    if "clonal_columns" not in payload:
+        raise ValueError(
+            "the infer job's payload has no 'clonal_columns'; every infer job must name the columns "
+            "that are only for scoring (an empty list when there are none)"
+        )
+    clonal_columns = payload["clonal_columns"]
+    if not isinstance(clonal_columns, list | tuple) or not all(isinstance(c, str) for c in clonal_columns):
+        # A bare string would otherwise be read as one column per character.
+        raise ValueError(
+            f"the infer job's 'clonal_columns' must be a list of column names, not {clonal_columns!r}"
+        )
     ds = _dataset(payload["path"], payload.get("x_is"))
     params = payload["prep_params"]
     emit("load", 0, 1)
     prep = PrepCache(ds, _cache_root(payload)).run(params)
-    ctx = InferenceContext.from_prep(ds, prep, params)
+    ctx = InferenceContext.from_prep(ds, prep, params, clonal_columns=clonal_columns)
     result = run_method(
         ctx,
         payload["method"],
@@ -87,7 +99,7 @@ def handle_infer(payload: dict[str, Any], emit: Emit) -> str | None:
     )
     rid: str = payload["run_id"]
     RunStore(dataset_dir(ds.fingerprint, _cache_root(payload))).save(
-        rid, result, terminals=payload.get("terminals")
+        rid, result, terminals=payload.get("terminals"), prep_key=prep_key(ds, params)
     )
     return rid
 
