@@ -157,3 +157,11 @@ max_drop = 0.03
 #   no clone data); a synthetic branching truth with no clone data is not_measured and fails.
 #   Every other gate still skips NaN. The clonal gate is not a branch gate: merging two true
 #   lineages can push the ratio above 1, and lineage_recall catches that.
+#
+# 2026-11-13  Calibration run, results in benchmarks/results/clonal-calibration-2026-11-13.json
+#   (200 seeds, bound 18, no NaN p-values, no method error): null/paga_dpt 6, null/palantir 7,
+#   null/scfates_ppt 6 rejections, calibrated; donor_confound/N1 7, calibrated;
+#   donor_confound/N1_donors_ignored 200, not calibrated as it must be; depth_only/N1 200, not
+#   calibrated as it must be; depth_only/N2 57, NOT calibrated: FAILED. Oracle eta rises with
+#   fate_bias and p at fate_bias 0 is above 0.01 on all 9 monotonic cases. No threshold or
+#   definition changed.

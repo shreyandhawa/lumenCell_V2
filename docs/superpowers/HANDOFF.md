@@ -13,8 +13,9 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   layer and its two controls) merged as 744a0a8 (PR #9). Task 4 (receptor genes out of HVG
   selection) merged as 7b6254b (PR #10). Task 5 (clone and receptor columns scoring-only,
   store version 2) merged as 3f7e93d (PR #11). Task 6 (clonal scoring in the synthetic
-  benchmark) merged as 857d03d (PR #12). Task 7 (re-measured baseline) is on branch
-  `pivot/09-bench-remeasure` (PR #13), awaiting review.
+  benchmark) merged as 857d03d (PR #12). Task 7 (re-measured baseline) merged as bfb2539
+  (PR #13). Task 8 (calibration of the nulls) is on branch `pivot/10-clonal-calibration`; one
+  check failed (see Open questions), so it stops for Shreyan after the PR is opened.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -22,7 +23,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 1 Task 8, after Task 7's PR is reviewed and squash-merged.
+- **Next:** Shreyan's call on the `depth_only/N2` failure (Open questions), then phase 1 Task 9.
   - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
     - one task per subagent, on the model the task names
     - TDD throughout
@@ -200,6 +201,41 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
 - **`terminal_share: NaN`** is on every synthetic baseline row. Expected: the key was added to
   `runner.py` in 0621edc (real datasets); main's baseline predates it.
 
+## Task 8 decisions and result
+
+Run 2026-11-13 at cb5c9c3 (the pre-declaration commit), 200 seeds (100-299), 39 min. Nothing was
+tuned. Record: `benchmarks/results/clonal-calibration-2026-11-13.json`. Bound 18 (n scored 200).
+- **NaN rule**, declared in `thresholds.toml` before the run: a NaN p is `null`, counted in
+  `n_nan`, left out of the bound's n. There were none, and no method raised.
+- **Result per check (rejections of 200, p <= 0.05):**
+
+| Check | Rej. | Expected | Result |
+|---|---|---|---|
+| null/paga_dpt | 6 | calibrated | pass |
+| null/palantir | 7 | calibrated | pass |
+| null/scfates_ppt | 6 | calibrated | pass |
+| donor_confound/N1 | 7 | calibrated | pass |
+| donor_confound/N1_donors_ignored | 200 | not calibrated | pass (has teeth) |
+| depth_only/N1 | 200 | not calibrated | pass (has teeth) |
+| depth_only/N2 | 57 | calibrated | **FAIL** |
+| monotonicity, 9 cases | all rise; p at 0 is 0.21-0.998 | | pass |
+
+- **Reading (Step 5; script and output in the task report).**
+  - The three method nulls reject 3.0-3.5% (exact 95% CI 1.1-7.1%): conservative, as discrete
+    permutation p-values should be, and all inside the bound. KS against U(0,1) is 0.03 / 0.007
+    / 0.11 for the three methods: a mild departure for paga_dpt and palantir, from having too
+    few small p, not too many.
+  - donor_confound/N1 rejects 3.5% with a KS p of 0.61: well calibrated.
+  - Both controls without their stratum reject 200 of 200 at the p floor 0.001, so the controls
+    have teeth: shuffling without donors (or without depth) is wrong on these data.
+  - depth_only/N2 rejects 28.5% (CI 22.4-35.3%), over five times the nominal rate. N2 does not
+    remove the depth confound at decile resolution on this control. About 96% of the control's
+    clones lie in one decile, and 55-59% of them span two true lineages, so within a decile the
+    shuffle breaks a fine-scale pseudotime structure that the deciles cannot see. This is a
+    reading, not a tested cause.
+- **The synthetic gates are unaffected:** the gates use headline p = max over nulls, so N2 can
+  only make it larger, and nothing was re-measured.
+
 ## Verified references
 
 Checked on 2026-11-12 against Crossref (`api.crossref.org`) and jmlr.org; nothing downloaded.
@@ -281,6 +317,15 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 
 ## Open questions for Shreyan
 
+- **depth_only/N2 is not calibrated (Task 8).** 57 of 200 seeds reject at 0.05 (bound 18), so N2
+  is anti-conservative against a clone structure that follows pseudotime at a finer scale than a
+  decile. N1 rejects all 200, so the control has teeth; the failure is N2's. No seed, definition
+  or threshold was changed. Options for you: (a) accept it and say in the spec that N2 controls
+  depth only at decile resolution, and that a headline p of N1 or N2 passing does not rule out
+  fine-scale depth structure; (b) add a finer or adaptive pseudotime stratum as a new, dated
+  definition and calibrate it on a fresh seed range, never re-run on 100-299 with the change;
+  (c) drop the claim that N2 removes the depth confound. The calibration test stays red until
+  you choose.
 - **Reordering cells: exact or within Monte Carlo error?** Spec §4.5 says η, P and the p-values
   are "unchanged" when cells are reordered. Task 2 keeps the plan's shuffle: each null draws one
   random key per scored cell, in the cells' original order. That makes relabelling clones or
@@ -308,7 +353,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/06-receptor-genes` | #10 | merged (squash, 7b6254b) |
 | `pivot/07-inference-isolation` | #11 | merged (squash, 3f7e93d) |
 | `pivot/08-bench-clonal` | #12 | merged (squash, 857d03d) |
-| `pivot/09-bench-remeasure` | #13 | phase 1 Task 7: awaiting review |
+| `pivot/09-bench-remeasure` | #13 | merged (squash, bfb2539) |
+| `pivot/10-clonal-calibration` | PR_TBD | phase 1 Task 8: one check failed, awaiting Shreyan |
 
 ## Verify the current state
 
