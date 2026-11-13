@@ -143,3 +143,120 @@ def test_a_run_from_another_store_version_is_absent(
         assert [r["run_id"] for r in store.list()] == ["new"]
     [record] = caplog.records
     assert "1 saved run(s)" in record.getMessage() and "another store version" in record.getMessage()
+
+
+TRUST = "clonal-0123456789abcdef"
+
+
+def test_trust_round_trips_atomically(tmp_path: Path, result: TrajectoryResult) -> None:
+    store = RunStore(tmp_path)
+    store.save("abc", result)
+    assert store.read_trust("abc", TRUST) is None
+    payload = {"score": 0.25, "nested": {"n": [1, 2]}}
+    path = store.write_trust("abc", TRUST, payload)
+    assert path == store.trust_path("abc", TRUST) == store.path("abc") / "trust" / f"{TRUST}.json"
+    assert store.read_trust("abc", TRUST) == payload
+    store.write_trust("abc", TRUST, {"score": 0.5})
+    assert store.read_trust("abc", TRUST) == {"score": 0.5}
+    assert [p.name for p in (store.path("abc") / "trust").iterdir()] == [f"{TRUST}.json"]
+
+
+@pytest.mark.parametrize(
+    "name", ["../x", "clonal-xyz", "Clonal-0123456789abcdef", f"{TRUST}\n", f"{TRUST}/x"]
+)
+def test_trust_names_are_checked(tmp_path: Path, result: TrajectoryResult, name: str) -> None:
+    store = RunStore(tmp_path)
+    store.save("abc", result)
+    with pytest.raises(ValueError):
+        store.trust_path("abc", name)
+    with pytest.raises(ValueError):
+        store.write_trust("abc", name, {})
+    with pytest.raises(ValueError):
+        store.read_trust("abc", name)
+    assert not (store.path("abc") / "trust").exists()
+
+
+def test_trust_refuses_nan_and_leaves_nothing(tmp_path: Path, result: TrajectoryResult) -> None:
+    store = RunStore(tmp_path)
+    store.save("abc", result)
+    store.write_trust("abc", TRUST, {"v": 1})
+    with pytest.raises(ValueError):
+        store.write_trust("abc", TRUST, {"v": float("nan")})
+    assert store.read_trust("abc", TRUST) == {"v": 1}, "a failed write leaves the old file"
+    assert [p.name for p in (store.path("abc") / "trust").iterdir()] == [f"{TRUST}.json"]
+    other = "clonal-fedcba9876543210"
+    with pytest.raises(ValueError):
+        store.write_trust("abc", other, {"v": float("inf")})
+    assert store.read_trust("abc", other) is None
+    assert not any(p.name.endswith(".tmp") for p in (store.path("abc") / "trust").iterdir())
+
+
+def test_trust_needs_a_complete_run(tmp_path: Path, result: TrajectoryResult) -> None:
+    store = RunStore(tmp_path)
+    with pytest.raises(FileNotFoundError):
+        store.write_trust("nope", TRUST, {})
+    assert not store.path("nope").exists(), "nothing is created for a missing run"
+    assert store.read_trust("nope", TRUST) is None
+    store.save("abc", result)
+    (store.path("abc") / ".complete").unlink()
+    with pytest.raises(FileNotFoundError):
+        store.write_trust("abc", TRUST, {})
+    assert not (store.path("abc") / "trust").exists()
+
+
+def test_saving_a_run_again_keeps_its_trust(tmp_path: Path, result: TrajectoryResult) -> None:
+    store = RunStore(tmp_path)
+    store.save("abc", result)
+    store.write_trust("abc", TRUST, {"score": 0.25})
+    before = store.trust_path("abc", TRUST).read_text(encoding="utf-8")
+    old_dir = store.path("abc")
+    store.save("abc", result)
+    assert store.trust_path("abc", TRUST).read_text(encoding="utf-8") == before
+    assert store.read_trust("abc", TRUST) == {"score": 0.25}
+    assert store.exists("abc")
+    assert [p.name for p in store.dir.iterdir()] == ["abc"], "no temporary run folder is left"
+    assert [p.name for p in old_dir.joinpath("trust").iterdir()] == [f"{TRUST}.json"]
+
+
+def test_a_failed_save_keeps_the_old_runs_trust(
+    tmp_path: Path, result: TrajectoryResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = RunStore(tmp_path)
+    store.save("abc", result)
+    store.write_trust("abc", TRUST, {"score": 1})
+
+    real, failed = Path.rename, []
+
+    def boom(self: Path, target: Path) -> Path:
+        if self.name.startswith(".abc-") and target.name == "abc" and not failed:
+            failed.append(self)  # the swap of the new folder into place fails once
+            raise RuntimeError("disk full")
+        return real(self, target)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "rename", boom)
+        with pytest.raises(RuntimeError):
+            store.save("abc", result)
+    assert failed, "the swap was attempted and failed"
+    assert store.read_trust("abc", TRUST) == {"score": 1}
+    assert store.exists("abc")
+    assert [p.name for p in store.dir.iterdir()] == ["abc"]
+
+
+def test_a_damaged_trust_file_reads_as_missing(
+    tmp_path: Path, result: TrajectoryResult, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = RunStore(tmp_path)
+    store.save("abc", result)
+    store.write_trust("abc", TRUST, {"v": 1})
+    path = store.trust_path("abc", TRUST)
+    path.write_text("{not json", encoding="utf-8")
+    assert store.read_trust("abc", TRUST) is None
+    err = capsys.readouterr().err
+    assert err.count("\n") == 1 and path.name in err
+    path.write_text("[1, 2]", encoding="utf-8")
+    assert store.read_trust("abc", TRUST) is None
+    assert path.name in capsys.readouterr().err
+    path.write_bytes(b"\xff\xfe")
+    assert store.read_trust("abc", TRUST) is None
+    assert path.name in capsys.readouterr().err

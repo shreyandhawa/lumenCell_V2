@@ -35,6 +35,7 @@ _STAGE_NAMES = "|".join(s.name for s in STAGES)
 _STAGE_TEMP = re.compile(rf"\.(?:{_STAGE_NAMES})-(?:{_RANDOM}|[0-9a-f]{{16}}\.damaged-[0-9a-f]{{8}})")
 _RUN_TEMP = re.compile(rf"\.[A-Za-z0-9_-]{{1,64}}-{_RANDOM}")
 _MANIFEST_TEMP = re.compile(rf"\.manifest-{_RANDOM}\.tmp")
+_TRUST_TEMP = re.compile(rf"\.[a-z][a-z_]{{0,31}}-[0-9a-f]{{16}}-{_RANDOM}\.tmp")
 _GRAPH_TEMP = "result.json.tmp"
 _DATASET_PARTS = ("manifest.json", "stages", "runs")
 
@@ -161,8 +162,12 @@ def _leftovers(entry: Path, before: float) -> list[Path]:
         for p in runs.iterdir():
             if _RUN_TEMP.fullmatch(p.name):
                 found.append(p)
-            elif p.is_dir() and not p.is_symlink() and (p / _GRAPH_TEMP).exists():
-                found.append(p / _GRAPH_TEMP)
+            elif p.is_dir() and not p.is_symlink():
+                if (p / _GRAPH_TEMP).exists():
+                    found.append(p / _GRAPH_TEMP)
+                trust = p / "trust"
+                if trust.is_dir() and not trust.is_symlink():
+                    found += [t for t in trust.iterdir() if _TRUST_TEMP.fullmatch(t.name)]
     old = []
     for p in found:
         try:

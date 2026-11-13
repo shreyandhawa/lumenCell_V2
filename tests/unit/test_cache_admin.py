@@ -6,15 +6,18 @@ LUMENCELL_DATA_DIR at tmp_path.
 
 import json
 import os
+import tempfile
 import time
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
 from lumencell.cli import app
+from lumencell.engine.store import RunStore
 from lumencell.prep.housekeeping import Removal, UnsafePath, apply_prune, list_cache, parse_age
 
 runner = CliRunner()
@@ -252,3 +255,48 @@ def test_a_cache_from_before_the_stamp_counts_its_newest_file_as_last_use(cache:
     assert abs(entry.last_used - (cache.now - DAY)) < 5
     assert runner.invoke(app, ["cache", "prune", "--older-than", "30d"]).exit_code == 0
     assert run.exists(), "a dataset used yesterday is kept"
+
+
+def test_prune_removes_old_trust_temp_files_only(cache: SimpleNamespace) -> None:
+    trust = cache.b / "runs" / "r2" / "trust"
+    kept = _write(trust / "clonal-0123456789abcdef.json", 30)
+    fresh = _write(trust / ".clonal-0123456789abcdef-abcd1234.tmp", 12)
+    old = _write(trust / ".clonal-0123456789abcdef-wxyz_789.tmp", 12)
+    stray = _write(trust / ".DS_Store", 6)
+    for p in (old, stray):
+        _age(p, 2 * 3600, cache.now)
+    res = runner.invoke(app, ["cache", "prune", "--older-than", "30d"])
+    assert res.exit_code == 0, res.output
+    assert not old.exists()
+    assert fresh.exists() and kept.exists() and stray.exists()
+
+
+def test_prune_matches_the_temp_name_write_trust_really_creates(
+    cache: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = RunStore(cache.b)
+    (cache.b / "runs" / "r3").mkdir()
+    (cache.b / "runs" / "r3" / ".complete").write_text("x", encoding="utf-8")
+    made: list[Path] = []
+    real = tempfile.mkstemp
+
+    def spy(*a: Any, **k: Any) -> tuple[int, str]:
+        fd, name = real(*a, **k)
+        made.append(Path(name))
+        return fd, name
+
+    def killed(*_a: Any, **_k: Any) -> None:
+        raise OSError("killed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(tempfile, "mkstemp", spy)
+        patch.setattr(os, "replace", killed)
+        with pytest.raises(OSError):
+            store.write_trust("r3", "clonal-0123456789abcdef", {"v": 1})
+    [tmp] = made
+    assert tmp.parent == store.path("r3") / "trust"
+    tmp.write_text("{}", encoding="utf-8")  # a killed process would have left it behind
+    _age(tmp, 2 * 3600, cache.now)
+    res = runner.invoke(app, ["cache", "prune", "--older-than", "30d"])
+    assert res.exit_code == 0, res.output
+    assert not tmp.exists()
