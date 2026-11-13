@@ -12,6 +12,7 @@ Inference uses the PCA / kNN / diffusion space built here. UMAP is computed
 only for display, and only when the file has no 2-D embedding of its own.
 """
 
+import logging
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
@@ -25,7 +26,9 @@ import scanpy as sc
 from scipy import sparse
 
 from lumencell.clonal.isolation import receptor_gene_mask
-from lumencell.data.loader import Dataset
+from lumencell.data.loader import Dataset, DatasetError, looks_like_ensembl
+
+log = logging.getLogger(__name__)
 
 PIPELINE_VERSION = "1"
 
@@ -155,6 +158,16 @@ def _hvg(ds: Dataset, art: Artifacts, p: PrepParams) -> dict[str, Any]:
     """
     receptor = receptor_gene_mask(ds.gene_symbols)
     n_receptor = int(receptor.sum())
+    if n_receptor == ds.n_vars and p.exclude_receptor_genes:
+        raise DatasetError(
+            f"all {n_receptor} genes match the T-cell receptor pattern, so no genes are left for HVGs"
+        )
+    unmatchable = n_receptor == 0 and looks_like_ensembl(ds.gene_symbols)
+    if unmatchable:
+        log.warning(
+            "no gene symbols to match receptor genes against (they look like Ensembl IDs and the file has "
+            "no symbol column): clone identity may reach the PCA"
+        )
     n_top = min(p.n_top_genes, ds.n_vars)
     everything = _select_hvg(ds, art, n_top, None)
     if n_receptor == 0 or not p.exclude_receptor_genes:
@@ -165,6 +178,8 @@ def _hvg(ds: Dataset, art: Artifacts, p: PrepParams) -> dict[str, Any]:
     info = {
         "receptor_genes": n_receptor,
         "excluded": bool(p.exclude_receptor_genes),
+        "symbol_source": ds.gene_symbol_column or "var_names",
+        "symbols_look_like_ensembl": unmatchable,
         "receptor_hvg_without_exclusion": int(everything[receptor].sum()),
     }
     return {"hvg": hvg, "hvg_info": info}

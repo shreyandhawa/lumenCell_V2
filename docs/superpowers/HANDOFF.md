@@ -50,7 +50,14 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   receptor genes that would have been HVGs. Without receptor genes the output is identical to before.
 - Existing cache keys for every dataset change (the `hvg` params gained a field), so old prep caches
   recompute from `hvg` on. No test pinned a literal key, so no assertion changed.
-- `cli prepare` prints a `receptor genes: ...` line when any gene matches.
+- `hvg_info` also records `symbol_source` (the var column the loader took symbols from, else
+  `var_names`) and `symbols_look_like_ensembl`. `cli prepare` always prints a `receptor genes: ...`
+  line naming the source, including `0 matched`. If 0 matched and the symbols look like Ensembl IDs
+  (the loader's own test, `looks_like_ensembl`), the hvg stage logs a warning and prepare prints one:
+  clone identity may reach the PCA.
+- A dataset whose every gene matches the pattern raises `DatasetError` from the hvg stage.
+- The regex is unchanged; genome-prefixed or versioned symbols (e.g. `GRCh38_TRAC`) stay unmatched.
+  Deferred.
 
 ## Verified references
 

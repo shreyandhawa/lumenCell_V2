@@ -81,12 +81,21 @@ def prepare(data: DataArg, x_is: XIsOpt = None, recompute_umap: UmapOpt = False)
     for r in prep.stages:
         typer.echo(f"{r.name:10s} {r.state:8s} {r.seconds:6.2f}s")
     info = prep.artifacts["hvg_info"]
+    source = f"symbols from {info['symbol_source']}"
     if info["receptor_genes"] > 0:
         where = "excluded from" if info["excluded"] else "kept in"
         typer.echo(
-            f"receptor genes: {info['receptor_genes']} matched {RECEPTOR_GENE.pattern}; "
+            f"receptor genes: {info['receptor_genes']} matched {RECEPTOR_GENE.pattern} ({source}); "
             f"{where} HVG selection ({info['receptor_hvg_without_exclusion']} would be HVGs "
             "without the exclusion)"
+        )
+    else:
+        typer.echo(f"receptor genes: 0 matched ({source})")
+    if info["symbols_look_like_ensembl"]:
+        typer.echo(
+            "warning: receptor genes could not be matched because the gene symbols look like Ensembl IDs; "
+            "clone identity may reach the PCA",
+            err=True,
         )
 
 

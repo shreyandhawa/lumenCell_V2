@@ -107,10 +107,15 @@ class Dataset:
         return self.matrix
 
 
+def looks_like_ensembl(names: Any) -> bool:
+    """More than half of the first 500 names are Ensembl gene IDs."""
+    names = [str(n) for n in names[:500]]
+    return bool(np.mean([bool(_ENSEMBL.match(n)) for n in names]) > 0.5) if names else False
+
+
 def _gene_symbols(var: pd.DataFrame, var_names: pd.Index) -> tuple[npt.NDArray[np.str_], str | None]:
     names = var_names.astype(str)
-    looks_ensembl = np.mean([bool(_ENSEMBL.match(n)) for n in names[:500]]) > 0.5 if len(names) else False
-    if looks_ensembl:
+    if looks_like_ensembl(names):
         for col in _SYMBOL_COLUMNS:
             if col in var.columns:
                 symbols = var[col].astype(str).to_numpy()

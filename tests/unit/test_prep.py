@@ -1,5 +1,6 @@
 import hashlib
 from pathlib import Path
+from typing import Any
 
 import anndata as ad
 import numpy as np
@@ -187,6 +188,97 @@ def test_synthetic_hvgs_are_unchanged_by_the_exclusion(tmp_path: Path) -> None:
 
 def test_the_pattern_covers_human_and_mouse_segments() -> None:
     hits = ["TRAV1-2", "TRAV14DV4", "Trbc1", "trgv9", "TRDC", "TRAC", "TRBD1", "TRBJ1-1"]
-    misses = ["TRADD", "TRAT1", "TRAPPC1", "TRDN", "TRDMT1"]
+    misses = ["TRADD", "TRAT1", "TRAPPC1", "TRDN", "TRDMT1", "TRBC1-AS1"]
     assert receptor_gene_mask(np.array(hits)).all()
     assert not receptor_gene_mask(np.array(misses)).any()
+
+
+def test_n_top_genes_above_the_gene_count_clamps_to_the_non_receptor_genes(
+    receptor_ds: tuple[Dataset, np.ndarray], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ds, tr = receptor_ds
+    asked: list[tuple[int, int]] = []
+    real = sc.pp.highly_variable_genes
+
+    def spy(adata: ad.AnnData, **kw: Any) -> Any:
+        asked.append((adata.n_vars, kw["n_top_genes"]))
+        return real(adata, **kw)
+
+    monkeypatch.setattr(sc.pp, "highly_variable_genes", spy)
+    art = run_pipeline(ds, PrepParams(n_top_genes=5000)).artifacts
+    # scanpy clamps by itself, so check what the stage asked for, not only the result
+    assert all(n_top <= n_genes for n_genes, n_top in asked), asked
+    assert art["hvg"].sum() == ds.n_vars - tr.sum()
+    assert art["hvg"][tr].sum() == 0
+
+
+def test_receptor_genes_are_excluded_from_lognorm_data_too(tmp_path: Path) -> None:
+    ds, tr = _with_receptor_genes(tmp_path)
+    adata = ad.read_h5ad(ds.path)
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
+    path = tmp_path / "ln.h5ad"
+    adata.write_h5ad(path)
+    ln = load(path)
+    assert ln.x_kind == "lognorm"
+    art = run_pipeline(ln, PrepParams(n_top_genes=200)).artifacts
+    assert art["hvg"].sum() == 200
+    assert art["hvg"][tr].sum() == 0
+    assert art["hvg_info"]["receptor_genes"] == 8
+
+
+def _ensembl_dataset(tmp_path: Path, symbol_column: str | None) -> tuple[Dataset, np.ndarray]:
+    ds, tr = _with_receptor_genes(tmp_path)
+    adata = ad.read_h5ad(ds.path)
+    symbols = np.array(adata.var_names)
+    adata.var_names = [f"ENSG{i:011d}" for i in range(adata.n_vars)]
+    if symbol_column:
+        adata.var[symbol_column] = symbols
+    path = tmp_path / "ens.h5ad"
+    adata.write_h5ad(path)
+    return load(path), tr
+
+
+def test_receptor_genes_are_matched_on_the_symbol_column(tmp_path: Path) -> None:
+    ds, tr = _ensembl_dataset(tmp_path, "feature_name")
+    assert receptor_gene_mask(ds.var_names.to_numpy()).sum() == 0
+    art = run_pipeline(ds, PrepParams(n_top_genes=200)).artifacts
+    assert art["hvg"][tr].sum() == 0
+    assert art["hvg_info"]["receptor_genes"] == 8
+    assert art["hvg_info"]["symbol_source"] == "feature_name"
+    assert art["hvg_info"]["symbols_look_like_ensembl"] is False
+
+
+def test_ensembl_ids_without_symbols_warn_that_exclusion_cannot_match(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    ds, _tr = _ensembl_dataset(tmp_path, None)
+    with caplog.at_level("WARNING", logger="lumencell.prep.stages"):
+        art = run_pipeline(ds, PrepParams(n_top_genes=200)).artifacts
+    info = art["hvg_info"]
+    assert info["receptor_genes"] == 0 and info["symbol_source"] == "var_names"
+    assert info["symbols_look_like_ensembl"] is True
+    assert "clone identity may reach the PCA" in caplog.text
+
+
+def test_plain_symbols_do_not_warn(
+    receptor_ds: tuple[Dataset, np.ndarray], caplog: pytest.LogCaptureFixture
+) -> None:
+    ds, _ = receptor_ds
+    with caplog.at_level("WARNING", logger="lumencell.prep.stages"):
+        art = run_pipeline(ds, PrepParams(n_top_genes=200)).artifacts
+    assert art["hvg_info"]["symbol_source"] == "var_names"
+    assert not caplog.records
+
+
+def test_a_dataset_made_only_of_receptor_genes_is_refused(tmp_path: Path) -> None:
+    from lumencell.data.loader import DatasetError
+
+    rng = np.random.default_rng(0)
+    x = sparse.csr_matrix(rng.poisson(3.0, (200, 8)).astype(np.float32))
+    adata = ad.AnnData(X=x)
+    adata.var_names = RECEPTOR_SYMBOLS
+    path = tmp_path / "all.h5ad"
+    adata.write_h5ad(path)
+    with pytest.raises(DatasetError, match="all 8 genes"):
+        run_pipeline(load(path), PrepParams(n_top_genes=200))
