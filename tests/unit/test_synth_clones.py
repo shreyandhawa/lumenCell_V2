@@ -1,10 +1,13 @@
 import dataclasses
 import hashlib
+import itertools
 import json
+from collections.abc import Callable
 
 import anndata as ad
 import numpy as np
 import pytest
+from scipy.stats import zipf
 
 from lumencell.bench.gates import load_thresholds
 from lumencell.bench.synth import generate, truth_from_adata
@@ -125,30 +128,208 @@ def test_label_strings_collide_across_donors() -> None:
     assert list(b.obs["donor"].cat.categories) == ["d0", "d1", "d2"]
 
 
-def test_depth_only_clones_sit_in_a_pseudotime_window() -> None:
-    b = add_clones(_data(), ClonalLayer(control="depth_only"), seed=0)
-    frame = b.obs.assign(key=[f"{d}|{c}" for d, c in zip(b.obs["donor"], b.obs["clone_id"], strict=True)])
-    frame = frame[b.obs["clone_id"].notna().to_numpy()]
-    spans = frame.groupby("key")["true_pseudotime"].agg(lambda t: float(t.max() - t.min()))
-    assert spans.median() < 0.05
+def _clone_keys_array(b: ad.AnnData) -> np.ndarray:
+    donors = b.obs["donor"].astype(str)
+    labels = b.obs["clone_id"].astype(str)
+    return np.array([f"{d}|{c}" for d, c in zip(donors, labels, strict=True)])
 
 
-@pytest.mark.parametrize("topology", ["bifurcation", "binary2"])
-def test_donor_confound_skews_donor_composition(topology: str) -> None:
-    a = _data(topology)
-    b = add_clones(a, ClonalLayer(control="donor_confound"), seed=0)
-    truth = truth_from_adata(b)
-    sorted_names = sorted(truth.names)
-    exclusive = truth.exclusive()
-    donor = b.obs["donor"].cat.codes.to_numpy()
+def _leaf_pure_share(b: ad.AnnData) -> float:
+    """Share of clones of size >= 2 holding a leaf-segment cell whose cells all sit on one leaf."""
+    leaves = set(_leaves(b))
+    seg = b.obs["true_segment"].astype(str).to_numpy()
+    keys = _clone_keys_array(b)
     labelled = b.obs["clone_id"].notna().to_numpy()
-    for name in sorted_names:
-        j = sorted_names.index(name)  # sorted leaf order, not Truth.names order
-        cells = labelled & (exclusive == truth.names.index(name))
-        assert cells.sum() > 50
-        assert (donor[cells] == j % 3).mean() >= 0.6
-    if topology == "binary2":
-        assert truth.names != sorted_names  # a topology-order mix-up would fail above
+    total = pure = 0
+    for key in np.unique(keys[labelled]):
+        cells = labelled & (keys == key)
+        if cells.sum() < 2 or not set(seg[cells]) & leaves:
+            continue
+        total += 1
+        pure += len(set(seg[cells])) == 1
+    return pure / total
+
+
+def _clone_windows(b: ad.AnnData, min_size: int) -> list[tuple[str, float, float]]:
+    """(donor, min, max) of true pseudotime per clone of at least ``min_size``, by donor and clone number."""
+    frame = b.obs.loc[b.obs["clone_id"].notna()]
+    rows = []
+    for (donor, clone), group in frame.groupby(["donor", "clone_id"], observed=True):
+        if len(group) >= min_size:
+            t = group["true_pseudotime"]
+            rows.append((str(donor), int(str(clone)[1:]), float(t.min()), float(t.max())))
+    rows.sort()
+    return [(donor, lo, hi) for donor, _, lo, hi in rows]
+
+
+def test_depth_only_clones_sit_in_a_pseudotime_window_and_run_in_order() -> None:
+    a = _data()
+    depth = _clone_windows(add_clones(a, ClonalLayer(control="depth_only"), seed=0), 3)
+    mixed = _clone_windows(add_clones(a, DEFAULT_LAYER, seed=0), 3)
+    assert len(depth) > 100 and len(mixed) > 100  # clones of size >= 3: singletons have span 0
+    assert np.median([hi - lo for _, lo, hi in depth]) < 0.05
+    assert np.median([hi - lo for _, lo, hi in mixed]) > 0.2
+    for donor in {d for d, _, _ in depth}:  # clone number rises with pseudotime within a donor
+        mine = [(lo, hi) for d, lo, hi in depth if d == donor]
+        assert all(prev_hi <= lo for (_, prev_hi), (lo, _) in itertools.pairwise(mine))
+
+
+@pytest.mark.parametrize("topology", ["bifurcation", "trifurcation", "binary2"])
+def test_fate_bias_sets_the_leaf_pure_share_of_clones(topology: str) -> None:
+    a = _data(topology)
+    share = {
+        bias: _leaf_pure_share(add_clones(a, ClonalLayer(fate_bias=bias), seed=0))
+        for bias in (0, 0.35, 0.7, 1)
+    }
+    assert share[0] < 0.3
+    assert 0.3 < share[0.35] < 0.5
+    assert 0.5 < share[0.7] < 0.72
+    assert share[1] == 1.0
+
+
+@pytest.mark.parametrize("topology", ["bifurcation", "trifurcation", "binary2"])
+def test_donor_shares_follow_the_control(topology: str) -> None:
+    a = _data(topology)
+    for control in ("none", "depth_only", "donor_confound"):
+        b = add_clones(a, ClonalLayer(control=control), seed=0)
+        truth = truth_from_adata(b)
+        names = sorted(truth.names)  # lineage j: sorted leaf order
+        exclusive = truth.exclusive()
+        donor = b.obs["donor"].cat.codes.to_numpy()
+        for j, name in enumerate(names):
+            cells = exclusive == truth.names.index(name)
+            shares = np.bincount(donor[cells], minlength=3) / cells.sum()
+            if control == "donor_confound":
+                assert abs(shares[j % 3] - 0.8) < 0.05, (name, shares)
+                assert np.all(np.delete(shares, j % 3) > 0.05), (name, shares)
+            else:
+                assert np.all(np.abs(shares - 1 / 3) < 0.05), (control, name, shares)
+        if control == "donor_confound":
+            assert _leaf_pure_share(b) < 0.5  # lineage-mixed, like "none" at fate bias 0
+
+
+def test_the_stream_is_seeded_by_seed_and_clone_stream_and_drawn_in_order() -> None:
+    a = _data(n_cells=600)
+    b = add_clones(a, DEFAULT_LAYER, seed=5)
+    r = np.random.default_rng([5, 7100501])
+    labelled = r.random(600) < LABEL_RATE
+    donors = r.integers(N_DONORS, size=600)
+    assert (labelled == b.obs["clone_id"].notna().to_numpy()).all()
+    assert (donors == b.obs["donor"].cat.codes.to_numpy()).all()
+
+
+def test_clone_columns_are_pinned_byte_for_byte() -> None:
+    a = generate("binary2", "realistic", n_cells=400, n_genes=120, seed=7)
+    b = add_clones(a, DEFAULT_LAYER, seed=7)
+    text = b.obs[["clone_id", "donor"]].astype(str).to_csv().encode()
+    assert (
+        hashlib.sha256(text).hexdigest() == "521259033b7e26701edf5aca09b256db602c656639a51b13248b1c49c6854af8"
+    )
+
+
+def test_clone_sizes_follow_the_declared_model() -> None:
+    rng = np.random.default_rng(123)
+    n = 20000
+    sizes = np.array([draw_clone_size(rng) for _ in range(n)])
+
+    def check(p: float, observed: float) -> None:  # within 5 binomial standard deviations
+        assert abs(observed - p) < 5 * np.sqrt(p * (1 - p) / n), (p, observed)
+
+    check(0.5, (sizes == 1).mean())
+    check(0.5 * zipf.pmf(1, 2.2), (sizes == 2).mean())  # 0.5 / zeta(2.2), about 0.335
+    check(0.5 * zipf.sf(4, 2.2), (sizes >= 6).mean())  # upper tail: size = 1 + Zipf >= 6
+    check(0.5 * zipf.sf(19, 2.2), (sizes >= 21).mean())
+
+
+def _without(a: ad.AnnData, column: str) -> ad.AnnData:
+    b = a.copy()
+    del b.obs[column]
+    return b
+
+
+def _edited(a: ad.AnnData, edit: Callable[[ad.AnnData], None]) -> ad.AnnData:
+    b = a.copy()
+    edit(b)
+    return b
+
+
+def _unknown_segment(b: ad.AnnData) -> None:
+    b.obs["true_segment"] = b.obs["true_segment"].astype(str)
+    b.obs.iloc[0, b.obs.columns.get_loc("true_segment")] = "zzz"
+
+
+def _no_segments(b: ad.AnnData) -> None:
+    del b.uns["lumencell_truth"]["segments"]
+
+
+def _cycle(b: ad.AnnData) -> None:  # every segment is someone's parent: no leaf
+    segments = b.uns["lumencell_truth"]["segments"]
+    names = list(segments)
+    for name, parent in zip(names, [*names[1:], names[0]], strict=True):
+        segments[name]["parent"] = parent
+
+
+def _empty_leaf(b: ad.AnnData) -> None:
+    b.uns["lumencell_truth"]["segments"]["extra"] = {"parent": "trunk", "length": 1.0}
+
+
+def _nan_time(b: ad.AnnData) -> None:
+    b.obs["true_pseudotime"] = b.obs["true_pseudotime"].astype(float)
+    b.obs.iloc[0, b.obs.columns.get_loc("true_pseudotime")] = np.nan
+
+
+def _add(column: str) -> Callable[[ad.AnnData], None]:
+    def edit(b: ad.AnnData) -> None:
+        b.obs[column] = "x"
+
+    return edit
+
+
+@pytest.mark.parametrize(
+    ("layer", "edit", "message"),
+    [
+        (ClonalLayer(), lambda a: _without(a, "true_segment"), "true_segment"),
+        (ClonalLayer(), lambda a: _without(a, "true_pseudotime"), "true_pseudotime"),
+        (ClonalLayer(), lambda a: _edited(a, _no_segments), "segments"),
+        (ClonalLayer(), lambda a: _edited(a, _unknown_segment), "not in segments"),
+        (ClonalLayer(), lambda a: _edited(a, _cycle), "no leaf"),
+        (ClonalLayer(), lambda a: _edited(a, _empty_leaf), "no cells"),
+        (ClonalLayer(), lambda a: _edited(a, _nan_time), "NaN"),
+        (ClonalLayer(), lambda a: _edited(a, _add("clone_id")), "already has"),
+        (ClonalLayer(), lambda a: _edited(a, _add("donor")), "already has"),
+    ],
+)
+def test_add_clones_refuses_invalid_inputs(
+    layer: ClonalLayer, edit: Callable[[ad.AnnData], ad.AnnData], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        add_clones(edit(_data(n_cells=300)), layer, seed=0)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"control": "bogus"},
+        {"fate_bias": -0.1},
+        {"fate_bias": 1.1},
+        {"label_rate": -0.1},
+        {"label_rate": 1.5},
+        {"n_donors": 0},
+        {"n_donors": 1, "control": "donor_confound"},
+    ],
+)
+def test_clonal_layer_refuses_invalid_values(kwargs: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        ClonalLayer(**kwargs)  # type: ignore[arg-type]
+
+
+def test_clone_truth_names_a_missing_column() -> None:
+    a = _data(n_cells=300)
+    with pytest.raises(ValueError, match="clone_id"):
+        clone_truth(truth_from_adata(a), a)
+    b = add_clones(a, DEFAULT_LAYER, seed=0)
+    with pytest.raises(ValueError, match="donor"):
+        clone_truth(truth_from_adata(b), _without(b, "donor"))
 
 
 def test_clone_truth_fills_and_checks_the_truth() -> None:

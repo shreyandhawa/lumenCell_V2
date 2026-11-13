@@ -21,7 +21,7 @@ donor's pools and restarting in each donor.
 
 import dataclasses
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, get_args
 
 import anndata as ad
 import numpy as np
@@ -49,6 +49,18 @@ class ClonalLayer:
     label_rate: float = LABEL_RATE
     control: Control = "none"
 
+    def __post_init__(self) -> None:
+        if self.control not in get_args(Control):
+            raise ValueError(f"control must be one of {get_args(Control)}, got {self.control!r}")
+        if not 0 <= self.fate_bias <= 1:
+            raise ValueError(f"fate_bias must be in [0, 1], got {self.fate_bias}")
+        if not 0 <= self.label_rate <= 1:
+            raise ValueError(f"label_rate must be in [0, 1], got {self.label_rate}")
+        if self.n_donors < 1:
+            raise ValueError(f"n_donors must be at least 1, got {self.n_donors}")
+        if self.control == "donor_confound" and self.n_donors < 2:
+            raise ValueError("the donor_confound control needs n_donors >= 2")
+
 
 DEFAULT_LAYER = ClonalLayer()
 
@@ -67,10 +79,7 @@ def add_clones(adata: ad.AnnData, layer: ClonalLayer, seed: int) -> ad.AnnData:
     The layer, seed and stream are recorded in ``uns["lumencell_truth"]["clones"]``.
     """
     n = adata.n_obs
-    segments: dict[str, dict[str, str]] = dict(adata.uns["lumencell_truth"]["segments"])
-    seg = adata.obs["true_segment"].astype(str).to_numpy()
-    t = adata.obs["true_pseudotime"].to_numpy(dtype=np.float64)
-    leaves = sorted(set(segments) - {str(v["parent"]) for v in segments.values()})
+    segments, seg, t, leaves = _checked_input(adata)
     rng = np.random.default_rng([seed, CLONE_STREAM])
 
     labelled = rng.random(n) < layer.label_rate
@@ -78,8 +87,7 @@ def add_clones(adata: ad.AnnData, layer: ClonalLayer, seed: int) -> ad.AnnData:
     donor_ids = np.full(n, -1, dtype=np.int64)
     clone_ids = np.full(n, None, dtype=object)
 
-    if layer.control == "none":
-        join_leaf = rng.random(n) < layer.fate_bias
+    join_leaf = rng.random(n) < layer.fate_bias if layer.control == "none" else np.zeros(n, dtype=bool)
     for d in range(layer.n_donors):
         mine = labelled & (donor == d)
         if layer.control == "depth_only":
@@ -114,6 +122,9 @@ def add_clones(adata: ad.AnnData, layer: ClonalLayer, seed: int) -> ad.AnnData:
 
 def clone_truth(truth: Truth, adata: ad.AnnData) -> Truth:
     """``truth`` with the clone labels and donors of ``adata`` (made by :func:`add_clones`)."""
+    for column in ("clone_id", "donor"):
+        if column not in adata.obs:
+            raise ValueError(f"adata has no obs column {column!r}; run add_clones first")
     return dataclasses.replace(
         truth,
         clone_ids=adata.obs["clone_id"].to_numpy(dtype=object),
@@ -133,13 +144,15 @@ def _draw_donors(
     if layer.control != "donor_confound":
         return donor
     keep_home = rng.random(n) < DONOR_CONFOUND_SHARE
-    other = rng.integers(max(layer.n_donors - 1, 1), size=n)
+    other = rng.integers(layer.n_donors - 1, size=n)
     home = np.full(n, -1, dtype=np.int64)  # j mod D for cells on exactly one lineage
     paths = [_path(segments, leaf) for leaf in leaves]
     for name in segments:
         owners = [j for j, path in enumerate(paths) if name in path]
         if len(owners) == 1:
             home[seg == name] = owners[0] % layer.n_donors
+    if (home < 0).all():
+        raise ValueError("the donor_confound control needs cells exclusive to one lineage; none found")
     away = (home + 1 + other) % layer.n_donors
     return np.where(home < 0, donor, np.where(keep_home, home, away)).astype(np.int64)
 
@@ -150,3 +163,32 @@ def _path(segments: dict[str, dict[str, str]], leaf: str) -> set[str]:
         path.add(cur)
         cur = str(segments[cur]["parent"])
     return path
+
+
+def _checked_input(
+    adata: ad.AnnData,
+) -> tuple[dict[str, dict[str, str]], npt.NDArray[np.str_], npt.NDArray[np.float64], list[str]]:
+    for column in ("true_segment", "true_pseudotime"):
+        if column not in adata.obs:
+            raise ValueError(f"adata.obs has no column {column!r}")
+    for column in ("clone_id", "donor"):
+        if column in adata.obs:
+            raise ValueError(f"adata.obs already has a column {column!r}")
+    truth = adata.uns.get("lumencell_truth", {})
+    if "segments" not in truth:
+        raise ValueError('adata.uns["lumencell_truth"]["segments"] is missing')
+    segments: dict[str, dict[str, str]] = dict(truth["segments"])
+    seg = adata.obs["true_segment"].astype(str).to_numpy()
+    unknown = sorted(set(seg) - set(segments))
+    if unknown:
+        raise ValueError(f"true_segment values not in segments: {unknown}")
+    t = adata.obs["true_pseudotime"].to_numpy(dtype=np.float64)
+    if np.isnan(t).any():
+        raise ValueError("true_pseudotime has NaN values")
+    leaves = sorted(set(segments) - {str(v["parent"]) for v in segments.values()})
+    if not leaves:
+        raise ValueError("the segment tree has no leaf")
+    empty = [leaf for leaf in leaves if not (seg == leaf).any()]
+    if empty:
+        raise ValueError(f"leaf segments with no cells: {empty}")
+    return segments, seg, t, leaves
