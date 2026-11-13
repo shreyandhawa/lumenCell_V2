@@ -347,10 +347,10 @@ def test_a_failing_callback_is_reported_and_the_listener_keeps_going(
     jobs.add_done_callback(boom)
     jobs.add_done_callback(lambda job: finished.set() if job.key == "two" else None)  # runs after boom
     first = jobs.submit("sleep", "one", {"steps": 1, "seconds": 0.01})
-    jobs.wait(first.job_id, timeout=60)
+    jobs.wait(first.job_id, timeout=10)
     second = jobs.submit("sleep", "two", {"steps": 1, "seconds": 0.01})
-    assert jobs.wait(second.job_id, timeout=60).state == "done"
-    assert finished.wait(60), "the listener went on to the later callbacks and the next job"
+    assert jobs.wait(second.job_id, timeout=10).state == "done"
+    assert finished.wait(10), "the listener went on to the later callbacks and the next job"
     err = capsys.readouterr().err
     assert f"callback after job {first.job_id}" in err and "callback exploded" in err
 
@@ -358,3 +358,73 @@ def test_a_failing_callback_is_reported_and_the_listener_keeps_going(
 def test_scoring_has_its_own_time_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LUMENCELL_JOB_TIME_LIMITS", raising=False)
     assert JobManager().time_limit("score_clonal") == 3600
+
+
+def test_a_queued_foreground_job_can_be_cancelled(jobs: JobManager) -> None:
+    jobs.submit("sleep", "block", {"steps": 5, "seconds": 0.1})
+    fg = jobs.submit("sleep", "fg", {"steps": 1, "seconds": 0.01})
+    assert jobs.cancel(fg.job_id).state == "cancelled"  # type: ignore[union-attr]
+    with jobs._lock:
+        assert fg.job_id not in jobs._foreground
+    assert jobs.get(fg.job_id).started is None  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize("how", ["cancel queued", "cancel running", "time limit", "worker death"])
+def test_callbacks_do_not_run_for_jobs_that_did_not_finish(how: str) -> None:
+    limits = {"sleep": 1.0} if how == "time limit" else None
+    manager = JobManager(time_limits=limits).start()
+    try:
+        seen: list[str] = []
+        sentinel_seen = threading.Event()
+
+        def callback(job: object) -> None:
+            seen.append(job.key)  # type: ignore[attr-defined]
+            if job.key == "ok":  # type: ignore[attr-defined]
+                sentinel_seen.set()
+
+        manager.add_done_callback(callback)
+        job = manager.submit("sleep", "victim", {"steps": 100, "seconds": 0.1})
+        if how == "cancel queued":
+            blocker = manager.submit("sleep", "blocker", {"steps": 100, "seconds": 0.1})
+            q = manager.subscribe(job.job_id)
+            while q.get(timeout=30)["state"] != "running":
+                pass
+            queued = manager.submit("sleep", "queued", {"steps": 1, "seconds": 0.01})
+            manager.cancel(queued.job_id)
+            manager.cancel(job.job_id)
+            manager.cancel(blocker.job_id)
+            victim = queued
+        else:
+            _running_worker(manager, job.job_id)
+            if how == "cancel running":
+                manager.cancel(job.job_id)
+            elif how == "worker death":
+                manager._worker.kill()
+            victim = job
+        final = manager.wait(victim.job_id, timeout=30)
+        assert final.state == ("cancelled" if "cancel" in how else "failed")
+        ok = manager.submit("sleep", "ok", {"steps": 1, "seconds": 0.01})
+        assert manager.wait(ok.job_id, timeout=60).state == "done"
+        assert sentinel_seen.wait(10)  # callbacks run in job order, so earlier ones have had their chance
+        assert seen == ["ok"]
+    finally:
+        manager.shutdown()
+
+
+def test_a_callback_that_raises_systemexit_does_not_kill_the_listener(
+    jobs: JobManager, capsys: pytest.CaptureFixture[str]
+) -> None:
+    after = threading.Event()
+
+    def quit_now(job: object) -> None:
+        raise SystemExit(3)
+
+    jobs.add_done_callback(quit_now)
+    jobs.add_done_callback(lambda job: after.set() if job.key == "two" else None)
+    first = jobs.submit("sleep", "one", {"steps": 1, "seconds": 0.01})
+    jobs.wait(first.job_id, timeout=10)
+    second = jobs.submit("sleep", "two", {"steps": 1, "seconds": 0.01})
+    assert jobs.wait(second.job_id, timeout=10).state == "done"
+    assert after.wait(10)
+    err = capsys.readouterr().err
+    assert f"callback after job {first.job_id}" in err and "SystemExit" in err

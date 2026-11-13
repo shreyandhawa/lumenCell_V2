@@ -17,10 +17,12 @@
   A running job is never pre-empted, so a background job that already started
   finishes first.
 * add_done_callback registers a function that runs once for each job that ends
-  "done". It runs on the listener thread after the lock is released, so it may
-  call back into the manager. While it runs the listener reads no worker
-  events, so a slow callback delays the next job's finish being seen and so its
-  dispatch: keep it quick (submit a job, nothing more). Callbacks are never removed.
+  "done" (not failed, cancelled, timed out or lost to a worker death). It runs
+  on the listener thread after the lock is released. Callbacks must be quick and
+  may only submit jobs: while one runs the listener reads no worker events, so a
+  slow one delays the next dispatch, and calling wait() from one deadlocks the
+  listener (it is the thread that ends jobs). wait() and subscribers are told a
+  job is done before its callbacks run. Callbacks are never removed.
 * Each kind of job has a time limit. A job that runs past it fails with a
   message saying so, and the worker is replaced, as for a cancel. The limits
   come from DEFAULT_TIME_LIMITS, then the LUMENCELL_JOB_TIME_LIMITS environment
@@ -219,9 +221,10 @@ class JobManager:
             return job
 
     def add_done_callback(self, callback: Callable[[Job], None]) -> None:
-        """Call `callback(job)` once for every job that reaches "done" (not failed or
-        cancelled). It runs on the listener thread with the lock released, so keep it
-        quick: it may only submit jobs. It is never removed."""
+        """Call `callback(job)` once for every job that reaches "done" (not failed,
+        cancelled, timed out or lost to a worker death). It runs on the listener thread
+        with the lock released. Callbacks must be quick and may only submit jobs: never
+        call wait() from one (it deadlocks the listener). They are never removed."""
         with self._lock:
             self._callbacks.append(callback)
 
@@ -400,6 +403,6 @@ class JobManager:
                 for callback in callbacks:
                     try:
                         callback(finished)
-                    except Exception:
+                    except BaseException:  # SystemExit too: the listener must outlive any callback
                         print(f"lumencell: a callback after job {finished.job_id} failed", file=sys.stderr)
                         traceback.print_exc()
