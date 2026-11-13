@@ -263,7 +263,7 @@ def test_prune_removes_old_trust_temp_files_only(cache: SimpleNamespace) -> None
     fresh = _write(trust / ".clonal-0123456789abcdef-abcd1234.tmp", 12)
     old = _write(trust / ".clonal-0123456789abcdef-wxyz_789.tmp", 12)
     stray = _write(trust / ".DS_Store", 6)
-    for p in (old, stray):
+    for p in (old, stray, kept):
         _age(p, 2 * 3600, cache.now)
     res = runner.invoke(app, ["cache", "prune", "--older-than", "30d"])
     assert res.exit_code == 0, res.output
@@ -300,3 +300,44 @@ def test_prune_matches_the_temp_name_write_trust_really_creates(
     res = runner.invoke(app, ["cache", "prune", "--older-than", "30d"])
     assert res.exit_code == 0, res.output
     assert not tmp.exists()
+
+
+@pytest.mark.parametrize(
+    ("name", "removed"),
+    [
+        (".a-0123456789abcdef-abcd1234.tmp", True),
+        (".a_b-0123456789abcdef-abcd1234.tmp", True),
+        ("." + "a" * 32 + "-0123456789abcdef-abcd1234.tmp", True),
+        ("." + "a" * 33 + "-0123456789abcdef-abcd1234.tmp", False),
+        ("._a-0123456789abcdef-abcd1234.tmp", False),
+        (".1a-0123456789abcdef-abcd1234.tmp", False),
+        (".Clonal-0123456789abcdef-abcd1234.tmp", False),
+        (".clonal-0123456789abcde-abcd1234.tmp", False),
+        (".clonal-0123456789abcdef0-abcd1234.tmp", False),
+        (".clonal-0123456789ABCDEF-abcd1234.tmp", False),
+        (".clonal-0123456789abcdef-abcd123.tmp", False),
+        (".clonal-0123456789abcdef-abcd12345.tmp", False),
+        ("clonal-0123456789abcdef-abcd1234.tmp", False),
+        (".clonal-0123456789abcdef-abcd1234.tmp.bak", False),
+        ("x.clonal-0123456789abcdef-abcd1234.tmp", False),
+        ("clonal-0123456789abcdef.json", False),
+    ],
+)
+def test_prune_trust_temp_name_shape(cache: SimpleNamespace, name: str, removed: bool) -> None:
+    f = _write(cache.b / "runs" / "r2" / "trust" / name, 8)
+    _age(f, 2 * 3600, cache.now)
+    assert runner.invoke(app, ["cache", "prune", "--older-than", "30d"]).exit_code == 0
+    assert f.exists() is (not removed)
+
+
+def test_prune_leaves_symlinked_trust_and_run_folders_alone(cache: SimpleNamespace, tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    t1 = _write(outside / "r" / "trust" / ".clonal-0123456789abcdef-abcd1234.tmp", 8)
+    t2 = _write(outside / "trust" / ".clonal-0123456789abcdef-abcd1234.tmp", 8)
+    for p in (t1, t2):
+        _age(p, 2 * 3600, cache.now)
+    run = cache.b / "runs" / "r2"
+    (run / "trust").symlink_to(outside / "trust", target_is_directory=True)  # trust folder is a link
+    (cache.b / "runs" / "rlink").symlink_to(outside / "r", target_is_directory=True)  # run folder is a link
+    assert runner.invoke(app, ["cache", "prune", "--older-than", "30d"]).exit_code == 0
+    assert t1.exists() and t2.exists()

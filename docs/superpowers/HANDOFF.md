@@ -214,6 +214,8 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
   (the last two with one stderr line). Task 14 still validates content.
 - `save` of an existing run moves its `trust/` folder into the new folder before the swap, and
   moves it back if the swap fails. `cache prune` removes `trust/` temp files older than the grace period.
+- Task 13: only the worker that owns a run writes its trust, and it treats `FileNotFoundError` from
+  `write_trust` as "run replaced" (retry or skip, logged).
 
 ## Task 10 decisions
 

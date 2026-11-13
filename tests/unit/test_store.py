@@ -1,3 +1,4 @@
+import os
 from dataclasses import asdict
 from pathlib import Path
 
@@ -260,3 +261,75 @@ def test_a_damaged_trust_file_reads_as_missing(
     path.write_bytes(b"\xff\xfe")
     assert store.read_trust("abc", TRUST) is None
     assert path.name in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "a-0123456789abcdef",
+        "a_b-0123456789abcdef",
+        "a" + "b" * 31 + "-0123456789abcdef",
+    ],
+)
+def test_trust_names_accept_the_documented_shape(tmp_path: Path, name: str) -> None:
+    assert RunStore(tmp_path).trust_path("abc", name).name == f"{name}.json"
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "a" + "b" * 32 + "-0123456789abcdef",  # kind of 33 characters
+        "_x-0123456789abcdef",  # kind starts with an underscore
+        "1x-0123456789abcdef",  # kind starts with a digit
+        "a1-0123456789abcdef",  # digit inside the kind
+        "-0123456789abcdef",  # empty kind
+        "clonal-0123456789abcde",  # 15 hex digits
+        "clonal-0123456789abcdef0",  # 17 hex digits
+        "clonal-0123456789ABCDEF",  # upper-case hex
+        "clonal_0123456789abcdef",  # wrong separator
+        "clonal-0123456789abcdef.json",
+    ],
+)
+def test_trust_names_reject_near_misses(tmp_path: Path, name: str) -> None:
+    with pytest.raises(ValueError):
+        RunStore(tmp_path).trust_path("abc", name)
+
+
+def test_a_failed_trust_write_leaves_no_temp_file(
+    tmp_path: Path, result: TrajectoryResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = RunStore(tmp_path)
+    store.save("abc", result)
+    store.write_trust("abc", TRUST, {"v": 1})
+
+    def killed(*_a: object, **_k: object) -> None:
+        raise OSError("killed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "replace", killed)
+        with pytest.raises(OSError):
+            store.write_trust("abc", TRUST, {"v": 2})
+    assert store.read_trust("abc", TRUST) == {"v": 1}
+    assert [p.name for p in (store.path("abc") / "trust").iterdir()] == [f"{TRUST}.json"]
+
+
+def test_a_trust_path_that_cannot_be_read_reads_as_missing(
+    tmp_path: Path, result: TrajectoryResult, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = RunStore(tmp_path)
+    store.save("abc", result)
+    path = store.trust_path("abc", TRUST)
+    path.parent.mkdir()
+    path.mkdir()  # reading a folder raises IsADirectoryError, an OSError that is not "missing"
+    assert store.read_trust("abc", TRUST) is None
+    assert path.name in capsys.readouterr().err
+
+
+def test_a_missing_trust_file_is_silent(
+    tmp_path: Path, result: TrajectoryResult, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = RunStore(tmp_path)
+    store.save("abc", result)
+    assert store.read_trust("abc", TRUST) is None
+    assert store.read_trust("nope", TRUST) is None
+    assert capsys.readouterr().err == ""
