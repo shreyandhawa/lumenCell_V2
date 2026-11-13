@@ -159,7 +159,7 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/03-clonal-definitions` | #7 | merged (squash, 6ff4676) |
 | `pivot/04-clonal-scores` | #8 | merged (squash, f0715b6) |
 | `pivot/05-synth-clones` | #9 | merged (squash, 744a0a8) |
-| `pivot/06-receptor-genes` | #PRNUM | phase 1 Task 4, open for review |
+| `pivot/06-receptor-genes` | #10 | phase 1 Task 4, open for review |
 
 ## Verify the current state
 
