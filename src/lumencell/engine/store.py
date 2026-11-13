@@ -17,6 +17,7 @@ import json
 import logging
 import shutil
 import tempfile
+from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -50,8 +51,9 @@ def run_id(
     root_spec: str,
     terminals: list[str] | None,
     prep_key: str,
+    clonal_columns: Sequence[str] = (),
 ) -> str:
-    payload = {
+    payload: dict[str, Any] = {
         "store": STORE_VERSION,
         "lumencell": __version__,
         "method": method,
@@ -60,6 +62,10 @@ def run_id(
         "terminals": sorted(terminals) if terminals else None,
         "prep": prep_key,
     }
+    # Naming clone or donor columns can change the detected label key, and with it the lineage
+    # names, so the run depends on them. Left out when empty: every earlier run id is unchanged.
+    if clonal_columns:
+        payload["clonal_columns"] = sorted(clonal_columns)
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
 
 

@@ -13,7 +13,7 @@ JSON field names are snake_case on both sides.
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SCHEMA_VERSION = 1
 
@@ -144,6 +144,35 @@ class RootSuggestions(Model):
     suggestions: list[RootSuggestion]
 
 
+class ClonalSettings(Model):
+    """Which obs columns hold the clone labels, the donors and the strata (spec 4.1)."""
+
+    clone_key: str = Field(min_length=1)
+    donor_key: str | None = None
+    single_donor: bool = False
+    strata_keys: list[str] = []
+
+    @model_validator(mode="after")
+    def _one_donor_rule(self) -> "ClonalSettings":
+        if (self.donor_key is None) == (not self.single_donor):
+            raise ValueError("name a donor_key, or set single_donor to true, but not both and not neither")
+        return self
+
+
+class ClonalSummary(Model):
+    """Clone sizes over every labelled cell that has a donor, singletons included."""
+
+    settings: ClonalSettings
+    n_cells_labelled: int
+    n_clones: int
+    n_clones_2plus: int
+    n_donors: int
+    size_median: float
+    size_p90: float
+    size_p99: float
+    size_max: int
+
+
 class DatasetInfo(Model):
     schema_version: int
     name: str
@@ -159,6 +188,8 @@ class DatasetInfo(Model):
     prep: PrepStatus
     root: ResolvedRoot | None
     versions: dict[str, str]
+    clonal: ClonalSettings | None
+    clonal_candidates: list[str]
 
 
 class GeneSearchResult(Model):

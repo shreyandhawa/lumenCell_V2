@@ -8,7 +8,7 @@ found missing or damaged is sent back to the worker.
 
 import sys
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from functools import cached_property
 from http import HTTPStatus
 from pathlib import Path
@@ -41,6 +41,15 @@ def _is_boolean(s: pd.Series) -> bool:
     return bool(not isinstance(s.dtype, pd.CategoricalDtype) and pd.api.types.is_bool_dtype(s))
 
 
+def column_kind(s: pd.Series, categories: list[str]) -> models.ObsKind:
+    """How a column is listed and served, by one rule: ``categories`` are the values that occur."""
+    if _is_numeric(s):
+        return "continuous"
+    if _is_boolean(s):
+        return "boolean"
+    return "categorical" if len(categories) <= MAX_CATEGORIES_LISTED else "string"
+
+
 class DatasetView:
     def __init__(
         self,
@@ -59,8 +68,8 @@ class DatasetView:
         self.params = params
         self._on_cache_miss = on_cache_miss
         self._healing: set[str] = set()  # stages already sent back to the worker once
-        # Columns that are only for scoring runs besides the receptor-pattern ones (a donor
-        # column, say). Empty until phase 1 Task 10 lets the user name them.
+        # Columns that are only for scoring runs besides the receptor-pattern ones: the clone and
+        # donor columns the user named in the dataset's clonal settings.
         self.clonal_columns: tuple[str, ...] = column_names(clonal_columns)
         self.label_key = detect_label_key(inference_obs(ds.obs, self.clonal_columns)[0])
         self._lock = threading.RLock()
@@ -135,6 +144,14 @@ class DatasetView:
             )
         return prep
 
+    def set_clonal(self, columns: Sequence[str]) -> None:
+        """Name the clone and donor columns: the inference context is rebuilt, the label key found again."""
+        named = column_names(columns)
+        with self._lock:
+            self.clonal_columns = named
+            self._ctx = None
+            self.label_key = detect_label_key(inference_obs(self.ds.obs, named)[0])
+
     def ctx(self) -> InferenceContext:
         with self._lock:
             if self._ctx is None:
@@ -159,15 +176,11 @@ class DatasetView:
         for name in self.ds.obs.columns:
             s = self.ds.obs[name]
             colors = self.ds_colors(str(name))
-            # The same test obs_payload() uses, so a column is never described one
-            # way here and served the other way there.
+            # column_kind() is the rule obs_payload() uses too, so a column is never described
+            # one way here and served the other way there.
             if not _is_numeric(s):
                 cats = self._categories(s)
-                kind = (
-                    "boolean"
-                    if _is_boolean(s)
-                    else ("categorical" if len(cats) <= MAX_CATEGORIES_LISTED else "string")
-                )
+                kind = column_kind(s, cats)
                 out.append(
                     models.ObsColumn(
                         name=str(name),
@@ -262,8 +275,7 @@ class DatasetView:
         lookup = {c: i for i, c in enumerate(cats)}
         codes = np.array([lookup.get(str(v), -1) if pd.notna(v) else -1 for v in s], dtype=np.int64)
         dtype = "i16" if len(cats) < 32767 else "i32"
-        kind = "boolean" if _is_boolean(s) else "categorical"
-        return binary.encode({"codes": (dtype, codes)}, {"kind": kind, "categories": cats})
+        return binary.encode({"codes": (dtype, codes)}, {"kind": column_kind(s, cats), "categories": cats})
 
     def search_genes(self, q: str, limit: int) -> models.GeneSearchResult:
         symbols = self.ds.gene_symbols

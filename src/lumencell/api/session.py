@@ -6,6 +6,7 @@ inference) goes to the job worker. The session ties together the parts that do
 the work: the dataset view, the runs, and the user's saved choices.
 """
 
+import sys
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -17,15 +18,23 @@ from lumencell.api.dataset_view import DatasetView
 from lumencell.api.errors import ApiError
 from lumencell.api.runs import Runs
 from lumencell.api.state import StateStore, default_state_dir
+from lumencell.clonal.isolation import scoring_only_message
 from lumencell.data.loader import Dataset, load
 from lumencell.engine.context import LEIDEN_KEY
 from lumencell.engine.registry import METHODS
-from lumencell.engine.roots import RootError, RootSpec, parse_root, resolve_root, suggest_roots
+from lumencell.engine.roots import ClusterRoot, RootError, RootSpec, parse_root, resolve_root, suggest_roots
 from lumencell.engine.schema import ResolvedRoot
 from lumencell.engine.store import RunStore
 from lumencell.jobs.manager import Job, JobManager
 from lumencell.prep.cache import PrepCache, dataset_dir
 from lumencell.prep.stages import STAGES, PrepParams
+from lumencell.trust.clonal import (
+    check_settings,
+    clonal_candidates,
+    settings_columns,
+    settings_from_state,
+    settings_summary,
+)
 
 
 class Session:
@@ -47,7 +56,15 @@ class Session:
         self.ds: Dataset = load(self.path, x_is, keep_matrix=False)  # type: ignore[arg-type]
         self.cache = PrepCache(self.ds, cache_root)
         self.state = StateStore((state_dir or default_state_dir()) / f"{self.ds.fingerprint}.json")
-        self.view = DatasetView(self.path, self.ds, self.cache, self.params, on_cache_miss=self.start_prep)
+        self._clonal = self._saved_clonal()
+        self.view = DatasetView(
+            self.path,
+            self.ds,
+            self.cache,
+            self.params,
+            on_cache_miss=self.start_prep,
+            clonal_columns=settings_columns(self._clonal) if self._clonal else (),
+        )
         self.runs = Runs(
             self.view,
             RunStore(dataset_dir(self.ds.fingerprint, cache_root)),
@@ -56,6 +73,17 @@ class Session:
             self._job_payload,
             self._resolve,
         )
+
+    def _saved_clonal(self) -> models.ClonalSettings | None:
+        """The saved clonal settings, if they are still valid for this file (checked once)."""
+        saved = settings_from_state(self.state.read())
+        if saved is None:
+            return None
+        problems = check_settings(self.ds.obs, saved)
+        if problems:
+            print(f"lumencell: ignoring the saved clonal settings: {'; '.join(problems)}", file=sys.stderr)
+            return None
+        return saved
 
     # ---- prep --------------------------------------------------------------------------
 
@@ -123,7 +151,56 @@ class Session:
             prep=self.prep_status(),
             root=self.root_state().root,
             versions={"lumencell": __version__},
+            clonal=self._clonal,
+            clonal_candidates=clonal_candidates(self.ds.obs.columns),
         )
+
+    # ---- clonal settings -----------------------------------------------------------------
+
+    def clonal_settings(self) -> models.ClonalSettings | None:
+        return self._clonal
+
+    def set_clonal(self, settings: models.ClonalSettings) -> models.ClonalSummary:
+        problems = check_settings(self.ds.obs, settings)
+        if problems:
+            raise ApiError(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                "invalid_clonal_settings",
+                "These clonal settings cannot be used: " + "; ".join(problems),
+                {"problems": problems},
+            )
+        columns = settings_columns(settings)
+        root_text = self.state.read().get("root")
+        if root_text:
+            try:
+                root = parse_root(root_text)
+            except RootError:
+                root = None
+            if isinstance(root, ClusterRoot) and root.key in columns:
+                raise ApiError(
+                    HTTPStatus.UNPROCESSABLE_ENTITY,
+                    "scoring_only_column",
+                    scoring_only_message(root.key, "root column")
+                    + "; pick another root before naming it as a clone or donor column",
+                    {"columns": [root.key]},
+                )
+        summary = settings_summary(self.ds.obs, settings)
+
+        def change(state: dict[str, Any]) -> None:
+            state["clonal"] = settings.model_dump()
+
+        self.state.update(change)
+        self._clonal = settings
+        self.view.set_clonal(columns)
+        return summary
+
+    def clear_clonal(self) -> None:
+        def change(state: dict[str, Any]) -> None:
+            state.pop("clonal", None)
+
+        self.state.update(change)
+        self._clonal = None
+        self.view.set_clonal(())
 
     # ---- methods -------------------------------------------------------------------------
 

@@ -15,6 +15,8 @@ client = TestClient(create_app())
 M1_ROUTES = {
     ("get", "/api/v1/healthz"),
     ("get", "/api/v1/dataset"),
+    ("put", "/api/v1/dataset/clonal"),
+    ("delete", "/api/v1/dataset/clonal"),
     ("get", "/api/v1/embeddings/{name}"),
     ("get", "/api/v1/obs/{column}"),
     ("get", "/api/v1/genes"),
