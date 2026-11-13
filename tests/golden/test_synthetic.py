@@ -40,6 +40,7 @@ def test_v1_trap_bifurcation_holds_its_baseline(tmp_path: Path) -> None:
     # The V1 lesson, stated directly: with an explicit root, pseudotime on the
     # bifurcation follows the truth (V1's default view scored -0.21 to -0.33).
     assert float(row["pt_spearman_global"]) >= 0.90
+    assert row["clonal_status"] != "not_measured"
 
 
 @pytest.mark.slow
