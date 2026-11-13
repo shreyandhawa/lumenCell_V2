@@ -1,9 +1,11 @@
 """Trajectory runs for one dataset: starting them, describing them, and what is derived from them."""
 
 import re
+import sys
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from http import HTTPStatus
 from typing import Any
@@ -22,9 +24,10 @@ from lumencell.engine.projection import project
 from lumencell.engine.registry import get_method
 from lumencell.engine.roots import ClusterRoot, RootError, RootSpec, format_root, parse_root
 from lumencell.engine.schema import ResolvedRoot, TrajectoryResult
-from lumencell.engine.store import RunStore, run_id
+from lumencell.engine.store import STORE_VERSION, RunStore, run_id
 from lumencell.engine.trends import gene_trends, temporal_heatmap
-from lumencell.jobs.manager import JobManager
+from lumencell.jobs.manager import ACTIVE, Job, JobManager
+from lumencell.trust.clonal import not_scored, trust_hash, trust_name
 
 # Run ids name folders in the run store, so anything that is not a plain name is not a run.
 _RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
@@ -32,6 +35,16 @@ _RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 # disk. A run never changes once saved, so the last few are kept in memory.
 MAX_RUNS_IN_MEMORY = 4
 MAX_HEATMAPS_IN_MEMORY = 32
+PENDING_NOTE = "being scored in the background"
+LEGACY_NOTE = "made before inference isolation; run it again"
+
+
+@dataclass(frozen=True)
+class TrustLookup:
+    """A run's trust result: the stored file, else the job that makes it (``None`` for neither)."""
+
+    stored: dict[str, Any] | None
+    job: Job | None
 
 
 class Runs:
@@ -43,6 +56,7 @@ class Runs:
         state: StateStore,
         job_payload: Callable[[], dict[str, Any]],
         resolve: Callable[[RootSpec], ResolvedRoot],
+        clonal: Callable[[], models.ClonalSettings | None],
     ) -> None:
         self.view = view
         self.store = store
@@ -50,6 +64,7 @@ class Runs:
         self.state = state
         self._job_payload = job_payload
         self._resolve = resolve
+        self._clonal = clonal
         self._lock = threading.Lock()
         self._loaded: OrderedDict[str, TrajectoryResult] = OrderedDict()
         self._heatmaps: OrderedDict[tuple[object, ...], bytes] = OrderedDict()
@@ -233,7 +248,121 @@ class Runs:
                 terminals_source="user" if g.get("terminals_source") == "user" else "auto",
                 created_at=datetime.fromisoformat(g["created_at"]),
             ),
+            trust=models.RunTrust(clonal=self.clonal_agreement(rid, g)),
         )
+
+    # ---- trust ------------------------------------------------------------------------------
+    #
+    # Trust files are written only by worker jobs; these methods read them and queue the jobs.
+    # They take no lock of their own: JobManager.submit is the one place that decides, under its
+    # lock, whether a job with a key is already queued or running. So they are safe on request
+    # threads and on the job manager's listener thread (Session._on_job_done) alike.
+
+    def _read_valid(
+        self, rid: str, name: str, validate: Callable[[dict[str, Any]], object] | None
+    ) -> dict[str, Any] | None:
+        """The stored trust file, or None when it is missing, damaged or does not validate."""
+        stored = self.store.read_trust(rid, name)
+        if stored is None or validate is None:
+            return stored
+        try:
+            validate(stored)
+        except ValidationError as exc:
+            path = self.store.trust_path(rid, name)
+            print(
+                f"lumencell: ignoring trust file {path}, which is not valid: {exc.errors()[0]['msg']}",
+                file=sys.stderr,
+            )
+            return None
+        return stored
+
+    def _trust_lookup(
+        self,
+        rid: str,
+        kind: str,
+        name: str,
+        h: str,
+        payload: Callable[[], dict[str, Any]],
+        validate: Callable[[dict[str, Any]], object] | None = None,
+    ) -> TrustLookup:
+        """The stored file; else the job that makes it, submitted when there is none.
+
+        A job that is done while its file is missing is submitted again. A failed or cancelled job
+        is returned as it is, so a GET never resubmits it; a settings PUT or a restart retries it.
+        """
+        stored = self._read_valid(rid, name, validate)
+        if stored is not None:
+            return TrustLookup(stored, None)
+        key = f"{kind}:{rid}:{h}"
+        job = self.jobs.find(key)
+        if job is not None and job.state == "done":
+            # It may have written the file since the read above.
+            stored = self._read_valid(rid, name, validate)
+            if stored is not None:
+                return TrustLookup(stored, None)
+        if job is None or job.state == "done":
+            job = self.jobs.submit(kind, key, payload())
+        return TrustLookup(None, job)
+
+    def _clonal_payload(self, rid: str, settings: models.ClonalSettings) -> dict[str, Any]:
+        return {
+            **self._job_payload(),
+            "run_id": rid,
+            "settings": settings.model_dump(mode="json"),
+            "trust_name": trust_name(settings),
+        }
+
+    def clonal_agreement(self, rid: str, graph: dict[str, Any]) -> models.ClonalAgreement:
+        """The run's clonal agreement under the current settings; queues its scoring when missing.
+
+        Looked up by the current settings' trust name only, so a result for older settings is
+        never served.
+        """
+        settings = self._clonal()  # read once: the name, the hash and the payload agree
+        if settings is None:
+            return not_scored("not_configured", None, "no clone column is set for this dataset")
+        if graph.get("store_version") != STORE_VERSION:
+            return not_scored("refused", settings, LEGACY_NOTE)
+        found = self._trust_lookup(
+            rid,
+            "score_clonal",
+            trust_name(settings),
+            trust_hash(settings),
+            lambda: self._clonal_payload(rid, settings),
+            models.ClonalAgreement.model_validate,
+        )
+        if found.stored is not None:
+            return models.ClonalAgreement.model_validate(found.stored)
+        assert found.job is not None
+        if found.job.state in ACTIVE:
+            return not_scored("pending", settings, PENDING_NOTE)
+        return not_scored("failed", settings, found.job.error or "cancelled")
+
+    def submit_clonal(self, rid: str, settings: models.ClonalSettings) -> Job | None:
+        """Queue scoring of one run under these settings; None when its file already exists.
+
+        Unlike a GET, this retries a failed or cancelled job.
+        """
+        name = trust_name(settings)
+        if self._read_valid(rid, name, models.ClonalAgreement.model_validate) is not None:
+            return None
+        key = f"score_clonal:{rid}:{trust_hash(settings)}"
+        return self.jobs.submit("score_clonal", key, self._clonal_payload(rid, settings))
+
+    def submit_clonal_all(self) -> int:
+        """Queue scoring of every complete run under the current settings; the number queued."""
+        settings = self._clonal()
+        if settings is None:
+            return 0
+        return sum(self.submit_clonal(r["run_id"], settings) is not None for r in self.store.list())
+
+    def submit_trust_jobs(self, rid: str) -> list[Job]:
+        """Queue every trust job a newly finished run needs: clonal scoring when settings exist."""
+        settings = self._clonal()
+        if settings is None:
+            return []
+        job = self.submit_clonal(rid, settings)
+        return [job] if job is not None else []
 
     def run_cells(self, rid: str) -> bytes:
         self._require_run(rid)

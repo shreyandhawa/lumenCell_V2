@@ -72,7 +72,10 @@ class Session:
             self.state,
             self._job_payload,
             self._resolve,
+            self.clonal_settings,
         )
+        # Scores each run this session's file finishes; runs on the job manager's listener thread.
+        jobs.add_done_callback(self._on_job_done)
 
     def _saved_clonal(self) -> models.ClonalSettings | None:
         """The saved clonal settings, if they are still valid for this file (checked once)."""
@@ -192,6 +195,9 @@ class Session:
         self.state.update(change)
         self._clonal = settings
         self.view.set_clonal(columns)
+        # After the settings are in place: a run finishing now is scored under them by
+        # _on_job_done, or is listed here, or both (the job key makes that one job).
+        self.runs.submit_clonal_all()
         return summary
 
     def clear_clonal(self) -> None:
@@ -271,12 +277,20 @@ class Session:
 
     # ---- jobs ----------------------------------------------------------------------------
 
+    def _on_job_done(self, job: Job) -> None:
+        """Queue the trust jobs of a run this session's file just finished.
+
+        Runs on the job manager's listener thread with its lock released, so it only submits:
+        it holds no lock of the session's, never waits, and reads only this one run's trust files.
+        """
+        if job.kind == "infer" and job.payload.get("path") == str(self.path) and job.result_id:
+            self.runs.submit_trust_jobs(job.result_id)
+
     @staticmethod
     def job_info(job: Job) -> models.JobInfo:
-        kind = job.kind if job.kind in ("prepare", "infer", "heatmap") else "prepare"
         return models.JobInfo(
             job_id=job.job_id,
-            kind=kind,
+            kind=job.kind,
             state=job.state,
             stage=job.stage,
             fraction=job.fraction,

@@ -21,6 +21,282 @@
         "title": "CellRoot",
         "type": "object"
       },
+      "ClonalAgreement": {
+        "additionalProperties": false,
+        "properties": {
+          "coupling": {
+            "items": {
+              "$ref": "#/components/schemas/LineageCoupling"
+            },
+            "title": "Coupling",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "primary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClonalScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sensitivity_m3": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClonalScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClonalSettings-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "not_configured",
+              "single_lineage",
+              "too_few_clones",
+              "refused",
+              "pending",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "settings",
+          "primary",
+          "sensitivity_m3",
+          "coupling",
+          "notes"
+        ],
+        "title": "ClonalAgreement",
+        "type": "object"
+      },
+      "ClonalScore": {
+        "additionalProperties": false,
+        "description": "One clonal score of a run's lineages (spec 4.3). ``eta`` is against N1; ``p`` is the\nlargest p over the nulls, the headline.",
+        "properties": {
+          "clone_weighted_purity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clone Weighted Purity"
+          },
+          "delta_eta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Eta"
+          },
+          "effective_clones": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Clones"
+          },
+          "eta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta"
+          },
+          "eta_base": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Base"
+          },
+          "mean_entropy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Entropy"
+          },
+          "min_clone_size": {
+            "title": "Min Clone Size",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "own_cells",
+              "oracle_cells"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "n_cells": {
+            "title": "N Cells",
+            "type": "integer"
+          },
+          "n_clones": {
+            "title": "N Clones",
+            "type": "integer"
+          },
+          "n_donors": {
+            "title": "N Donors",
+            "type": "integer"
+          },
+          "n_lineages": {
+            "title": "N Lineages",
+            "type": "integer"
+          },
+          "n_permutations": {
+            "title": "N Permutations",
+            "type": "integer"
+          },
+          "n_strata": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Strata"
+          },
+          "nulls": {
+            "items": {
+              "$ref": "#/components/schemas/NullComparison"
+            },
+            "title": "Nulls",
+            "type": "array"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          },
+          "p_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P Delta"
+          },
+          "purity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purity"
+          },
+          "purity_without_largest": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purity Without Largest"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "too_few_clones",
+              "single_lineage"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "mode",
+          "n_lineages",
+          "min_clone_size",
+          "n_cells",
+          "n_clones",
+          "effective_clones",
+          "n_donors",
+          "n_strata",
+          "n_permutations",
+          "seed",
+          "purity",
+          "mean_entropy",
+          "nulls",
+          "eta",
+          "p",
+          "eta_base",
+          "delta_eta",
+          "p_delta",
+          "clone_weighted_purity",
+          "purity_without_largest"
+        ],
+        "title": "ClonalScore",
+        "type": "object"
+      },
       "ClonalSettings-Input": {
         "additionalProperties": false,
         "description": "Which obs columns hold the clone labels, the donors and the strata (spec 4.1).",
@@ -697,13 +973,22 @@
             "type": "string"
           },
           "kind": {
-            "enum": [
-              "prepare",
-              "infer",
-              "heatmap"
+            "anyOf": [
+              {
+                "enum": [
+                  "prepare",
+                  "infer",
+                  "heatmap",
+                  "score_clonal"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
             ],
-            "title": "Kind",
-            "type": "string"
+            "description": "A kind the contract does not list is reported by its own name.",
+            "title": "Kind"
           },
           "message": {
             "anyOf": [
@@ -827,6 +1112,86 @@
           "segments"
         ],
         "title": "Lineage",
+        "type": "object"
+      },
+      "LineageCoupling": {
+        "additionalProperties": false,
+        "description": "How much two lineages share clones, against N1. Says nothing about which came first.",
+        "properties": {
+          "a": {
+            "title": "A",
+            "type": "integer"
+          },
+          "b": {
+            "title": "B",
+            "type": "integer"
+          },
+          "null_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Null Mean"
+          },
+          "observed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          },
+          "p_adj": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P Adj"
+          },
+          "z": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "observed",
+          "null_mean",
+          "z",
+          "p",
+          "p_adj"
+        ],
+        "title": "LineageCoupling",
         "type": "object"
       },
       "LineageCurve": {
@@ -1099,6 +1464,73 @@
           "message"
         ],
         "title": "Notice",
+        "type": "object"
+      },
+      "NullComparison": {
+        "additionalProperties": false,
+        "properties": {
+          "eta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta"
+          },
+          "mean_entropy_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Entropy Mean"
+          },
+          "mean_entropy_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Entropy Sd"
+          },
+          "null": {
+            "enum": [
+              "N1",
+              "N2",
+              "N3"
+            ],
+            "title": "Null",
+            "type": "string"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          }
+        },
+        "required": [
+          "null",
+          "mean_entropy_mean",
+          "mean_entropy_sd",
+          "eta",
+          "p"
+        ],
+        "title": "NullComparison",
         "type": "object"
       },
       "ObsColumn": {
@@ -1663,6 +2095,26 @@
         "title": "RunSummary",
         "type": "object"
       },
+      "RunTrust": {
+        "additionalProperties": false,
+        "properties": {
+          "clonal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClonalAgreement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "clonal"
+        ],
+        "title": "RunTrust",
+        "type": "object"
+      },
       "Segment": {
         "additionalProperties": false,
         "properties": {
@@ -1830,6 +2282,17 @@
             "title": "Topology Kind",
             "type": "string"
           },
+          "trust": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunTrust"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the run is checked against. Always filled for a done run; scoring runs in the background, so the clonal agreement may be pending."
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/Notice"
@@ -1850,7 +2313,8 @@
           "n_unassigned",
           "runtime_seconds",
           "cell_arrays",
-          "provenance"
+          "provenance",
+          "trust"
         ],
         "title": "TrajectoryRun",
         "type": "object"

@@ -19,6 +19,120 @@ export type CellRoot = {
 };
 
 /**
+ * ClonalAgreement
+ */
+export type ClonalAgreement = {
+    /**
+     * Coupling
+     */
+    coupling: Array<LineageCoupling>;
+    /**
+     * Notes
+     */
+    notes: Array<string>;
+    primary: ClonalScore | null;
+    sensitivity_m3: ClonalScore | null;
+    settings: ClonalSettingsOutput | null;
+    /**
+     * Status
+     */
+    status: 'ok' | 'not_configured' | 'single_lineage' | 'too_few_clones' | 'refused' | 'pending' | 'failed';
+};
+
+/**
+ * ClonalScore
+ *
+ * One clonal score of a run's lineages (spec 4.3). ``eta`` is against N1; ``p`` is the
+ * largest p over the nulls, the headline.
+ */
+export type ClonalScore = {
+    /**
+     * Clone Weighted Purity
+     */
+    clone_weighted_purity: number | null;
+    /**
+     * Delta Eta
+     */
+    delta_eta: number | null;
+    /**
+     * Effective Clones
+     */
+    effective_clones: number | null;
+    /**
+     * Eta
+     */
+    eta: number | null;
+    /**
+     * Eta Base
+     */
+    eta_base: number | null;
+    /**
+     * Mean Entropy
+     */
+    mean_entropy: number | null;
+    /**
+     * Min Clone Size
+     */
+    min_clone_size: number;
+    /**
+     * Mode
+     */
+    mode: 'own_cells' | 'oracle_cells';
+    /**
+     * N Cells
+     */
+    n_cells: number;
+    /**
+     * N Clones
+     */
+    n_clones: number;
+    /**
+     * N Donors
+     */
+    n_donors: number;
+    /**
+     * N Lineages
+     */
+    n_lineages: number;
+    /**
+     * N Permutations
+     */
+    n_permutations: number;
+    /**
+     * N Strata
+     */
+    n_strata: number | null;
+    /**
+     * Nulls
+     */
+    nulls: Array<NullComparison>;
+    /**
+     * P
+     */
+    p: number | null;
+    /**
+     * P Delta
+     */
+    p_delta: number | null;
+    /**
+     * Purity
+     */
+    purity: number | null;
+    /**
+     * Purity Without Largest
+     */
+    purity_without_largest: number | null;
+    /**
+     * Seed
+     */
+    seed: number;
+    /**
+     * Status
+     */
+    status: 'ok' | 'too_few_clones' | 'single_lineage';
+};
+
+/**
  * ClonalSettings
  *
  * Which obs columns hold the clone labels, the donors and the strata (spec 4.1).
@@ -420,8 +534,10 @@ export type JobInfo = {
     job_id: string;
     /**
      * Kind
+     *
+     * A kind the contract does not list is reported by its own name.
      */
-    kind: 'prepare' | 'infer' | 'heatmap';
+    kind: 'prepare' | 'infer' | 'heatmap' | 'score_clonal' | string;
     /**
      * Message
      */
@@ -476,6 +592,42 @@ export type Lineage = {
      * Terminal Purity
      */
     terminal_purity: number | null;
+};
+
+/**
+ * LineageCoupling
+ *
+ * How much two lineages share clones, against N1. Says nothing about which came first.
+ */
+export type LineageCoupling = {
+    /**
+     * A
+     */
+    a: number;
+    /**
+     * B
+     */
+    b: number;
+    /**
+     * Null Mean
+     */
+    null_mean: number | null;
+    /**
+     * Observed
+     */
+    observed: number | null;
+    /**
+     * P
+     */
+    p: number | null;
+    /**
+     * P Adj
+     */
+    p_adj: number | null;
+    /**
+     * Z
+     */
+    z: number | null;
 };
 
 /**
@@ -653,6 +805,32 @@ export type Notice = {
      * Severity
      */
     severity: 'info' | 'warning' | 'error';
+};
+
+/**
+ * NullComparison
+ */
+export type NullComparison = {
+    /**
+     * Eta
+     */
+    eta: number | null;
+    /**
+     * Mean Entropy Mean
+     */
+    mean_entropy_mean: number | null;
+    /**
+     * Mean Entropy Sd
+     */
+    mean_entropy_sd: number | null;
+    /**
+     * Null
+     */
+    null: 'N1' | 'N2' | 'N3';
+    /**
+     * P
+     */
+    p: number | null;
 };
 
 /**
@@ -946,6 +1124,13 @@ export type RunSummary = {
 };
 
 /**
+ * RunTrust
+ */
+export type RunTrust = {
+    clonal: ClonalAgreement | null;
+};
+
+/**
  * Segment
  */
 export type Segment = {
@@ -1048,6 +1233,10 @@ export type TrajectoryRun = {
      * Topology Kind
      */
     topology_kind: 'tree' | 'fate_star';
+    /**
+     * What the run is checked against. Always filled for a done run; scoring runs in the background, so the clonal agreement may be pending.
+     */
+    trust: RunTrust | null;
     /**
      * Warnings
      */

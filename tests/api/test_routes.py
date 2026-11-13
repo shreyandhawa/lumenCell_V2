@@ -322,6 +322,7 @@ def _runs_without_a_server(
         SimpleNamespace(read=lambda: {}),  # type: ignore[arg-type]
         dict,
         resolved.append,  # type: ignore[arg-type]
+        lambda: None,
     )
     return runs, submitted, resolved
 

@@ -383,6 +383,10 @@ class TrajectoryRun(Model):
     runtime_seconds: float
     cell_arrays: list[str] = Field(description="Names of the arrays served by GET .../cells.")
     provenance: Provenance
+    trust: RunTrust | None = Field(
+        description="What the run is checked against. Always filled for a done run; scoring runs "
+        "in the background, so the clonal agreement may be pending."
+    )
 
 
 class LineageCurve(Model):
@@ -447,13 +451,13 @@ class Comparison(Model):
 
 # ---- jobs -------------------------------------------------------------------------
 
-JobKind = Literal["prepare", "infer", "heatmap"]
+JobKind = Literal["prepare", "infer", "heatmap", "score_clonal"]
 JobState = Literal["queued", "running", "done", "failed", "cancelled"]
 
 
 class JobInfo(Model):
     job_id: str
-    kind: JobKind
+    kind: JobKind | str = Field(description="A kind the contract does not list is reported by its own name.")
     state: JobState
     stage: str | None = None
     fraction: float | None = None
