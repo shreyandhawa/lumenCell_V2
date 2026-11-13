@@ -193,8 +193,12 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
   - no NaN where status is `ok`; cells >= 2 x clones everywhere.
 - **Experimental flags unchanged**; each method already failed a branch gate. The three
   `experimental_note`s now also name the clonal gate. No method code, default or threshold changed.
-- **README bench table** regenerated: new "Clonal excess ratio" column; gates failed now 9, 7, 7
-  of 12 (was 7, 2, 2).
+- **README bench table** regenerated: new "Clonal excess ratio" column (printed to 3 decimals,
+  rounded down so a failing value never shows as 0.500) and a per-gate failure count. Cases
+  failing any gate are now 9, 7, 7 of 12 for paga_dpt, palantir, scfates_ppt (were 7, 2, 2); the
+  rise is the clonal gate alone.
+- **`terminal_share: NaN`** is on every synthetic baseline row. Expected: the key was added to
+  `runner.py` in 0621edc (real datasets); main's baseline predates it.
 
 ## Verified references
 

@@ -17,11 +17,20 @@ def _fmt(v: Any) -> str:
     return "–" if v is None or (isinstance(v, float) and math.isnan(v)) else f"{v:.2f}"
 
 
-def _range(rows: list[dict[str, Any]], key: str) -> str:
+def _floor3(v: float) -> str:
+    # Rounded down, so a value under a ">=" bound can never print as the bound (0.4996 is 0.499).
+    return f"{math.floor(round(v * 1000, 6)) / 1000:.3f}"
+
+
+def _range(rows: list[dict[str, Any]], key: str, floor: bool = False) -> str:
     # A row without the key (a baseline from before the metric existed) shows the missing mark.
     cells = [r.get(key, math.nan) for r in rows]
     vals = [v for v in cells if not (isinstance(v, float) and math.isnan(v))]
-    return "–" if not vals else f"{min(vals):.2f}–{max(vals):.2f}"
+    if not vals:
+        return "–"
+    if floor:
+        return f"{_floor3(min(vals))}–{_floor3(max(vals))}"
+    return f"{min(vals):.2f}–{max(vals):.2f}"
 
 
 def latest_real() -> tuple[Path, dict[str, Any]] | None:
@@ -44,15 +53,26 @@ def render() -> str:
         "Clonal excess ratio | Gates failed |"
     )
     out.append("|---|---|---|---|---|---|")
+    by_gate: list[str] = []
     for method, cases in base["methods"].items():
         rows = list(cases.values())
-        fails = sum(bool(check_gates(r, cfg["synthetic"]["gates"])) for r in rows)
+        failures = [check_gates(r, cfg["synthetic"]["gates"]) for r in rows]
+        fails = sum(bool(f) for f in failures)
+        counts: dict[str, int] = {}
+        for case_failures in failures:
+            for f in case_failures:
+                counts[f.metric] = counts.get(f.metric, 0) + 1
+        by_gate.append(
+            f"{LABELS.get(method, method)}: "
+            + (", ".join(f"`{m}` {n}" for m, n in sorted(counts.items())) or "none")
+        )
         out.append(
             f"| {LABELS.get(method, method)} | {_range(rows, 'pt_spearman_global')} | "
             f"{_range(rows, 'pt_spearman_lineage')} | {_range(rows, 'branch_accuracy')} | "
-            f"{_range(rows, 'clonal_excess_ratio')} | "
+            f"{_range(rows, 'clonal_excess_ratio', floor=True)} | "
             f"{fails} of {len(rows)} cases |"
         )
+    out.append("\nCases failing each gate (a case can fail several): " + "; ".join(by_gate) + ".")
     out.append(
         "\nThe clonal gate is not a branch gate: a method that merges two true lineages can score a "
         "clonal ratio above 1, and lineage recall catches that."

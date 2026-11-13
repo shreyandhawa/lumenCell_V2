@@ -60,9 +60,11 @@ in CI; real datasets are a release gate (`lumencell bench fetch all`, then
 
 | Method | Pseudotime (global) | Pseudotime (per lineage) | Branch accuracy | Clonal excess ratio | Gates failed |
 |---|---|---|---|---|---|
-| PAGA + DPT | 0.86–0.99 | 0.95–0.99 | 0.81–0.99 | 0.30–0.54 | 9 of 12 cases |
-| Palantir | 0.90–0.99 | 0.91–0.99 | 0.90–0.99 | 0.37–0.56 | 7 of 12 cases |
-| scFates | 0.87–0.99 | 0.98–0.99 | 0.97–1.00 | 0.44–0.62 | 7 of 12 cases |
+| PAGA + DPT | 0.86–0.99 | 0.95–0.99 | 0.81–0.99 | 0.301–0.542 | 9 of 12 cases |
+| Palantir | 0.90–0.99 | 0.91–0.99 | 0.90–0.99 | 0.367–0.564 | 7 of 12 cases |
+| scFates | 0.87–0.99 | 0.98–0.99 | 0.97–1.00 | 0.443–0.616 | 7 of 12 cases |
+
+Cases failing each gate (a case can fail several): PAGA + DPT: `branch_accuracy` 3, `clonal_excess_ratio` 6, `pt_spearman_global` 3, `root_pt_excess` 1; Palantir: `clonal_excess_ratio` 7, `root_pt_excess` 2; scFates: `clonal_excess_ratio` 5, `pt_spearman_global` 2.
 
 The clonal gate is not a branch gate: a method that merges two true lineages can score a clonal ratio above 1, and lineage recall catches that.
 
