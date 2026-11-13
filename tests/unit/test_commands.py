@@ -5,6 +5,7 @@ from pathlib import Path
 import anndata as ad
 import numpy as np
 import pytest
+from scipy import sparse
 from typer.testing import CliRunner
 
 from lumencell.bench.synth import generate
@@ -77,3 +78,18 @@ def test_unusable_file_is_reported_clearly(tmp_path: Path, monkeypatch: pytest.M
     result = runner.invoke(app, ["prepare", str(path)])
     assert result.exit_code != 0
     assert "--x-is" in result.output
+
+
+def test_prepare_reports_receptor_genes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LUMENCELL_CACHE_DIR", str(tmp_path / "cache"))
+    adata = generate("bifurcation", "realistic", n_cells=600, n_genes=300, seed=0)
+    symbols = ["TRAV1-2", "TRAV12-1", "TRAJ33", "TRAC", "TRBV5-1", "TRBV20-1", "TRBJ2-7", "TRBC2"]
+    extra = np.random.default_rng(0).poisson(2.0, (adata.n_obs, len(symbols))).astype(np.float32)
+    x = sparse.hstack([adata.X, sparse.csr_matrix(extra)], format="csr")
+    out = ad.AnnData(X=x, obs=adata.obs.copy())
+    out.var_names = [*(f"G{i:05d}" for i in range(300)), *symbols]
+    path = tmp_path / "tr.h5ad"
+    out.write_h5ad(path)
+    result = runner.invoke(app, ["prepare", str(path)])
+    assert result.exit_code == 0, result.output
+    assert "receptor genes: 8" in result.output

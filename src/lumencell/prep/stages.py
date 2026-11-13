@@ -24,6 +24,7 @@ import pandas as pd
 import scanpy as sc
 from scipy import sparse
 
+from lumencell.clonal.isolation import receptor_gene_mask
 from lumencell.data.loader import Dataset
 
 PIPELINE_VERSION = "1"
@@ -34,6 +35,7 @@ Artifacts = Mapping[str, Any]
 @dataclass(frozen=True)
 class PrepParams:
     n_top_genes: int = 2000
+    exclude_receptor_genes: bool = True
     n_pcs: int = 50
     n_neighbors: int = 30
     neighbors_pcs: int = 30
@@ -125,15 +127,47 @@ def _normalize(ds: Dataset, _art: Artifacts, _p: PrepParams) -> dict[str, Any]:
     return {"lognorm": sparse.csr_matrix(view.X, dtype=np.float32)}
 
 
-def _hvg(ds: Dataset, art: Artifacts, p: PrepParams) -> dict[str, Any]:
-    n_top = min(p.n_top_genes, ds.n_vars)
+def _select_hvg(
+    ds: Dataset, art: Artifacts, n_top: int, keep: npt.NDArray[np.bool_] | None
+) -> npt.NDArray[np.bool_]:
+    """The n_top most variable genes among ``keep`` (all genes when None), as a mask over all genes."""
     if ds.x_kind == "counts":
         view = _counts_view(ds)
-        sc.pp.highly_variable_genes(view, flavor="seurat_v3", n_top_genes=n_top)
+        flavor = "seurat_v3"
     else:
         view = ad.AnnData(X=art["lognorm"].copy())
-        sc.pp.highly_variable_genes(view, flavor="seurat", n_top_genes=n_top)
-    return {"hvg": view.var["highly_variable"].to_numpy(dtype=bool)}
+        flavor = "seurat"
+    if keep is not None:
+        view = view[:, keep].copy()
+    sc.pp.highly_variable_genes(view, flavor=flavor, n_top_genes=n_top)
+    picked: npt.NDArray[np.bool_] = view.var["highly_variable"].to_numpy(dtype=bool)
+    if keep is None:
+        return picked
+    out = np.zeros(ds.n_vars, dtype=bool)
+    out[np.flatnonzero(keep)] = picked
+    return out
+
+
+def _hvg(ds: Dataset, art: Artifacts, p: PrepParams) -> dict[str, Any]:
+    """HVGs, with T-cell receptor genes left out so clone identity cannot reach the PCA.
+
+    With no receptor genes, or exclusion off, this is one selection over all genes.
+    """
+    receptor = receptor_gene_mask(ds.gene_symbols)
+    n_receptor = int(receptor.sum())
+    n_top = min(p.n_top_genes, ds.n_vars)
+    everything = _select_hvg(ds, art, n_top, None)
+    if n_receptor == 0 or not p.exclude_receptor_genes:
+        hvg = everything
+    else:
+        keep = ~receptor
+        hvg = _select_hvg(ds, art, min(p.n_top_genes, int(keep.sum())), keep)
+    info = {
+        "receptor_genes": n_receptor,
+        "excluded": bool(p.exclude_receptor_genes),
+        "receptor_hvg_without_exclusion": int(everything[receptor].sum()),
+    }
+    return {"hvg": hvg, "hvg_info": info}
 
 
 def _pca(ds: Dataset, art: Artifacts, p: PrepParams) -> dict[str, Any]:
@@ -243,7 +277,7 @@ def _needs_umap(ds: Dataset, p: PrepParams) -> bool:
 
 STAGES: tuple[Stage, ...] = (
     Stage("normalize", (), ("lognorm",), (), _normalize),
-    Stage("hvg", ("lognorm",), ("hvg",), ("n_top_genes",), _hvg),
+    Stage("hvg", ("lognorm",), ("hvg", "hvg_info"), ("n_top_genes", "exclude_receptor_genes"), _hvg),
     Stage("pca", ("lognorm", "hvg"), ("pca", "pca_variance_ratio"), ("n_pcs", "seed"), _pca),
     Stage(
         "neighbors",

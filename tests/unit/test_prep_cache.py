@@ -309,3 +309,11 @@ def test_a_dataset_being_prepared_counts_as_in_use(ds: Dataset, tmp_path: Path) 
     with mock.patch.object(cache_mod, "run_stage", watching):
         cache.run(PrepParams(n_top_genes=300))  # recomputes hvg and everything after it
     assert seen and time.time() - seen[0] < 60, "marked before the long work starts, not after"
+
+
+def test_changing_the_receptor_exclusion_recomputes_hvg_and_downstream(ds: Dataset) -> None:
+    on = stage_keys(ds, PrepParams())
+    off = stage_keys(ds, PrepParams(exclude_receptor_genes=False))
+    assert on["normalize"] == off["normalize"]
+    for stage in STAGES[1:]:
+        assert on[stage.name] != off[stage.name], stage.name

@@ -75,9 +75,19 @@ def _prepared(data: Path, x_is: str | None, recompute_umap: bool) -> "tuple[Data
 @app.command()
 def prepare(data: DataArg, x_is: XIsOpt = None, recompute_umap: UmapOpt = False) -> None:
     """Run preprocessing ahead of time and cache it (launch reuses the cache)."""
+    from lumencell.clonal.isolation import RECEPTOR_GENE
+
     _ds, prep, _params = _prepared(data, x_is, recompute_umap)
     for r in prep.stages:
         typer.echo(f"{r.name:10s} {r.state:8s} {r.seconds:6.2f}s")
+    info = prep.artifacts["hvg_info"]
+    if info["receptor_genes"] > 0:
+        where = "excluded from" if info["excluded"] else "kept in"
+        typer.echo(
+            f"receptor genes: {info['receptor_genes']} matched {RECEPTOR_GENE.pattern}; "
+            f"{where} HVG selection ({info['receptor_hvg_without_exclusion']} would be HVGs "
+            "without the exclusion)"
+        )
 
 
 @app.command()

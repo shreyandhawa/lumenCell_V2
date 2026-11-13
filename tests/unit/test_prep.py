@@ -1,12 +1,14 @@
 import hashlib
 from pathlib import Path
 
+import anndata as ad
 import numpy as np
 import pytest
 import scanpy as sc
 from scipy import sparse
 
 from lumencell.bench.synth import generate
+from lumencell.clonal.isolation import receptor_gene_mask
 from lumencell.data.loader import Dataset, load
 from lumencell.prep.pipeline import PrepResult, run_pipeline
 from lumencell.prep.stages import STAGES, PrepParams, multiscale_space
@@ -126,3 +128,65 @@ def test_multiscale_space_keeps_at_least_two_components() -> None:
     # The largest gap is right after the trivial eigenvalue: fall back to the second largest.
     evals = np.array([1.0, 0.5, 0.45, 0.2, 0.19])
     assert multiscale_space(np.ones((3, 5)), evals).shape[1] >= 2
+
+
+RECEPTOR_SYMBOLS = ["TRAV1-2", "TRAV12-1", "TRAJ33", "TRAC", "TRBV5-1", "TRBV20-1", "TRBJ2-7", "TRBC2"]
+
+
+def _with_receptor_genes(tmp_path: Path) -> tuple[Dataset, np.ndarray]:
+    """1,000 synthetic genes plus eight receptor genes that mark the true lineages."""
+    adata = generate("bifurcation", "realistic", n_cells=1500, n_genes=1000, seed=0)
+    rng = np.random.default_rng(0)
+    lineage = adata.obs["true_lineage"].cat.codes.to_numpy()
+    cols = []
+    for i in range(len(RECEPTOR_SYMBOLS)):
+        lam = np.where(lineage == i % len(adata.obs["true_lineage"].cat.categories), 30.0, 0.5)
+        cols.append(rng.poisson(lam).astype(np.float32))
+    x = sparse.hstack([adata.X, sparse.csr_matrix(np.column_stack(cols))], format="csr")
+    adata = ad.AnnData(X=x, obs=adata.obs.copy())
+    adata.var_names = [*(f"G{i:05d}" for i in range(1000)), *RECEPTOR_SYMBOLS]
+    path = tmp_path / "tr.h5ad"
+    adata.write_h5ad(path)
+    ds = load(path)
+    return ds, receptor_gene_mask(ds.gene_symbols)
+
+
+@pytest.fixture(scope="module")
+def receptor_ds(tmp_path_factory: pytest.TempPathFactory) -> tuple[Dataset, np.ndarray]:
+    return _with_receptor_genes(tmp_path_factory.mktemp("tr"))
+
+
+def test_receptor_genes_are_never_hvgs(receptor_ds: tuple[Dataset, np.ndarray]) -> None:
+    ds, tr = receptor_ds
+    assert tr.sum() == 8
+    art = run_pipeline(ds, PrepParams(n_top_genes=200)).artifacts
+    assert art["hvg"].sum() == 200
+    assert art["hvg"][tr].sum() == 0
+    info = art["hvg_info"]
+    assert info["receptor_genes"] == 8 and info["excluded"] is True
+    assert info["receptor_hvg_without_exclusion"] >= 1
+
+
+def test_receptor_genes_can_be_kept_on_request(receptor_ds: tuple[Dataset, np.ndarray]) -> None:
+    ds, tr = receptor_ds
+    art = run_pipeline(ds, PrepParams(n_top_genes=200, exclude_receptor_genes=False)).artifacts
+    info = art["hvg_info"]
+    assert art["hvg"].sum() == 200
+    assert art["hvg"][tr].sum() == info["receptor_hvg_without_exclusion"] >= 1
+    assert info["excluded"] is False
+
+
+def test_synthetic_hvgs_are_unchanged_by_the_exclusion(tmp_path: Path) -> None:
+    ds = _dataset(tmp_path)
+    on = run_pipeline(ds, PrepParams(n_top_genes=200)).artifacts
+    off = run_pipeline(ds, PrepParams(n_top_genes=200, exclude_receptor_genes=False)).artifacts
+    np.testing.assert_array_equal(on["hvg"], off["hvg"])
+    assert on["hvg"].sum() == 200
+    assert on["hvg_info"]["receptor_genes"] == 0
+
+
+def test_the_pattern_covers_human_and_mouse_segments() -> None:
+    hits = ["TRAV1-2", "TRAV14DV4", "Trbc1", "trgv9", "TRDC", "TRAC", "TRBD1", "TRBJ1-1"]
+    misses = ["TRADD", "TRAT1", "TRAPPC1", "TRDN", "TRDMT1"]
+    assert receptor_gene_mask(np.array(hits)).all()
+    assert not receptor_gene_mask(np.array(misses)).any()

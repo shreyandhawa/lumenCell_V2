@@ -10,7 +10,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   (PR #5) and the plans (PR #6, merged as 153a7f0) on 2026-11-12. Task 1 (clonal definitions,
   gates and runtime constants) merged as 6ff4676 (PR #7). Task 2 (the `clonal/` package: clone
   codes, scores, nulls, baseline, coupling) merged as f0715b6 (PR #8). Task 3 (synthetic clone
-  layer and its two controls) is on branch `pivot/05-synth-clones`.
+  layer and its two controls) merged as 744a0a8 (PR #9). Task 4 (receptor genes out of HVG
+  selection) is on branch `pivot/06-receptor-genes`.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -18,7 +19,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 1 Task 4, after Task 3's PR is reviewed and squash-merged.
+- **Next:** phase 1 Task 5, after Task 4's PR is reviewed and squash-merged.
   - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
     - one task per subagent, on the model the task names
     - TDD throughout
@@ -38,6 +39,18 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - Three phase plans, each written by its own Opus subagent with the phase 1 interfaces fixed
   first. One independent reviewer then cross-checked them (one blocker, eight should-fixes),
   and every finding was fixed.
+
+## Task 4 decisions
+
+- `PrepParams.exclude_receptor_genes` (default True) is a param of the `hvg` stage, so toggling it
+  changes the `hvg` key and every later key; `normalize` is untouched. The `hvg` stage now also
+  writes a small `hvg_info` artifact (`receptor_genes`, `excluded`, `receptor_hvg_without_exclusion`).
+- With receptor genes present and exclusion on, HVGs are chosen among the non-receptor genes with
+  `n_top = min(n_top_genes, n_non_receptor)`; a second selection over all genes only counts the
+  receptor genes that would have been HVGs. Without receptor genes the output is identical to before.
+- Existing cache keys for every dataset change (the `hvg` params gained a field), so old prep caches
+  recompute from `hvg` on. No test pinned a literal key, so no assertion changed.
+- `cli prepare` prints a `receptor genes: ...` line when any gene matches.
 
 ## Verified references
 
@@ -145,7 +158,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/02-phase-plans` | #6 | merged (squash, 153a7f0) |
 | `pivot/03-clonal-definitions` | #7 | merged (squash, 6ff4676) |
 | `pivot/04-clonal-scores` | #8 | merged (squash, f0715b6) |
-| `pivot/05-synth-clones` | #9 | phase 1 Task 3, open for review |
+| `pivot/05-synth-clones` | #9 | merged (squash, 744a0a8) |
+| `pivot/06-receptor-genes` | #PRNUM | phase 1 Task 4, open for review |
 
 ## Verify the current state
 
