@@ -58,7 +58,7 @@ def test_summary_leaves_out_cells_without_a_label_or_a_donor() -> None:
 
 
 def test_summary_refuses_what_check_settings_refuses() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="no cell has both a clone label and a donor"):
         settings_summary(_obs(["a", "b"], [np.nan, np.nan]), S)
 
 

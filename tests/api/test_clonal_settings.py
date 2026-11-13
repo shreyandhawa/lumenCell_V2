@@ -405,9 +405,11 @@ def test_run_id_hashes_every_column_in_sorted_order() -> None:
     assert run_id(*args, ("b", "a")) == run_id(*args, ("a", "b"))
 
 
-def test_run_id_without_columns_is_the_id_from_before_this_task() -> None:
-    # Computed at 4a8cd8a, before run_id took clonal columns. It also depends on the store
-    # version and the package version: if either changes, this literal changes with it.
+def test_run_id_without_columns_is_the_id_from_before_this_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Computed at 4a8cd8a, before run_id took clonal columns. The two versions that go into the
+    # id are fixed here, so the pin depends only on run_id's own logic.
+    monkeypatch.setattr("lumencell.engine.store.__version__", "0.1.0.dev0")
+    monkeypatch.setattr("lumencell.engine.store.STORE_VERSION", 2)
     args = ("paga_dpt", {"a": 1}, "cluster:k=v", None, "prepkey")
     assert run_id(*args) == "443cbd44c784478d"
     assert run_id(*args, ()) == "443cbd44c784478d"
