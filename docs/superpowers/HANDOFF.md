@@ -354,7 +354,7 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/07-inference-isolation` | #11 | merged (squash, 3f7e93d) |
 | `pivot/08-bench-clonal` | #12 | merged (squash, 857d03d) |
 | `pivot/09-bench-remeasure` | #13 | merged (squash, bfb2539) |
-| `pivot/10-clonal-calibration` | PR_TBD | phase 1 Task 8: one check failed, awaiting Shreyan |
+| `pivot/10-clonal-calibration` | #14 | phase 1 Task 8: one check failed, awaiting Shreyan |
 
 ## Verify the current state
 
