@@ -136,6 +136,35 @@ def kmeans_partition(space: F64, k: int, seed: int) -> IntArray:
     return np.asarray(labels, dtype=np.int64)
 
 
+def score_with_baseline(
+    membership: BoolArray,
+    codes: CloneCodes,
+    pseudotime: FloatArray,
+    pca: npt.NDArray[np.floating[Any]],
+    neighbors_pcs: int,
+    k: int,
+    *,
+    oracle_cells: BoolArray | None = None,
+    min_clone_size: int = MIN_CLONE_SIZE,
+    seed: int = CLONAL_SEED,
+) -> ClonalResult:
+    """``baseline_space``, then ``kmeans_partition`` with ``k`` clusters, then ``score_clonal``.
+
+    The one path from a run's PCs to a score, so the benchmark and the worker build the lineage-free
+    baseline the same way. ``k`` is the number of lineages being scored (L).
+    """
+    baseline = kmeans_partition(baseline_space(pca, neighbors_pcs), k, seed)
+    return score_clonal(
+        membership,
+        codes,
+        pseudotime,
+        baseline,
+        oracle_cells=oracle_cells,
+        min_clone_size=min_clone_size,
+        seed=seed,
+    )
+
+
 def score_clonal(
     membership: BoolArray,
     codes: CloneCodes,

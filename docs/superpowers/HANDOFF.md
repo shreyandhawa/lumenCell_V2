@@ -12,7 +12,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   codes, scores, nulls, baseline, coupling) merged as f0715b6 (PR #8). Task 3 (synthetic clone
   layer and its two controls) merged as 744a0a8 (PR #9). Task 4 (receptor genes out of HVG
   selection) merged as 7b6254b (PR #10). Task 5 (clone and receptor columns scoring-only,
-  store version 2) is on branch `pivot/07-inference-isolation` (PR #11), awaiting review.
+  store version 2) merged as 3f7e93d (PR #11). Task 6 (clonal scoring in the synthetic
+  benchmark) is on branch `pivot/08-bench-clonal`, awaiting review.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -20,7 +21,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 1 Task 6, after Task 5's PR is reviewed and squash-merged.
+- **Next:** phase 1 Task 7, after Task 6's PR is reviewed and squash-merged.
   - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
     - one task per subagent, on the model the task names
     - TDD throughout
@@ -154,6 +155,27 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
   - A run from another store version is absent: `exists()` is False and `load()` raises
     `FileNotFoundError`, so it is recomputed. `list()` logs one warning with the count it skips.
 
+## Task 6 decisions
+
+- **`clonal_row`** (`bench/runner.py`) never raises: an error is a `failed` row with
+  `reason`, also printed to stderr. `run_real_case` sets `not_applicable`.
+- **Rulings F11 and F23.**
+  - Fewer than 2 true lineages: `not_applicable`. Branching truth with no `clone_ids`:
+    `not_measured`, so both gates fail. `clonal_layer=None` on a branching case gives this.
+  - `score_with_baseline` in `clonal/scores.py` runs `baseline_space`, `kmeans_partition`,
+    `score_clonal`. The oracle, the method and the m = 3 call all use it.
+- **Method status `single_lineage`** (L >= 2 but all scored mass in one lineage) is the row
+  status too, like L < 2. The m = 3 fields stay NaN there.
+- **An oracle with NaN eta or p is `not_assessable`.** NaN is not above the floor.
+- **Evidence counts** (`n_cells`, `n_clones`, `effective_clones`) come from the oracle call.
+- **The report** reads rows with `.get(key, nan)`: committed `baseline.json` has no `clonal_*`
+  keys until Task 7, so the new column shows the missing mark. It also carries the "not a
+  branch gate" sentence.
+- **Inference** gets `clonal_columns=("clone_id", "donor")` only when the layer was applied.
+- **Gates now measure.** `test_full_matrix_holds_baseline_and_experimental_flag_is_honest`
+  (slow, not run here) now sees real clonal rows. Its regression check skips the clonal ratio
+  (no baseline value yet); the flag check may move until Task 7 re-baselines.
+
 ## Verified references
 
 Checked on 2026-11-12 against Crossref (`api.crossref.org`) and jmlr.org; nothing downloaded.
@@ -228,10 +250,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 - **ruff 0.17 formats Python code blocks inside Markdown files.** `make ci` fails on an
   unformatted ```` ```python ```` block in a doc, so run `uv run ruff format <file>.md` on new
   plans and docs.
-- **Clonal gates fail by design until Task 6 merges.** From the Task 1 commit until then every
-  synthetic row is `clonal_status` not_measured, so both clonal gates fail on every method.
-  The slow golden test `test_full_matrix_holds_baseline_and_experimental_flag_is_honest`
-  (deselected in `make ci`) and the `make bench-synth` gate report are red by design.
+- **Clonal gates failed by design until Task 6.** Before it every synthetic row was `not_measured`.
+  Task 6 measures them; the slow golden test and `make bench-synth` have not been run on it.
 - **Gate failures don't fail the benchmark commands.** `lumencell bench real` and
   `bench synth` exit 0 on gate failures; only regressions fail `bench-synth`.
 
@@ -262,7 +282,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/04-clonal-scores` | #8 | merged (squash, f0715b6) |
 | `pivot/05-synth-clones` | #9 | merged (squash, 744a0a8) |
 | `pivot/06-receptor-genes` | #10 | merged (squash, 7b6254b) |
-| `pivot/07-inference-isolation` | #11 | phase 1 Task 5: awaiting review |
+| `pivot/07-inference-isolation` | #11 | merged (squash, 3f7e93d) |
+| `pivot/08-bench-clonal` | #12 | phase 1 Task 6: awaiting review |
 
 ## Verify the current state
 

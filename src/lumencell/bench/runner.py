@@ -1,19 +1,34 @@
 """Run a method on a benchmark case and score it against the truth."""
 
 import math
+import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
+import numpy as np
+import numpy.typing as npt
+
 from lumencell.bench.metrics import Scores, score
 from lumencell.bench.synth import generate, truth_from_adata
+from lumencell.bench.synth_clones import DEFAULT_LAYER, ClonalLayer, add_clones, clone_truth
+from lumencell.bench.truth import Truth
+from lumencell.clonal.labels import encode_clones
+from lumencell.clonal.scores import ClonalResult, score_with_baseline
 from lumencell.data.loader import load
 from lumencell.engine.context import InferenceContext
 from lumencell.engine.registry import run_method
 from lumencell.engine.roots import ClusterRoot
+from lumencell.engine.schema import TrajectoryResult
 from lumencell.prep.pipeline import run_pipeline
 from lumencell.prep.stages import PrepParams
+from lumencell.trust.constants import (
+    MIN_CLONE_SIZE,
+    ORACLE_ETA_MIN,
+    ORACLE_P_MAX,
+    SENSITIVITY_CLONE_SIZE,
+)
 
 ClonalRowStatus = Literal[
     "ok", "single_lineage", "too_few_clones", "not_assessable", "failed", "not_applicable", "not_measured"
@@ -92,16 +107,25 @@ def run_synthetic_case(
     n_genes: int = 2000,
     params: dict[str, Any] | None = None,
     prep_params: PrepParams | None = None,
+    clonal_layer: ClonalLayer | None = DEFAULT_LAYER,
 ) -> CaseResult:
     """Generate a case, run the real pipeline and method on it, and score the result.
 
     The method only sees counts and the root. The root is the true starting
     cluster, given the way a user would give it (``cluster:true_label=trunk_early``);
     no other truth reaches inference.
+
+    A branching truth (at least two lineages) also gets ``clonal_layer`` after ``generate``: clone and
+    donor columns that are scoring-only, named to inference as ``clonal_columns``. ``None`` leaves
+    the clonal row ``not_measured``; a truth with fewer lineages is ``not_applicable``.
     """
     case = f"{topology}/{preset}/seed{seed}"
     adata = generate(topology, preset, n_cells=n_cells, n_genes=n_genes, seed=seed)
     truth = truth_from_adata(adata)
+    layered = clonal_layer is not None and len(truth.names) >= 2
+    if clonal_layer is not None and layered:
+        adata = add_clones(adata, clonal_layer, seed)
+        truth = clone_truth(truth, adata)
     path = workdir / f"{topology}-{preset}-{seed}.h5ad"
     adata.write_h5ad(path)
 
@@ -109,10 +133,11 @@ def run_synthetic_case(
     ds = load(path)
     pp = prep_params or PrepParams()
     prep = run_pipeline(ds, pp)
-    ctx = InferenceContext.from_prep(ds, prep, pp)
+    ctx = InferenceContext.from_prep(ds, prep, pp, clonal_columns=("clone_id", "donor") if layered else ())
     result = run_method(ctx, method, ClusterRoot("true_label", truth.meta["root_label"]), params=params)
     elapsed = time.perf_counter() - start
 
+    clonal = clonal_row(truth, result, np.asarray(prep.artifacts["pca"]), pp.neighbors_pcs)
     return CaseResult(
         case=case,
         method=method,
@@ -120,7 +145,74 @@ def run_synthetic_case(
         n_clusters=int(ctx.leiden.max()) + 1,
         runtime_seconds=elapsed,
         warnings=[w.code for w in result.warnings],
+        clonal=clonal,
     )
+
+
+def clonal_row(
+    truth: Truth, result: TrajectoryResult, pca: npt.NDArray[np.floating[Any]], neighbors_pcs: int
+) -> ClonalRow:
+    """Clonal agreement of a run with the true lineages' clones, in oracle-cells mode.
+
+    The oracle scores the true lineages on the true lineages' single-lineage cells; the method scores
+    the same cells weighted by its own lineage masks. Both are against a k-means baseline with
+    k = their number of lineages. Never raises: an error is a ``failed`` row, also printed.
+    """
+    if len(truth.names) < 2:
+        return ClonalRow("not_applicable")
+    if truth.clone_ids is None or truth.donors is None:
+        return ClonalRow("not_measured")
+    try:
+        codes = encode_clones(truth.clone_ids, truth.donors)
+        cells = truth.exclusive() >= 0
+        oracle = score_with_baseline(
+            truth.membership(), codes, truth.order, pca, neighbors_pcs, len(truth.names), oracle_cells=cells
+        )
+        # The evidence counts come from the oracle call: the same cells the method is scored on.
+        base = ClonalRow(
+            "single_lineage",
+            eta_oracle=oracle.eta,
+            n_clones=oracle.n_clones,
+            n_cells=oracle.n_cells,
+            effective_clones=oracle.effective_clones,
+        )
+        n_method = int(result.membership.shape[0])
+        if n_method < 2:
+            return base
+
+        def method_call(min_clone_size: int) -> ClonalResult:
+            return score_with_baseline(
+                result.membership,
+                codes,
+                result.pseudotime,
+                pca,
+                neighbors_pcs,
+                n_method,
+                oracle_cells=cells,
+                min_clone_size=min_clone_size,
+            )
+
+        method = method_call(MIN_CLONE_SIZE)
+        if method.status == "single_lineage":
+            return base
+        m3 = method_call(SENSITIVITY_CLONE_SIZE)
+        scored = replace(base, eta_method=method.eta, eta_m3=m3.eta, p_m3=m3.p)
+        if method.status == "too_few_clones":
+            return replace(scored, status="too_few_clones")
+        # NaN is not above the floor: an oracle without a defined eta or p cannot be assessed.
+        if not (oracle.eta >= ORACLE_ETA_MIN and oracle.p <= ORACLE_P_MAX):
+            return replace(scored, status="not_assessable")
+        return replace(
+            scored,
+            status="ok",
+            excess_ratio=method.eta / oracle.eta,
+            p=method.p,
+            delta_base=method.delta_eta,
+        )
+    except Exception as exc:
+        reason = f"{type(exc).__name__}: {exc}"
+        print(f"clonal scoring failed: {reason}", file=sys.stderr)
+        return ClonalRow("failed", reason=reason)
 
 
 def run_real_case(
@@ -148,4 +240,5 @@ def run_real_case(
         n_clusters=int(ctx.leiden.max()) + 1,
         runtime_seconds=elapsed,
         warnings=[w.code for w in result.warnings],
+        clonal=ClonalRow("not_applicable"),
     )
