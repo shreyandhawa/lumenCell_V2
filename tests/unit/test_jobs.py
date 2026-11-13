@@ -8,6 +8,7 @@ import pytest
 
 from lumencell.bench.synth import generate
 from lumencell.data.loader import load
+from lumencell.engine.roots import RootError
 from lumencell.engine.store import RunStore
 from lumencell.jobs import manager as jobs_mod
 from lumencell.jobs.manager import JobManager
@@ -245,3 +246,20 @@ def test_time_limits_can_be_set_from_the_environment(monkeypatch: pytest.MonkeyP
 def test_time_limits_given_in_code_are_checked(limits: dict[str, object]) -> None:
     with pytest.raises(ValueError, match="time limit"):
         JobManager(time_limits=limits)  # type: ignore[arg-type]
+
+
+def test_the_named_clonal_columns_reach_the_run(tmp_path: Path) -> None:
+    # In-process: a named column is scoring-only in the job, so it cannot be the root.
+    path = tmp_path / "d.h5ad"
+    generate("bifurcation", "realistic", n_cells=400, n_genes=200, seed=0).write_h5ad(path)
+    payload = {
+        "path": str(path),
+        "prep_params": PrepParams(),
+        "cache_root": str(tmp_path / "cache"),
+        "method": "paga_dpt",
+        "root": "cluster:true_label=trunk_early",
+        "run_id": "r3",
+        "clonal_columns": ["true_label"],
+    }
+    with pytest.raises(RootError, match="'true_label' is set as a clone or donor column"):
+        HANDLERS["infer"](payload, lambda *_: None)

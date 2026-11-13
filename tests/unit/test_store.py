@@ -125,9 +125,21 @@ def test_result_json_records_isolation(tmp_path: Path, result: TrajectoryResult)
     store.save("unkeyed", result)
     assert store.graph("unkeyed")["prep_key"] is None
 
-    old = store.graph("abc")
+
+def test_a_run_from_another_store_version_is_absent(
+    tmp_path: Path, result: TrajectoryResult, caplog: pytest.LogCaptureFixture
+) -> None:
+    store = RunStore(tmp_path)
+    store.save("old", result)
+    store.save("new", result)
+    old = store.graph("old")
     old["store_version"] = 1
     del old["obs_keys"]
-    store.update_graph("abc", old)
-    assert [r["run_id"] for r in store.list()] == ["unkeyed"], "a version 1 run is not listed"
-    assert store.load("abc").obs_keys == [], "a run saved before obs_keys loads with none"
+    store.update_graph("old", old)
+    assert store.exists("new") and not store.exists("old"), "so a request recomputes it"
+    with pytest.raises(FileNotFoundError, match="no run 'old'"):
+        store.load("old")
+    with caplog.at_level("WARNING", logger="lumencell.engine.store"):
+        assert [r["run_id"] for r in store.list()] == ["new"]
+    [record] = caplog.records
+    assert "1 saved run(s)" in record.getMessage() and "another store version" in record.getMessage()

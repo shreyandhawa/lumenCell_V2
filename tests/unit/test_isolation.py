@@ -131,7 +131,8 @@ def _assert_identical(a: TrajectoryResult, b: TrajectoryResult) -> None:
 def test_clone_columns_and_receptor_genes_change_no_result(
     method: str, plain: Dataset, clonal: Dataset, preps: dict[str, PrepResult]
 ) -> None:
-    a = _run(plain, preps["plain"], method, ("clone_id",))
+    # The plain file has no clone_id, and naming a column the file lacks is refused.
+    a = _run(plain, preps["plain"], method, ())
     b = _run(clonal, preps["clonal"], method, ("clone_id",))
     _assert_identical(a, b)
 
@@ -274,3 +275,37 @@ def test_runs_record_what_steered_them(clonal: Dataset, preps: dict[str, PrepRes
     assert result.obs_keys == sorted({"true_label", "lumencell_leiden"})
     named = run_method(ctx, "paga_dpt", ROOT, params={"cluster_key": "true_segment"}, label_key="true_label")
     assert named.obs_keys == ["true_label", "true_segment"]
+
+
+# ---- the context guards itself -------------------------------------------------------------
+
+
+def test_a_context_built_any_other_way_still_refuses_clone_columns(
+    clonal: Dataset, preps: dict[str, PrepResult]
+) -> None:
+    ctx = _ctx(clonal, preps["clonal"])
+    with pytest.raises(ScoringOnlyColumnError, match="'clone_id'"):
+        dataclasses.replace(ctx, obs=clonal.obs.copy())  # a receptor-pattern column
+    obs = ctx.obs.copy()
+    obs["donor"] = "d1"
+    with pytest.raises(ScoringOnlyColumnError, match="'donor'"):
+        dataclasses.replace(ctx, obs=obs, scoring_only=frozenset({"donor"}))  # a named column
+    dataclasses.replace(ctx, obs=obs)  # an ordinary column is fine
+
+
+def test_a_bare_string_is_not_a_list_of_columns(plain: Dataset, preps: dict[str, PrepResult]) -> None:
+    obs = plain.obs.copy()
+    obs["donor"] = "d1"
+    with pytest.raises(TypeError, match="not the string 'donor'"):
+        scoring_only_columns(obs.columns, "donor")
+    with pytest.raises(TypeError, match="not the string 'donor'"):
+        inference_obs(obs, "donor")
+    with pytest.raises(TypeError, match="not the string 'donor'"):
+        InferenceContext.from_prep(dataclasses.replace(plain, obs=obs), preps["plain"], PrepParams(), "donor")
+
+
+def test_a_named_column_the_file_lacks_is_refused(plain: Dataset) -> None:
+    obs = plain.obs.copy()
+    obs["donor"] = "d1"
+    with pytest.raises(ValueError, match="'Donor' are not in the file's obs columns"):
+        inference_obs(obs, ("Donor",))

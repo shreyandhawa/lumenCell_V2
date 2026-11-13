@@ -14,6 +14,7 @@ run twice finds the existing one instead of recomputing it.
 
 import hashlib
 import json
+import logging
 import shutil
 import tempfile
 from dataclasses import asdict
@@ -36,6 +37,8 @@ from lumencell.engine.schema import (
     Segment,
     TrajectoryResult,
 )
+
+log = logging.getLogger(__name__)
 
 # 2: result.json records the prep key, the clone-isolation version and the obs keys used.
 STORE_VERSION = 2
@@ -125,7 +128,13 @@ class RunStore:
         return self.dir / rid
 
     def exists(self, rid: str) -> bool:
-        return (self.path(rid) / ".complete").exists()
+        """A completed run written by this store version. Any other is absent, so it is recomputed."""
+        if not (self.path(rid) / ".complete").exists():
+            return False
+        try:
+            return bool(self.graph(rid).get("store_version") == STORE_VERSION)
+        except (OSError, ValueError, AttributeError):
+            return False
 
     def save(
         self,
@@ -175,6 +184,8 @@ class RunStore:
         tmp.replace(p)
 
     def load(self, rid: str) -> TrajectoryResult:
+        if not self.exists(rid):
+            raise FileNotFoundError(f"no run {rid!r} saved by store version {STORE_VERSION}")
         g = self.graph(rid)
         cells = binary.decode(self.cells_bytes(rid)).arrays
         fate = np.array(cells["fate"]) if "fate" in cells else None
@@ -208,7 +219,7 @@ class RunStore:
                 else None
             ),
             curve_paths=g.get("curve_paths"),
-            obs_keys=list(g.get("obs_keys", [])),
+            obs_keys=list(g["obs_keys"]),
         )
 
     def list(self) -> list[dict[str, Any]]:
@@ -220,12 +231,14 @@ class RunStore:
         if not self.dir.exists():
             return []
         out = []
+        other_version = 0
         for d in self.dir.iterdir():
             if d.name.startswith(".") or not (d / ".complete").exists():
                 continue
             try:
                 g = self.graph(d.name)
                 if g.get("store_version") != STORE_VERSION:
+                    other_version += 1
                     continue
                 datetime.fromisoformat(g["created_at"])
                 summary = {
@@ -237,4 +250,11 @@ class RunStore:
             except (OSError, ValueError, KeyError, TypeError, AttributeError):
                 continue
             out.append(summary)
+        if other_version:
+            log.warning(
+                "%d saved run(s) in %s were written by another store version and are not listed; "
+                "running them again recomputes them",
+                other_version,
+                self.dir,
+            )
         return sorted(out, key=lambda r: r["created_at"], reverse=True)

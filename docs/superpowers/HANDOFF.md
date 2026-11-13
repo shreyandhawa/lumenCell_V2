@@ -72,6 +72,15 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
 
   The test analyzer mutation-tests a scratch copy, and every task so far had surviving mutants
   that the fix round closed.
+- **Process change (2026-11-13), from Task 6 on.** Shreyan asked: "Use token efficient agents
+  for the tasks so that it can finish quickly on less usage". So:
+  - reviews are two seats: a Sonnet task reviewer that also covers silent failures and
+    NaN/fallback paths, and pr-test-analyzer on Sonnet, mutation-testing a scratch copy;
+  - no separate code-reviewer or type-design-analyzer; an Opus reviewer only for Task 8;
+  - implementers run on Sonnet by default, on Opus only for Tasks 13 and 14, and on Haiku for
+    mechanical or docs-only work;
+  - scoped re-reviews run on Haiku when the fix is mostly tests;
+  - subagents stop after replying, never watch CI, and keep replies under 15 lines.
 - **Merges need Shreyan's word.** The auto-mode permission check blocks `gh pr merge`
   ("Merge Without Review"), so Shreyan approved each of #7, #8 and #9 in chat. Ask before every
   merge, or have Shreyan add an allow rule for `Bash(gh pr merge:*)`.
@@ -134,6 +143,16 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
 - **Store version 2.** `result.json` gains `prep_key`, `inference_isolation` (1) and
   `obs_keys`; version 1 runs drop out of the list. Run ids change (`STORE_VERSION` is hashed).
   `clonal_columns` is not part of the run id.
+- **Fix round 1:**
+  - `InferenceContext.__post_init__` raises `ScoringOnlyColumnError` when `obs` holds a column in
+    `scoring_only` or one matching `RECEPTOR_COLUMN`, so `dataclasses.replace` cannot leak one.
+  - A bare string as `clonal_columns` (in `scoring_only_columns`, `inference_obs`, `from_prep`,
+    `DatasetView`) is a `TypeError`, via `column_names`.
+  - `inference_obs` raises `ValueError` for a named column the obs lacks (a typo such as
+    "Donor" would leave the real column visible). The isolation test now names `clone_id` only
+    for the clonal file.
+  - A run from another store version is absent: `exists()` is False and `load()` raises
+    `FileNotFoundError`, so it is recomputed. `list()` logs one warning with the count it skips.
 
 ## Verified references
 

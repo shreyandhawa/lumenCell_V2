@@ -13,7 +13,12 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from lumencell.clonal.isolation import scoring_only_columns, scoring_only_message
+from lumencell.clonal.isolation import (
+    RECEPTOR_COLUMN,
+    column_names,
+    scoring_only_columns,
+    scoring_only_message,
+)
 from lumencell.data.loader import Dataset
 from lumencell.prep.pipeline import PrepResult
 from lumencell.prep.stages import PrepParams
@@ -43,8 +48,19 @@ class ScoringOnlyColumnError(ValueError):
 def inference_obs(
     obs: pd.DataFrame, clonal_columns: Iterable[str] = ()
 ) -> tuple[pd.DataFrame, frozenset[str]]:
-    """A copy of ``obs`` without its scoring-only columns, and the set of scoring-only names."""
-    scoring_only = scoring_only_columns(obs.columns, clonal_columns)
+    """A copy of ``obs`` without its scoring-only columns, and the set of scoring-only names.
+
+    Every name in ``clonal_columns`` must be an obs column: a misspelt name would otherwise
+    leave the real column visible to methods.
+    """
+    named = column_names(clonal_columns)
+    present = {str(c) for c in obs.columns}
+    missing = [n for n in named if n not in present]
+    if missing:
+        raise ValueError(
+            f"clonal column(s) {', '.join(repr(n) for n in missing)} are not in the file's obs columns"
+        )
+    scoring_only = scoring_only_columns(obs.columns, named)
     kept = obs.drop(columns=[c for c in obs.columns if str(c) in scoring_only])
     return kept, scoring_only
 
@@ -73,6 +89,17 @@ class InferenceContext:
     fingerprint: str
     label_key: str
     scoring_only: frozenset[str] = frozenset()  # left out of obs; never a root, cluster or label column
+
+    def __post_init__(self) -> None:
+        # However a context is built (from_prep, directly, dataclasses.replace), methods never see
+        # a scoring-only column.
+        leaked = [
+            str(c) for c in self.obs.columns if str(c) in self.scoring_only or RECEPTOR_COLUMN.match(str(c))
+        ]
+        if leaked:
+            raise ScoringOnlyColumnError(
+                f"the annotations given to methods hold scoring-only column(s) {', '.join(map(repr, leaked))}"
+            )
 
     @classmethod
     def from_prep(

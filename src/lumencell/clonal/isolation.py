@@ -37,9 +37,18 @@ def receptor_gene_mask(symbols: npt.NDArray[np.str_]) -> npt.NDArray[np.bool_]:
     )
 
 
+def column_names(named: Iterable[str]) -> tuple[str, ...]:
+    """``named`` as a tuple of names. A bare string is refused: it would be read one character at a time."""
+    if isinstance(named, str):
+        raise TypeError(f"clonal columns must be a collection of column names, not the string {named!r}")
+    return tuple(named)
+
+
 def scoring_only_columns(columns: Iterable[object], named: Iterable[str] = ()) -> frozenset[str]:
     """Every column whose name matches RECEPTOR_COLUMN, plus every name in ``named``."""
-    return frozenset(str(c) for c in columns if RECEPTOR_COLUMN.match(str(c))) | frozenset(named)
+    return frozenset(str(c) for c in columns if RECEPTOR_COLUMN.match(str(c))) | frozenset(
+        column_names(named)
+    )
 
 
 def scoring_only_message(column: str, role: str) -> str:

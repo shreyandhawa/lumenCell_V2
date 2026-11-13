@@ -335,6 +335,10 @@ def test_a_root_the_plain_text_cannot_carry_reaches_the_worker_unchanged() -> No
     assert parse_root(str(submitted[0]["root"])) == ClusterRoot("batch=1", "A ")
     assert submitted[0]["clonal_columns"] == []
 
+    named, sent, _ = _runs_without_a_server(["batch=1", "donor"], ("donor",))
+    named.create_run(models.TrajectoryRequest(method="paga_dpt", root=root))  # type: ignore[attr-defined]
+    assert sent[0]["clonal_columns"] == ["donor"], "the view's clonal columns reach the worker"
+
 
 # ---- clone columns are scoring-only ------------------------------------------------------
 
@@ -542,3 +546,30 @@ def test_what_depends_only_on_the_file_is_worked_out_once(
     monkeypatch.setattr(session.view.cache, "status", no_more_checks)
     assert session.view.prep_ready()
     assert client.get("/api/v1/embeddings/dc12").status_code == 200
+
+
+def test_the_view_keeps_named_columns_out_of_label_detection(tmp_path: Path) -> None:
+    from lumencell.api.dataset_view import DatasetView
+    from lumencell.data.loader import load
+    from lumencell.prep.cache import PrepCache
+    from lumencell.prep.stages import PrepParams
+
+    adata = generate("linear", "easy", n_cells=120, n_genes=60, seed=0)
+    adata.obs["cell_type"] = adata.obs["true_label"].copy()
+    path = tmp_path / "ct.h5ad"
+    adata.write_h5ad(path)
+    ds = load(path, keep_matrix=False)
+    cache = PrepCache(ds, tmp_path / "cache")
+    assert DatasetView(path, ds, cache, PrepParams()).label_key == "cell_type"
+    named = DatasetView(path, ds, cache, PrepParams(), clonal_columns=("cell_type",))
+    assert named.label_key != "cell_type"
+
+
+def test_the_views_context_holds_its_named_columns(session: Session) -> None:
+    from lumencell.api.dataset_view import DatasetView
+
+    view = DatasetView(
+        session.path, session.ds, session.cache, session.params, clonal_columns=("true_segment",)
+    )
+    assert {"true_segment", "clone_id"} <= view.ctx().scoring_only
+    assert "true_segment" not in view.ctx().obs.columns
