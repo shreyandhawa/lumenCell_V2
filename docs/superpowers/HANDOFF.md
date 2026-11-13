@@ -15,7 +15,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   store version 2) merged as 3f7e93d (PR #11). Task 6 (clonal scoring in the synthetic
   benchmark) merged as 857d03d (PR #12). Task 7 (re-measured baseline) merged as bfb2539
   (PR #13). Task 8 (calibration of the nulls) is on branch `pivot/10-clonal-calibration`; one
-  check failed (see Open questions), so it stops for Shreyan after the PR is opened.
+  check failed (see Open questions), so it stops for Shreyan after the PR is opened. Task 9 (real benchmarks re-run after the TR-gene
+  exclusion) is on branch `pivot/11-bench-real-rerun`, stacked on `pivot/10-clonal-calibration`.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -201,6 +202,19 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
 - **`terminal_share: NaN`** is on every synthetic baseline row. Expected: the key was added to
   `runner.py` in 0621edc (real datasets); main's baseline predates it.
 
+## Task 9 result
+
+`make bench-real` exit 0 at 4b0b1d5 (3 real_data tests passed); record
+`benchmarks/results/real-2026-11-13.json`. Real rows are `clonal_status = not_applicable`.
+- `hvg_info` receptor_genes / receptor_hvg_without_exclusion: pancreas 0 / 0, bonemarrow 11 / 6,
+  gastrulation_erythroid 258 / 3.
+- Moved: pancreas nothing. Bone marrow: paga_dpt branch_accuracy 0.917 -> 0.617 and lineage_recall
+  1.0 -> 0.5 (gates now fail), scfates_ppt pt_spearman_lineage 0.781 -> 0.668 (fails), palantir
+  branch_accuracy 0.639 -> 0.943 (improves). Gastrulation: paga_dpt lineage_recall 0.0 -> 1.0.
+  Eight gates fail in total, as the log lists. No threshold changed.
+- The 11-10 file predates other prep/engine commits, so not every move is the exclusion alone.
+  Full table: `.superpowers/sdd/2026-11-12-phase-1-clonotypes/task-9-report.md`.
+
 ## Task 8 decisions and result
 
 Run 2026-11-13 at cb5c9c3 (the pre-declaration commit), 200 seeds (100-299), 39 min. Nothing was
@@ -368,6 +382,7 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/08-bench-clonal` | #12 | merged (squash, 857d03d) |
 | `pivot/09-bench-remeasure` | #13 | merged (squash, bfb2539) |
 | `pivot/10-clonal-calibration` | #14 | phase 1 Task 8: one check failed, awaiting Shreyan |
+| `pivot/11-bench-real-rerun` | (this PR) | phase 1 Task 9: real re-run, stacked on #14 |
 
 ## Verify the current state
 

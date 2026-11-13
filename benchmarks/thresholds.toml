@@ -165,3 +165,17 @@ max_drop = 0.03
 #   calibrated as it must be; depth_only/N2 57, NOT calibrated: FAILED. Oracle eta rises with
 #   fate_bias and p at fate_bias 0 is above 0.01 on all 9 monotonic cases. No threshold or
 #   definition changed.
+#
+# 2026-11-13  TR-gene exclusion re-run (Task 9). Results in benchmarks/results/real-2026-11-13.json,
+#   run at 4b0b1d5; compared with real-2026-11-10.json (run at abe3f73, before the exclusion).
+#   Receptor genes matched, and how many of them the old selection would have kept as HVGs:
+#   pancreas 0 matched, 0 would have been HVGs; bonemarrow 11 matched, 6; gastrulation_erythroid
+#   258 matched, 3. (The 258 in the mouse embryo is the case-insensitive pattern matching more than
+#   TCR genes; the exclusion applies as specified.) Real rows now carry clonal_status =
+#   not_applicable. Moved: pancreas no metric moved. bonemarrow moved on all three methods, and
+#   n_clusters 12 -> 13. paga_dpt branch_accuracy 0.917 -> 0.617 and lineage_recall 1.0 -> 0.5, both
+#   now failing their gates; scfates_ppt pt_spearman_lineage 0.781 -> 0.668 now fails its gate;
+#   palantir branch_accuracy 0.639 -> 0.943 and terminal_share 0.839 -> 0.986 improved.
+#   gastrulation_erythroid: paga_dpt lineage_recall 0.0 -> 1.0, other metrics within 0.002 except
+#   palantir terminal_share 0.591 -> 0.579. The old file predates other engine and prep commits, so
+#   the movement is not all attributable to the exclusion. Thresholds unchanged.
