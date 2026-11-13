@@ -263,3 +263,98 @@ def test_the_named_clonal_columns_reach_the_run(tmp_path: Path) -> None:
     }
     with pytest.raises(RootError, match="'true_label' is set as a clone or donor column"):
         HANDLERS["infer"](payload, lambda *_: None)
+
+
+def test_foreground_jobs_overtake_queued_background_jobs(jobs: JobManager) -> None:
+    block = jobs.submit("sleep", "block", {"steps": 5, "seconds": 0.1})
+    bg = jobs.submit("score_clonal", "bg", {})
+    fg = jobs.submit("sleep", "fg", {"steps": 1, "seconds": 0.01})
+    for job in (block, bg, fg):
+        jobs.wait(job.job_id, timeout=60)  # score_clonal has no handler yet, so it fails
+    bg, fg = jobs.get(bg.job_id), jobs.get(fg.job_id)  # type: ignore[assignment]
+    assert fg.started is not None and bg.started is not None and fg.started < bg.started  # type: ignore[union-attr]
+
+
+def test_take_next_order() -> None:
+    manager = JobManager()  # not started: nothing is dispatched
+    ids = {
+        name: manager.submit(kind, name, {}).job_id
+        for name, kind in [
+            ("bg1", "score_clonal"),
+            ("fg1", "sleep"),
+            ("bg2", "stability"),
+            ("fg2", "prepare"),
+        ]
+    }
+    with manager._lock:
+        order = [manager._take_next() for _ in range(5)]
+    assert order == [ids["fg1"], ids["fg2"], ids["bg1"], ids["bg2"], None]
+
+
+def test_a_queued_background_job_can_be_cancelled(jobs: JobManager) -> None:
+    jobs.submit("sleep", "block", {"steps": 5, "seconds": 0.1})
+    bg = jobs.submit("score_clonal", "bg", {})
+    assert jobs.cancel(bg.job_id).state == "cancelled"  # type: ignore[union-attr]
+    with jobs._lock:
+        assert bg.job_id not in jobs._background
+    assert jobs.get(bg.job_id).started is None  # type: ignore[union-attr]
+
+
+def test_done_callbacks_run_outside_the_lock(jobs: JobManager) -> None:
+    seen: dict[str, object] = {}
+    called = threading.Event()
+
+    def callback(job: object) -> None:
+        job_id = job.job_id  # type: ignore[attr-defined]
+        fetched: list[object] = []
+        # The thread needs the manager lock; it can only finish if the listener has let go of it.
+        t = threading.Thread(target=lambda: fetched.append(jobs.get(job_id)))
+        t.start()
+        t.join(2)
+        seen["finished"] = not t.is_alive()
+        seen["state"] = job.state  # type: ignore[attr-defined]
+        called.set()
+
+    jobs.add_done_callback(callback)
+    job = jobs.submit("sleep", "cb", {"steps": 1, "seconds": 0.01})
+    assert called.wait(60)
+    assert seen == {"finished": True, "state": "done"}
+    assert jobs.get(job.job_id).state == "done"  # type: ignore[union-attr]
+
+
+def test_callbacks_see_only_done_jobs(jobs: JobManager) -> None:
+    seen: list[str] = []
+    jobs.add_done_callback(lambda job: seen.append(job.key))
+    bad = jobs.submit("sleep", "bad", {"steps": 1, "seconds": 0.01, "fail": True})
+    assert jobs.wait(bad.job_id, timeout=60).state == "failed"
+    good = jobs.submit("sleep", "good", {"steps": 1, "seconds": 0.01})
+    jobs.wait(good.job_id, timeout=60)
+    deadline = threading.Event()
+    for _ in range(100):  # the callback runs just after the state changes
+        if seen:
+            break
+        deadline.wait(0.05)
+    assert seen == ["good"]
+
+
+def test_a_failing_callback_is_reported_and_the_listener_keeps_going(
+    jobs: JobManager, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def boom(job: object) -> None:
+        raise RuntimeError("callback exploded")
+
+    finished = threading.Event()
+    jobs.add_done_callback(boom)
+    jobs.add_done_callback(lambda job: finished.set() if job.key == "two" else None)  # runs after boom
+    first = jobs.submit("sleep", "one", {"steps": 1, "seconds": 0.01})
+    jobs.wait(first.job_id, timeout=60)
+    second = jobs.submit("sleep", "two", {"steps": 1, "seconds": 0.01})
+    assert jobs.wait(second.job_id, timeout=60).state == "done"
+    assert finished.wait(60), "the listener went on to the later callbacks and the next job"
+    err = capsys.readouterr().err
+    assert f"callback after job {first.job_id}" in err and "callback exploded" in err
+
+
+def test_scoring_has_its_own_time_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LUMENCELL_JOB_TIME_LIMITS", raising=False)
+    assert JobManager().time_limit("score_clonal") == 3600

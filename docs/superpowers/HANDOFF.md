@@ -21,6 +21,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   `pivot/12-clonal-settings`, stacked on `pivot/11-bench-real-rerun`.
   Task 11 (per-run `trust/` folder, atomic JSON results) is on branch `pivot/13-run-trust-store`,
   stacked on `pivot/12-clonal-settings`.
+  Task 12 (two job priorities, done-callbacks) is on branch `pivot/14-job-priorities`,
+  stacked on `pivot/13-run-trust-store`.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -205,6 +207,17 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
   rise is the clonal gate alone.
 - **`terminal_share: NaN`** is on every synthetic baseline row. Expected: the key was added to
   `runner.py` in 0621edc (real datasets); main's baseline predates it.
+
+## Task 12 decisions
+
+- `BACKGROUND_KINDS` (`score_clonal`, `stability`) queue in `_background`; every other kind goes to
+  `_foreground`. `_take_next` (lock held) takes the oldest foreground job, else the oldest background
+  one. A running job is never pre-empted.
+- `add_done_callback`: runs once per job that ends `done`, on the listener thread, after the lock is
+  released. Callbacks must be quick and may only submit jobs: while one runs the listener reads no
+  worker events, so it delays the next dispatch. An exception is printed to stderr with its traceback.
+- Callbacks are never removed, so a superseded scoring job still runs (ruling F21, parked).
+- `score_clonal` has no worker handler until Task 13; submitting it now fails the job.
 
 ## Task 11 decisions
 
@@ -420,7 +433,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/10-clonal-calibration` | #14 | phase 1 Task 8: one check failed, awaiting Shreyan |
 | `pivot/11-bench-real-rerun` | #15 | phase 1 Task 9: real re-run, stacked on #14 |
 | `pivot/12-clonal-settings` | #16 | phase 1 Task 10: clonal settings, stacked on #15 |
-| `pivot/13-run-trust-store` | (this PR) | phase 1 Task 11: run trust store, stacked on #16 |
+| `pivot/13-run-trust-store` | #17 | phase 1 Task 11: run trust store, stacked on #16 |
+| `pivot/14-job-priorities` | (this PR) | phase 1 Task 12: job priorities and done-callbacks, stacked on #17 |
 
 ## Verify the current state
 
