@@ -1749,5 +1749,6 @@
       "p_at_zero": 0.2907092907092907,
       "passed": true
     }
-  ]
+  ],
+  "provenance": "Numbers unchanged. The run was made at commit cb5c9c3 with src/lumencell/bench/calibration.py and the calibration tests uncommitted in the working tree (the recorded commit is HEAD, not the code); that code was first committed in 52f739d. A reviewer re-ran seeds 100-139 on 52f739d's code and reproduced the depth_only/N2 p-values exactly. The recorder did not note dirty state then; it does now (commit suffix -dirty)."
 }

@@ -19,7 +19,7 @@ import json
 import math
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -57,7 +57,7 @@ class RejectionCount:
 
     ``bound`` comes from the ``n - n_nan`` seeds that scored. A check that expects calibration
     passes when ``rejections <= bound``; one that expects none (a control with teeth) when
-    ``rejections > bound``.
+    ``rejections > bound``. A check with no scored seed never passes, whichever it expects.
     """
 
     name: str
@@ -75,6 +75,8 @@ class RejectionCount:
 
     @property
     def passed(self) -> bool:
+        if self.n_scored == 0:
+            return False
         within = self.rejections <= self.bound
         return within if self.expect_calibrated else not within
 
@@ -127,7 +129,12 @@ class CalibrationReport:
 
     @property
     def passed(self) -> bool:
-        return all(c.passed for c in self.checks) and all(m.passed for m in self.monotonic)
+        """Every check and monotonic case passes and no seed raised an error."""
+        return (
+            not self.config.get("errors")
+            and all(c.passed for c in self.checks)
+            and all(m.passed for m in self.monotonic)
+        )
 
 
 def run_calibration(cfg: dict[str, Any], methods: Sequence[str], workdir: Path) -> CalibrationReport:
@@ -177,10 +184,8 @@ def run_calibration(cfg: dict[str, Any], methods: Sequence[str], workdir: Path) 
         "depth_only/N2": ("N2", True),
         "depth_only/N1": ("N1", False),
     }
-    checks = [
-        count_rejections(name, *controls.get(name, ("headline", True)), values, alpha, quantile)
-        for name, values in ps.items()
-    ]
+    controls.update({f"null/{m}": ("headline", True) for m in methods})
+    checks = [count_rejections(name, *controls[name], values, alpha, quantile) for name, values in ps.items()]
 
     monotonic = tuple(
         _monotonic_case(gen(topology, seed), topology, seed, cal["monotonic_fate_bias"], layer)
@@ -301,7 +306,7 @@ def _null_p(result: ClonalResult, index: int) -> float:
 
 
 def _monotonic_case(
-    base: ad.AnnData, topology: str, seed: int, fate_bias: Sequence[float], layer: Any
+    base: ad.AnnData, topology: str, seed: int, fate_bias: Sequence[float], layer: Callable[..., ClonalLayer]
 ) -> MonotonicCase:
     results = [_oracle(base, layer(fate_bias=fb), seed) for fb in fate_bias]
     zero = list(fate_bias).index(0.0)
@@ -315,10 +320,14 @@ def _monotonic_case(
 
 
 def _commit() -> str:
+    """HEAD, with ``-dirty`` appended when the working tree has uncommitted changes."""
     try:
-        out = subprocess.run(
+        head = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, check=True, timeout=10
-        )
-        return out.stdout.strip()
+        ).stdout.strip()
+        status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True, check=True, timeout=10
+        ).stdout.strip()
+        return f"{head}-dirty" if status else head
     except (OSError, subprocess.SubprocessError):
         return "unknown"

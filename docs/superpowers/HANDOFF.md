@@ -228,13 +228,27 @@ tuned. Record: `benchmarks/results/clonal-calibration-2026-11-13.json`. Bound 18
   - donor_confound/N1 rejects 3.5% with a KS p of 0.61: well calibrated.
   - Both controls without their stratum reject 200 of 200 at the p floor 0.001, so the controls
     have teeth: shuffling without donors (or without depth) is wrong on these data.
-  - depth_only/N2 rejects 28.5% (CI 22.4-35.3%), over five times the nominal rate. N2 does not
-    remove the depth confound at decile resolution on this control. About 96% of the control's
-    clones lie in one decile, and 55-59% of them span two true lineages, so within a decile the
-    shuffle breaks a fine-scale pseudotime structure that the deciles cannot see. This is a
-    reading, not a tested cause.
-- **The synthetic gates are unaffected:** the gates use headline p = max over nulls, so N2 can
-  only make it larger, and nothing was re-measured.
+  - **depth_only/N2 failed its calibration check:** 57 of 200 reject (28.5%, CI 22.4-35.3%;
+    bound 18). Cause, reproduced by a reviewer on seeds 100-139 (9 of the first 40 reject, as
+    recorded): binary2's lineage mix steps at t = 0.65. Oracle cells are single-lineage cells, so
+    below 0.65 every scored cell is lineage B, and above it B, A1 and A2 in about equal shares.
+    That step lies inside one decile, so the within-decile shuffle mixes pure-B clones with
+    mixed-region cells and the null entropy comes out too high. About 96% of clones lie in one
+    decile, which does not by itself tell the two readings apart. Exploratory probe on 40 seeds,
+    not a result: splitting at t >= 0.65 gave 1 of 40 rejections, 40 quantile bins 3 of 40.
+  - Monotonicity is a weak check: eta at fate_bias 1.0 is 1.0 by construction and the steps are
+    about 0.35, so it fails only if something is grossly broken.
+- **Why no gate moves:** under depth confounding N1 sits at the floor (0.001 on all 200 seeds), so
+  the headline p (max over nulls) equals N2's p and inherits its rejection rate; the max protects
+  only when a null is valid for the confound present. The gate is `clonal_excess_ratio`, and p
+  enters only as the oracle's assessability test `oracle.p <= 0.01` on layers with control `none`.
+  Nothing was re-run.
+- **Provenance:** the recorded run's commit, cb5c9c3, is HEAD at the time. The calibration code
+  and tests were uncommitted then and first committed in 52f739d; reviewers reproduced seeds
+  100-139 exactly on that code. The recorded JSON carries this as a `provenance` note, numbers
+  unchanged; the recorder now appends `-dirty` to a dirty commit.
+- **Fix round 1:** a check with no scored seed never passes, and a report with any method error
+  does not pass.
 
 ## Verified references
 
@@ -317,15 +331,14 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 
 ## Open questions for Shreyan
 
-- **depth_only/N2 is not calibrated (Task 8).** 57 of 200 seeds reject at 0.05 (bound 18), so N2
-  is anti-conservative against a clone structure that follows pseudotime at a finer scale than a
-  decile. N1 rejects all 200, so the control has teeth; the failure is N2's. No seed, definition
-  or threshold was changed. Options for you: (a) accept it and say in the spec that N2 controls
-  depth only at decile resolution, and that a headline p of N1 or N2 passing does not rule out
-  fine-scale depth structure; (b) add a finer or adaptive pseudotime stratum as a new, dated
-  definition and calibrate it on a fresh seed range, never re-run on 100-299 with the change;
-  (c) drop the claim that N2 removes the depth confound. The calibration test stays red until
-  you choose.
+- **depth_only/N2 is a failed calibration check (Task 8, ruled by the controller).** 57 of 200
+  seeds reject at 0.05 (bound 18); N2 does not protect against depth confounding across a branch
+  point that falls inside a decile. It is recorded as failed. No N2 definition, seed or threshold
+  was changed. The slow test `test_depth_only_is_calibrated_under_n2` stays red.
+  Phase-2 candidate (2026-11-13), for your sign-off: a pre-declared N2 amendment, either finer
+  bins or a branch-point split, defined in thresholds.toml before a run and calibrated on a fresh
+  seed range, never on 100-299. The reviewer's exploratory 40-seed numbers (3 of 40 for 40 bins, 1
+  of 40 for the branch-point split) are exploratory, not a result.
 - **Reordering cells: exact or within Monte Carlo error?** Spec §4.5 says η, P and the p-values
   are "unchanged" when cells are reordered. Task 2 keeps the plan's shuffle: each null draws one
   random key per scored cell, in the cells' original order. That makes relabelling clones or
