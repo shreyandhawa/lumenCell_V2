@@ -283,7 +283,7 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/05-synth-clones` | #9 | merged (squash, 744a0a8) |
 | `pivot/06-receptor-genes` | #10 | merged (squash, 7b6254b) |
 | `pivot/07-inference-isolation` | #11 | merged (squash, 3f7e93d) |
-| `pivot/08-bench-clonal` | (see PR) | phase 1 Task 6: awaiting review |
+| `pivot/08-bench-clonal` | #12 | phase 1 Task 6: awaiting review |
 
 ## Verify the current state
 
