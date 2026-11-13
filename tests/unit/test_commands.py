@@ -152,3 +152,98 @@ def test_prepare_warns_when_ids_cannot_be_matched(tmp_path: Path, cache_env: Non
     assert "receptor genes: 0 matched (symbols from var_names)" in result.output
     assert "receptor genes could not be matched" in result.output
     assert "clone identity may reach the PCA" in result.output
+
+
+# ---- clonal agreement ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def clonal_data(data: Path) -> Path:
+    from lumencell.bench.synth_clones import ClonalLayer, add_clones
+
+    base = ad.read_h5ad(data)
+    del base.obs["clone_id"]
+    adata = add_clones(base, ClonalLayer(fate_bias=0.8), seed=0)
+    adata.write_h5ad(data)
+    return data
+
+
+CLONAL = ["--clone-key", "clone_id", "--donor-key", "donor"]
+ROOT = ["--root", "cluster:true_label=trunk_early"]
+
+
+def test_run_prints_clonal_agreement(clonal_data: Path) -> None:
+    result = runner.invoke(app, ["run", str(clonal_data), *ROOT, *CLONAL])
+    assert result.exit_code == 0, result.output
+    assert "clonal agreement: ok (own cells, m = 2)" in result.output
+    assert "m = 3:" in result.output and "delta" in result.output
+    assert "headline p" in result.output and "the largest over N1" in result.output
+    assert "nan" not in result.output and "None" not in result.output
+    rid = result.output.split("run ")[1].split(":")[0]
+    from lumencell.api.models import ClonalSettings
+    from lumencell.trust.clonal import trust_name
+
+    store = RunStore(dataset_dir(load(clonal_data).fingerprint))
+    name = trust_name(ClonalSettings(clone_key="clone_id", donor_key="donor"))
+    assert store.trust_path(rid, name).exists()
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (["--clone-key", "clone_id", "--donor-key", "donor", "--single-donor"], "not both"),
+        (["--clone-key", "nope", "--donor-key", "donor"], "nope"),
+        (["--donor-key", "donor"], "--clone-key"),
+        (["--single-donor"], "--clone-key"),
+        (["--clone-key", "clone_id"], "single_donor"),
+    ],
+)
+def test_run_refuses_invalid_clonal_options(clonal_data: Path, extra: list[str], message: str) -> None:
+    result = runner.invoke(app, ["run", str(clonal_data), *ROOT, *extra])
+    assert result.exit_code == 2, result.output
+    assert message in result.output
+
+
+def test_run_refuses_a_clone_column_as_root(clonal_data: Path) -> None:
+    result = runner.invoke(app, ["run", str(clonal_data), "--root", "cluster:clone_id=c0", *CLONAL])
+    assert result.exit_code == 2, result.output
+    assert "only to score" in result.output
+
+
+def test_run_id_with_settings_matches_the_api_and_differs_without(clonal_data: Path) -> None:
+    from lumencell.api import models
+    from lumencell.api.convert import to_api_spec
+    from lumencell.api.session import Session
+    from lumencell.engine.roots import parse_root
+    from lumencell.jobs.manager import JobManager
+
+    plain = runner.invoke(app, ["run", str(clonal_data), *ROOT])
+    scored = runner.invoke(app, ["run", str(clonal_data), *ROOT, *CLONAL])
+    rid_plain = plain.output.split("run ")[1].split(":")[0]
+    rid = scored.output.split("run ")[1].split(":")[0]
+    assert rid != rid_plain
+
+    jobs = JobManager()  # not started: the job is only queued
+    session = Session(clonal_data, jobs)
+    session.set_clonal(models.ClonalSettings(clone_key="clone_id", donor_key="donor"))
+    created, _ = session.runs.create_run(
+        models.TrajectoryRequest(method="paga_dpt", root=to_api_spec(parse_root(ROOT[1])))
+    )
+    assert created.run_id == rid
+    jobs.shutdown()
+
+
+def test_clonal_lines_print_missing_statistics_as_a_dash_and_a_refusal_with_its_note() -> None:
+    from lumencell.api.models import ClonalAgreement, ClonalSettings
+    from lumencell.cli import _clonal_lines
+
+    refused = ClonalAgreement(
+        status="refused",
+        settings=ClonalSettings(clone_key="c", single_donor=True),
+        primary=None,
+        sensitivity_m3=None,
+        coupling=[],
+        notes=["The run used 'x', which lumenCell keeps only for scoring; run it again without it."],
+    )
+    text = "\n".join(_clonal_lines(refused))
+    assert text.startswith("clonal agreement: refused") and "only for scoring" in text

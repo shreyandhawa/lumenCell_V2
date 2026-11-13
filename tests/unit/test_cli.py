@@ -54,3 +54,14 @@ def test_launch_reports_a_bad_time_limit_setting(tmp_path: Path, monkeypatch: ob
     assert result.exit_code != 0
     assert "LUMENCELL_JOB_TIME_LIMITS" in result.output
     assert isinstance(result.exception, SystemExit), "a message, not a traceback"
+
+
+def test_synth_can_add_clones(tmp_path: Path) -> None:
+    base = ["--n-cells", "300", "--n-genes", "50"]
+    plain, biased = tmp_path / "p.h5ad", tmp_path / "b.h5ad"
+    assert runner.invoke(app, ["synth", str(plain), *base]).exit_code == 0
+    result = runner.invoke(app, ["synth", str(biased), *base, "--fate-bias", "0.7"])
+    assert result.exit_code == 0, result.output
+    assert {"clone_id", "donor"} <= set(ad.read_h5ad(biased).obs.columns)
+    assert not {"clone_id", "donor"} & set(ad.read_h5ad(plain).obs.columns)
+    assert runner.invoke(app, ["synth", str(plain), "--fate-bias", "1.5"]).exit_code == 2
