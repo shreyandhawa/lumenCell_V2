@@ -5,6 +5,7 @@ from pathlib import Path
 import anndata as ad
 import numpy as np
 import pytest
+from scipy import sparse
 from typer.testing import CliRunner
 
 from lumencell.bench.synth import generate
@@ -77,3 +78,60 @@ def test_unusable_file_is_reported_clearly(tmp_path: Path, monkeypatch: pytest.M
     result = runner.invoke(app, ["prepare", str(path)])
     assert result.exit_code != 0
     assert "--x-is" in result.output
+
+
+def _receptor_file(tmp_path: Path, with_receptors: bool = True) -> Path:
+    adata = generate("bifurcation", "realistic", n_cells=600, n_genes=300, seed=0)
+    symbols = ["TRAV1-2", "TRAV12-1", "TRAJ33", "TRAC", "TRBV5-1", "TRBV20-1", "TRBJ2-7", "TRBC2"]
+    if with_receptors:
+        extra = np.random.default_rng(0).poisson(2.0, (adata.n_obs, len(symbols))).astype(np.float32)
+        x = sparse.hstack([adata.X, sparse.csr_matrix(extra)], format="csr")
+        adata = ad.AnnData(X=x, obs=adata.obs.copy())
+        adata.var_names = [*(f"G{i:05d}" for i in range(300)), *symbols]
+    path = tmp_path / "tr.h5ad"
+    adata.write_h5ad(path)
+    return path
+
+
+@pytest.fixture
+def cache_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LUMENCELL_CACHE_DIR", str(tmp_path / "cache"))
+
+
+def test_prepare_reports_receptor_genes(tmp_path: Path, cache_env: None) -> None:
+    result = runner.invoke(app, ["prepare", str(_receptor_file(tmp_path))])
+    assert result.exit_code == 0, result.output
+    assert "receptor genes: 8 matched" in result.output
+    assert "(symbols from var_names); excluded from HVG selection (" in result.output
+    assert "would be HVGs without the exclusion)" in result.output
+
+
+def test_prepare_reports_when_receptor_genes_are_kept(
+    tmp_path: Path, cache_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lumencell.prep.stages import PrepParams
+
+    monkeypatch.setattr("lumencell.cli._prep_params", lambda r: PrepParams(exclude_receptor_genes=False))
+    result = runner.invoke(app, ["prepare", str(_receptor_file(tmp_path))])
+    assert result.exit_code == 0, result.output
+    assert "kept in HVG selection (" in result.output
+    assert "excluded from" not in result.output
+
+
+def test_prepare_says_so_when_no_receptor_genes_matched(tmp_path: Path, cache_env: None) -> None:
+    result = runner.invoke(app, ["prepare", str(_receptor_file(tmp_path, with_receptors=False))])
+    assert result.exit_code == 0, result.output
+    assert "receptor genes: 0 matched (symbols from var_names)" in result.output
+    assert "warning" not in result.output
+
+
+def test_prepare_warns_when_ids_cannot_be_matched(tmp_path: Path, cache_env: None) -> None:
+    adata = ad.read_h5ad(_receptor_file(tmp_path))
+    adata.var_names = [f"ENSG{i:011d}" for i in range(adata.n_vars)]
+    path = tmp_path / "ens.h5ad"
+    adata.write_h5ad(path)
+    result = runner.invoke(app, ["prepare", str(path)])
+    assert result.exit_code == 0, result.output
+    assert "receptor genes: 0 matched (symbols from var_names)" in result.output
+    assert "receptor genes could not be matched" in result.output
+    assert "clone identity may reach the PCA" in result.output

@@ -4,13 +4,15 @@ A new session starts with: "Read docs/superpowers/HANDOFF.md and continue."
 This file is updated inside every task's PR. `docs/HANDOFF.md` is the milestone 1 note; its
 stale lines are corrected once, by phase 1's handoff-corrections task.
 
-## Current state (2026-11-12)
+## Current state (2026-11-13)
 
 - **Phase:** phase 1 has started. Both approval gates are passed: Shreyan approved the spec
   (PR #5) and the plans (PR #6, merged as 153a7f0) on 2026-11-12. Task 1 (clonal definitions,
   gates and runtime constants) merged as 6ff4676 (PR #7). Task 2 (the `clonal/` package: clone
   codes, scores, nulls, baseline, coupling) merged as f0715b6 (PR #8). Task 3 (synthetic clone
-  layer and its two controls) is on branch `pivot/05-synth-clones`.
+  layer and its two controls) merged as 744a0a8 (PR #9). Task 4 (receptor genes out of HVG
+  selection) is reviewed, with CI green, on branch `pivot/06-receptor-genes` (PR #10). It
+  merges once Shreyan approves.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -18,7 +20,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 1 Task 4, after Task 3's PR is reviewed and squash-merged.
+- **Next:** phase 1 Task 5, after Task 4's PR is reviewed and squash-merged.
   - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
     - one task per subagent, on the model the task names
     - TDD throughout
@@ -26,6 +28,56 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
     - a squash-merge once CI is green
     - branches `pivot/NN-<slug>`, numbered from 03 in execution order
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
+
+## Controller handoff (2026-11-13, after Task 4)
+
+The orchestrating session reached 33% of its context after Task 4 and handed off here.
+- **Read the ledger first:** `.superpowers/sdd/2026-11-12-phase-1-clonotypes/progress.md`. It
+  is git-ignored and exists only on this machine. It holds the pre-flight rulings for Tasks
+  5–17 (F1, F2, F4, F9, F12–F15, F18, F20, F21, F23, F24, F27), the things carried into Task 13,
+  and every deferred minor finding for the final review. `preflight.md` in the same folder has
+  the full conflict table. Each task's brief, report and review diff are there too. The Task 5
+  brief is already extracted.
+- **Rulings that change later tasks** (the ledger has the reasons and costs):
+  - **F4, Task 5:** `clonal_columns` is a required key in the infer payload, and Task 5 updates
+    `tests/unit/test_jobs.py` to send it. The scan proposed a `()` default, which was rejected:
+    it would silently let methods see clone columns.
+  - **F24, Task 5:** the refusal message names the column's real role (clone, receptor, donor
+    or strata).
+  - **F2, Task 6:** the report's clonal column reads rows with `.get(key, nan)`.
+  - **F11, Task 6:** a synthetic branching truth with no clone data is `not_measured`.
+  - **F23, Task 6:** add one helper in `clonal/scores.py` that runs baseline_space, then
+    kmeans_partition, then score_clonal. Tasks 8 and 13 reuse it.
+  - **F18, Task 7:** first compare runs with and without the clone layer on the same code,
+    then compare against baseline.json.
+  - **F12, Task 8:** a NaN p is stored as null and counted apart, and this rule goes into
+    thresholds.toml before the calibration run.
+  - **F1 and F9, Task 10:** fixtures need at least 1,100 cells. Add a case with unused
+    categories.
+  - **F20 and F27, Task 13:** `trust_hash` params are a dict, not a set. `ClonalScore` gains a
+    `status` field.
+  - **Task 2 carry-over, Task 13:** a one-clone test case must spread its clone over two
+    lineages, or it reads `single_lineage`.
+  - **Task 13:** surface `CloneCodes.n_missing_donor` in the trust note.
+  - **F13, Task 14:** a trust file that fails validation is treated as missing.
+  - **F14, Task 15:** BadParameter is raised for conflicting donor flags.
+  - **F15, Task 16:** edits may span whole bullets.
+- **Process as practised.** Each task goes through these steps:
+  - one implementer;
+  - in parallel, a task reviewer plus the pr-review-toolkit code-reviewer,
+    silent-failure-hunter and pr-test-analyzer, plus type-design-analyzer on Tasks 5, 8, 10, 13
+    and 14 (Sonnet for all of them, Opus for the statistics-heavy task review);
+  - one combined fix round, then a scoped re-review;
+  - squash-merge once CI is green.
+
+  The test analyzer mutation-tests a scratch copy, and every task so far had surviving mutants
+  that the fix round closed.
+- **Merges need Shreyan's word.** The auto-mode permission check blocks `gh pr merge`
+  ("Merge Without Review"), so Shreyan approved each of #7, #8 and #9 in chat. Ask before every
+  merge, or have Shreyan add an allow rule for `Bash(gh pr merge:*)`.
+- **Check the 5-hour usage window** (`get_usage`) before starting a five-agent review set. On
+  2026-11-12 it reached 91%, and the Task 2 review waited for the reset.
+- **Next:** once #10 is merged, Task 5 on `pivot/07-inference-isolation`, on Opus.
 
 ## Done
 
@@ -38,6 +90,25 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - Three phase plans, each written by its own Opus subagent with the phase 1 interfaces fixed
   first. One independent reviewer then cross-checked them (one blocker, eight should-fixes),
   and every finding was fixed.
+
+## Task 4 decisions
+
+- `PrepParams.exclude_receptor_genes` (default True) is a param of the `hvg` stage, so toggling it
+  changes the `hvg` key and every later key; `normalize` is untouched. The `hvg` stage now also
+  writes a small `hvg_info` artifact (`receptor_genes`, `excluded`, `receptor_hvg_without_exclusion`).
+- With receptor genes present and exclusion on, HVGs are chosen among the non-receptor genes with
+  `n_top = min(n_top_genes, n_non_receptor)`; a second selection over all genes only counts the
+  receptor genes that would have been HVGs. Without receptor genes the output is identical to before.
+- Existing cache keys for every dataset change (the `hvg` params gained a field), so old prep caches
+  recompute from `hvg` on. No test pinned a literal key, so no assertion changed.
+- `hvg_info` also records `symbol_source` (the var column the loader took symbols from, else
+  `var_names`) and `symbols_look_like_ensembl`. `cli prepare` always prints a `receptor genes: ...`
+  line naming the source, including `0 matched`. If 0 matched and the symbols look like Ensembl IDs
+  (the loader's own test, `looks_like_ensembl`), the hvg stage logs a warning and prepare prints one:
+  clone identity may reach the PCA.
+- A dataset whose every gene matches the pattern raises `DatasetError` from the hvg stage.
+- The regex is unchanged; genome-prefixed or versioned symbols (e.g. `GRCh38_TRAC`) stay unmatched.
+  Deferred.
 
 ## Verified references
 
@@ -145,7 +216,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/02-phase-plans` | #6 | merged (squash, 153a7f0) |
 | `pivot/03-clonal-definitions` | #7 | merged (squash, 6ff4676) |
 | `pivot/04-clonal-scores` | #8 | merged (squash, f0715b6) |
-| `pivot/05-synth-clones` | #9 | phase 1 Task 3, open for review |
+| `pivot/05-synth-clones` | #9 | merged (squash, 744a0a8) |
+| `pivot/06-receptor-genes` | #10 | phase 1 Task 4: reviewed, CI green, merge awaits Shreyan |
 
 ## Verify the current state
 
