@@ -1,6 +1,6 @@
 # Handoff: lumenCell V2, Milestone 1
 
-Status as of 2026-11-10, commit `40adb93` on `main` (34 commits, all pushed).
+Status as of 2026-11-13, commit `bfb2539` on `main` (67 commits, all pushed). Phase 1 Tasks 8 to 15 sit in open stacked PRs #14 to #21, not yet merged.
 Read this first if you are picking the project up; the README covers usage.
 
 ## What exists
@@ -29,7 +29,7 @@ The full loop works and is covered end to end:
 | A3 Palantir, A4 scFates adapters | done |
 | A5 trends, heatmap, compare + C4/C5 web views | done (see deviations) |
 | A6 real benchmark | done, acceptance **not** met (see results) |
-| I2 packaging + 100k-cell performance budgets | **not started** |
+| I2 packaging + 100k-cell performance budgets | budgets measured for prep, `paga_dpt` and the server, all within budget (`docs/backend-robustness-2.md`); Palantir, scFates and first paint are not in that table; packaging **not started** |
 
 ## How to work on it
 
@@ -46,7 +46,7 @@ make dev-server     # API on :8765 with a synthetic dataset; make dev-web for th
 make contract       # after changing api/models.py: regenerate OpenAPI and TS types
 ```
 
-Test counts at handoff: 235 Python tests run in `make ci`, plus 11 slow or
+Test counts at handoff: 762 Python tests run in `make ci`, plus 24 slow or
 real-data tests that are deselected there. The web side has 36 unit and
 component tests and 1 end-to-end test.
 
@@ -70,7 +70,8 @@ component tests and 1 end-to-end test.
 
 - `src/lumencell/data/`: loader. Detects whether the file holds counts,
   log-normalised or scaled data; finds gene symbols, embeddings and a stored
-  root; fingerprints the file.
+  root; fingerprints the file. The server loads the dataset with
+  `keep_matrix=False` and serves expression from the prep cache.
 - `src/lumencell/prep/`: declared stages (normalize → HVG → PCA → kNN →
   Leiden → diffmap + multiscale → PAGA → UMAP only if the file has no
   embedding). `cache.py` caches each stage on disk, keyed by its parameters
@@ -87,7 +88,11 @@ component tests and 1 end-to-end test.
 - `src/lumencell/jobs/`: a persistent spawn worker. One job at a time, with
   progress events, deduplication of identical jobs, and cancel (which
   terminates and respawns the worker; safe because the cache and run store
-  only ever write by atomic rename).
+  only ever write by atomic rename). Each job kind has a time limit
+  (`DEFAULT_TIME_LIMITS` in `manager.py`, overridable with
+  `LUMENCELL_JOB_TIME_LIMITS`); a job past its limit, or a worker that dies,
+  fails and the worker is replaced. Background jobs (`score_clonal`,
+  `stability`) queue behind every other kind, so `prepare` and `infer` run first.
 - `src/lumencell/api/`:
   - `models.py`: the contract
   - `binary.py`: LCB1, the binary format for per-cell arrays
@@ -156,8 +161,9 @@ failures are all about branch structure.
   serves each method's JSON Schema for building a form.
 - **Reference benchmark scores** are not yet shown in the trust panel
   (`reference_scores` is empty).
-- **CI only runs locally** through `make ci`. No `.github/workflows` file and no
-  Python 3.14 job exist yet.
+- **CI runs on GitHub Actions** (`.github/workflows/ci.yml`): the `make ci`
+  steps on Ubuntu with Python 3.13 from `.python-version`. There is still no
+  Python 3.14 job.
 - **The browser mock layer (MSW)** is used only in component tests, not as a
   standalone mock server.
 
@@ -182,7 +188,7 @@ failures are all about branch structure.
    log every change.
 4. **App inputs:** terminals and a parameter form, plus reference scores in the
    trust panel.
-5. **Repo setup:** a GitHub Actions workflow mirroring `make ci`.
+5. **Repo setup:** done. `.github/workflows/ci.yml` mirrors `make ci`.
 
 ## Gotchas met along the way
 
