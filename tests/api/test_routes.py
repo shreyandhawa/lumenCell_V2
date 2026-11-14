@@ -299,6 +299,7 @@ def _runs_without_a_server(
     from types import SimpleNamespace
 
     from lumencell.api.runs import Runs
+    from lumencell.clonal.isolation import scoring_only_columns
 
     submitted: list[dict[str, object]] = []
     resolved: list[object] = []
@@ -312,6 +313,7 @@ def _runs_without_a_server(
         label_key=label_key,
         ds=SimpleNamespace(obs=pd.DataFrame(columns=columns)),
         clonal_columns=clonal_columns,
+        ctx=lambda: SimpleNamespace(scoring_only=scoring_only_columns(columns, clonal_columns)),
     )
     runs = Runs(
         view,  # type: ignore[arg-type]

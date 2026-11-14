@@ -17,6 +17,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   (PR #13). Task 8 (calibration of the nulls) is on branch `pivot/10-clonal-calibration`; one
   check failed (see Open questions), so it stops for Shreyan after the PR is opened.
   Task 9 (real benchmarks re-run after the TR-gene exclusion) is on branch `pivot/11-bench-real-rerun`, stacked on `pivot/10-clonal-calibration`.
+  Task 10 (clonal settings for a dataset, `PUT`/`DELETE /api/v1/dataset/clonal`) is on branch
+  `pivot/12-clonal-settings`, stacked on `pivot/11-bench-real-rerun`.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -201,6 +203,19 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
   rise is the clonal gate alone.
 - **`terminal_share: NaN`** is on every synthetic baseline row. Expected: the key was added to
   `runner.py` in 0621edc (real datasets); main's baseline predates it.
+
+## Task 10 decisions
+
+- Settings live in the state file under `clonal`; `Session` validates them once at start and keeps
+  them (an invalid saved value is ignored with one stderr line). The clone and donor columns become
+  scoring-only; strata columns never do.
+- `run_id` hashes the sorted clonal columns only when there are any, so every earlier run id is
+  unchanged; naming columns changes the id because it can change the detected label key.
+- `api/runs.py` takes the scoring-only set from `view.ctx().scoring_only` (needs prep ready).
+- `column_kind` is the one rule for listing and serving obs columns: above 1,000 categories a
+  column is `string` in both places. Counts of clones and donors use values present, never unused
+  categories.
+- Not done here: the web UI for these settings (a later task).
 
 ## Task 9 result
 
@@ -390,7 +405,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/08-bench-clonal` | #12 | merged (squash, 857d03d) |
 | `pivot/09-bench-remeasure` | #13 | merged (squash, bfb2539) |
 | `pivot/10-clonal-calibration` | #14 | phase 1 Task 8: one check failed, awaiting Shreyan |
-| `pivot/11-bench-real-rerun` | (this PR) | phase 1 Task 9: real re-run, stacked on #14 |
+| `pivot/11-bench-real-rerun` | #15 | phase 1 Task 9: real re-run, stacked on #14 |
+| `pivot/12-clonal-settings` | (this PR) | phase 1 Task 10: clonal settings, stacked on #15 |
 
 ## Verify the current state
 

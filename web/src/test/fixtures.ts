@@ -33,6 +33,8 @@ export function dataset(prep: T.PrepStatus["state"], root: T.ResolvedRoot | null
     },
     root,
     versions: { lumencell: "0.1.0" },
+    clonal: null,
+    clonal_candidates: [],
   };
 }
 

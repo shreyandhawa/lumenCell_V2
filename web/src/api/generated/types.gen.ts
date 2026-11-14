@@ -19,6 +19,95 @@ export type CellRoot = {
 };
 
 /**
+ * ClonalSettings
+ *
+ * Which obs columns hold the clone labels, the donors and the strata (spec 4.1).
+ */
+export type ClonalSettingsInput = {
+    /**
+     * Clone Key
+     */
+    clone_key: string;
+    /**
+     * Donor Key
+     */
+    donor_key?: string | null;
+    /**
+     * Single Donor
+     */
+    single_donor?: boolean;
+    /**
+     * Strata Keys
+     */
+    strata_keys?: Array<string>;
+};
+
+/**
+ * ClonalSettings
+ *
+ * Which obs columns hold the clone labels, the donors and the strata (spec 4.1).
+ */
+export type ClonalSettingsOutput = {
+    /**
+     * Clone Key
+     */
+    clone_key: string;
+    /**
+     * Donor Key
+     */
+    donor_key: string | null;
+    /**
+     * Single Donor
+     */
+    single_donor: boolean;
+    /**
+     * Strata Keys
+     */
+    strata_keys: Array<string>;
+};
+
+/**
+ * ClonalSummary
+ *
+ * Clone sizes over every labelled cell that has a donor, singletons included.
+ */
+export type ClonalSummary = {
+    /**
+     * N Cells Labelled
+     */
+    n_cells_labelled: number;
+    /**
+     * N Clones
+     */
+    n_clones: number;
+    /**
+     * N Clones 2Plus
+     */
+    n_clones_2plus: number;
+    /**
+     * N Donors
+     */
+    n_donors: number;
+    settings: ClonalSettingsOutput;
+    /**
+     * Size Max
+     */
+    size_max: number;
+    /**
+     * Size Median
+     */
+    size_median: number;
+    /**
+     * Size P90
+     */
+    size_p90: number;
+    /**
+     * Size P99
+     */
+    size_p99: number;
+};
+
+/**
  * ClusterRoot
  */
 export type ClusterRoot = {
@@ -99,6 +188,11 @@ export type Curves = {
  * DatasetInfo
  */
 export type DatasetInfo = {
+    clonal: ClonalSettingsOutput | null;
+    /**
+     * Clonal Candidates
+     */
+    clonal_candidates: Array<string>;
     /**
      * Cluster Key
      */
@@ -1095,6 +1189,64 @@ export type GetDatasetApiV1DatasetGetResponses = {
 
 export type GetDatasetApiV1DatasetGetResponse = GetDatasetApiV1DatasetGetResponses[keyof GetDatasetApiV1DatasetGetResponses];
 
+export type ClearClonalApiV1DatasetClonalDeleteData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/dataset/clonal';
+};
+
+export type ClearClonalApiV1DatasetClonalDeleteErrors = {
+    /**
+     * Unknown dataset column, gene, run or job.
+     */
+    404: ErrorBody;
+    /**
+     * The request is not valid.
+     */
+    422: ErrorBody;
+};
+
+export type ClearClonalApiV1DatasetClonalDeleteError = ClearClonalApiV1DatasetClonalDeleteErrors[keyof ClearClonalApiV1DatasetClonalDeleteErrors];
+
+export type ClearClonalApiV1DatasetClonalDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type ClearClonalApiV1DatasetClonalDeleteResponse = ClearClonalApiV1DatasetClonalDeleteResponses[keyof ClearClonalApiV1DatasetClonalDeleteResponses];
+
+export type SetClonalApiV1DatasetClonalPutData = {
+    body: ClonalSettingsInput;
+    path?: never;
+    query?: never;
+    url: '/api/v1/dataset/clonal';
+};
+
+export type SetClonalApiV1DatasetClonalPutErrors = {
+    /**
+     * Unknown dataset column, gene, run or job.
+     */
+    404: ErrorBody;
+    /**
+     * invalid_clonal_settings (detail.problems), or scoring_only_column when the saved root is a cluster root on the clone or donor column.
+     */
+    422: ErrorBody;
+};
+
+export type SetClonalApiV1DatasetClonalPutError = SetClonalApiV1DatasetClonalPutErrors[keyof SetClonalApiV1DatasetClonalPutErrors];
+
+export type SetClonalApiV1DatasetClonalPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: ClonalSummary;
+};
+
+export type SetClonalApiV1DatasetClonalPutResponse = SetClonalApiV1DatasetClonalPutResponses[keyof SetClonalApiV1DatasetClonalPutResponses];
+
 export type GetEmbeddingApiV1EmbeddingsNameGetData = {
     body?: never;
     path: {
@@ -1377,7 +1529,7 @@ export type GetObsApiV1ObsColumnGetError = GetObsApiV1ObsColumnGetErrors[keyof G
 
 export type GetObsApiV1ObsColumnGetResponses = {
     /**
-     * LCB1 buffer. Categorical/boolean columns: `codes` i16[n_obs] (i32 above 32,766 categories), -1 = missing, with `kind` and `categories` in meta; continuous columns: `values` f32[n_obs] (NaN = missing).
+     * LCB1 buffer. Categorical/boolean columns: `codes` i16[n_obs] (i32 above 32,766 categories), -1 = missing, with `kind` and `categories` in meta; `kind` is `string` above 1,000 categories; continuous columns: `values` f32[n_obs] (NaN = missing).
      */
     200: Blob | File;
 };

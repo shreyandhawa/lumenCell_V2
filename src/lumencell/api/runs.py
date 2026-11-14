@@ -16,7 +16,7 @@ from lumencell.api.convert import from_api_spec, to_api_root
 from lumencell.api.dataset_view import DatasetView
 from lumencell.api.errors import ApiError, root_required
 from lumencell.api.state import StateStore
-from lumencell.clonal.isolation import scoring_only_columns, scoring_only_message
+from lumencell.clonal.isolation import scoring_only_message
 from lumencell.engine.compare import RunComparison, compare
 from lumencell.engine.projection import project
 from lumencell.engine.registry import get_method
@@ -108,7 +108,9 @@ class Runs:
             raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "invalid_root", str(exc)) from exc
         self._refuse_scoring_only(spec, params)
         self._resolve(spec)  # fail fast on a bad root
-        rid = run_id(req.method, params, spec_text, req.terminals, self.view.prep_key)
+        rid = run_id(
+            req.method, params, spec_text, req.terminals, self.view.prep_key, self.view.clonal_columns
+        )
         if self.store.exists(rid):
             return models.RunCreated(run_id=rid, job_id=None, state="done"), False
         payload = {
@@ -131,7 +133,7 @@ class Runs:
         Checked here, before the root is resolved, so the answer names every such column
         at once; the worker checks again.
         """
-        scoring_only = scoring_only_columns(self.view.ds.obs.columns, self.view.clonal_columns)
+        scoring_only = self.view.ctx().scoring_only
         asked: list[tuple[str | None, str]] = [
             (spec.key if isinstance(spec, ClusterRoot) else None, "root column"),
             (params.get("cluster_key"), "cluster column"),

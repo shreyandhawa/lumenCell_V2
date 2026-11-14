@@ -19,6 +19,8 @@ from lumencell import __version__
 from lumencell.api.binary import MEDIA_TYPE
 from lumencell.api.errors import ApiError
 from lumencell.api.models import (
+    ClonalSettings,
+    ClonalSummary,
     Comparison,
     Curves,
     DatasetInfo,
@@ -115,11 +117,34 @@ def get_embedding(name: str, session: S) -> Response:
     response_class=Response,
     responses=_lcb1(
         "Categorical/boolean columns: `codes` i16[n_obs] (i32 above 32,766 categories), -1 = missing, "
-        "with `kind` and `categories` in meta; continuous columns: `values` f32[n_obs] (NaN = missing)."
+        "with `kind` and `categories` in meta; `kind` is `string` above 1,000 categories; "
+        "continuous columns: `values` f32[n_obs] (NaN = missing)."
     ),
 )
 def get_obs(column: str, session: S) -> Response:
     return lcb1(session.view.obs_payload(column))
+
+
+@router.put(
+    "/dataset/clonal",
+    tags=["dataset"],
+    responses={
+        **_ERRORS,
+        422: {
+            "model": ErrorBody,
+            "description": "invalid_clonal_settings (detail.problems), or scoring_only_column "
+            "when the saved root is a cluster root on the clone or donor column.",
+        },
+    },
+)
+def set_clonal(body: ClonalSettings, session: S) -> ClonalSummary:
+    return session.set_clonal(body)
+
+
+@router.delete("/dataset/clonal", tags=["dataset"], status_code=HTTPStatus.NO_CONTENT, responses=_ERRORS)
+def clear_clonal(session: S) -> Response:
+    session.clear_clonal()
+    return Response(status_code=HTTPStatus.NO_CONTENT)
 
 
 @router.get("/genes", tags=["dataset"], responses=_ERRORS)
