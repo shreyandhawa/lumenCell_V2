@@ -108,6 +108,14 @@ binomial_quantile = 0.99          # binom.ppf(0.99, 200, 0.05) = 18 rejections a
 monotonic_fate_bias = [0.0, 0.35, 0.7, 1.0]
 monotonic_seeds = [0, 1, 2]
 monotonic_topologies = ["bifurcation", "trifurcation", "binary2"]
+# 2026-11-13  Pre-declared before the 200-seed run, so that no count has been seen. A p-value that
+#   is NaN (an undefined score) is stored as null, never counted as a rejection and never as a
+#   non-rejection. Such seeds are counted apart (n_nan) and reported per check. The rejection
+#   bound uses the number of seeds that scored: bound = int(binom.ppf(binomial_quantile,
+#   n_scored, alpha)), which is 18 when all 200 seeds score. A check passes (or, for a control
+#   that must fail, fails) by comparing its rejections, p <= alpha, to that bound. A seed whose
+#   method raises is a NaN p as well, and its error is listed in the report. No seed, definition
+#   or threshold is changed after the run; a failed check is recorded as a failure.
 
 [regression]
 # CI fails if a synthetic metric falls further than this below benchmarks/baseline.json.
@@ -149,3 +157,11 @@ max_drop = 0.03
 #   no clone data); a synthetic branching truth with no clone data is not_measured and fails.
 #   Every other gate still skips NaN. The clonal gate is not a branch gate: merging two true
 #   lineages can push the ratio above 1, and lineage_recall catches that.
+#
+# 2026-11-13  Calibration run, results in benchmarks/results/clonal-calibration-2026-11-13.json
+#   (200 seeds, bound 18, no NaN p-values, no method error): null/paga_dpt 6, null/palantir 7,
+#   null/scfates_ppt 6 rejections, calibrated; donor_confound/N1 7, calibrated;
+#   donor_confound/N1_donors_ignored 200, not calibrated as it must be; depth_only/N1 200, not
+#   calibrated as it must be; depth_only/N2 57, NOT calibrated: FAILED. Oracle eta rises with
+#   fate_bias and p at fate_bias 0 is above 0.01 on all 9 monotonic cases. No threshold or
+#   definition changed.
