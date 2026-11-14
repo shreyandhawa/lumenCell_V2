@@ -28,7 +28,10 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   Task 14 (clonal agreement on every run's GET, scored in the background and healed on GET) is on
   branch `pivot/16-run-trust-api`, stacked on `pivot/15-score-clonal-job`.
   Task 15 (clonal options on `lumencell run`, `--fate-bias` on `lumencell synth`) is on branch
-  `pivot/17-cli-clonal`, stacked on `pivot/16-run-trust-api`.
+  `pivot/17-cli-clonal` (PR #21), stacked on `pivot/16-run-trust-api`.
+  Task 16 (handoff corrections) is `pivot/18-handoff-corrections` (PR #22). Task 17 (security
+  review, Done When, final-review fixes) is `pivot/19-phase1-security` (PR #23).
+  Tasks 5 to 17 are done; PRs #14 to #23 are open as a stack.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -36,7 +39,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** Shreyan's call on the `depth_only/N2` failure (Open questions), then phase 1 Task 9.
+- **Next:** merge the stack #14 to #23 in order (needs Shreyan's go-ahead, and his call on the
+  `depth_only/N2` failure, see Open questions), then re-run the Done When commands on `main`.
   - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
     - one task per subagent, on the model the task names
     - TDD throughout
@@ -158,7 +162,7 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
   `list(view.clonal_columns)`, empty until Task 10.
 - **Store version 2.** `result.json` gains `prep_key`, `inference_isolation` (1) and
   `obs_keys`; version 1 runs drop out of the list. Run ids change (`STORE_VERSION` is hashed).
-  `clonal_columns` is not part of the run id.
+  `clonal_columns` is part of the run id when any are named (see Task 10 decisions).
 - **Fix round 1:**
   - `InferenceContext.__post_init__` raises `ScoringOnlyColumnError` when `obs` holds a column in
     `scoring_only` or one matching `RECEPTOR_COLUMN`, so `dataclasses.replace` cannot leak one.
@@ -257,7 +261,10 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
 - `handle_score_clonal`: a payload missing a key fails naming it (`{}` names `'path'`). A missing or
   incomplete run, at read or at `write_trust`, fails the job with
   `run <rid> was replaced or is incomplete; not scored`; nothing is written elsewhere. Store version
-  other than 2 writes `refused`; another prep key writes `failed`. A payload `trust_name` that is
+  other than 2 writes `refused`; another prep key fails the job (`RuntimeError`) and writes nothing.
+  This departs from plan l.808, which wrote a permanent `failed` file: `recompute_umap` is part of
+  the prep key (`stages.py:325`), so the session can reopen with the matching prep, and a saved
+  `failed` file would then block rescoring. A payload `trust_name` that is
   not `trust_name(settings)` fails the job and writes nothing.
 - `JobKind` in the API still lacks `score_clonal`; Task 14 adds it with the route.
 
@@ -281,7 +288,7 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
 - `save` of an existing run moves its `trust/` folder into the new folder before the swap, and
   moves it back if the swap fails. `cache prune` removes `trust/` temp files older than the grace period.
 - Task 13: only the worker that owns a run writes its trust, and it treats `FileNotFoundError` from
-  `write_trust` as "run replaced" (retry or skip, logged).
+  `write_trust` as "run replaced": the job fails with the run-replaced message and nothing is written.
 
 ## Task 10 decisions
 
@@ -441,7 +448,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
   unformatted ```` ```python ```` block in a doc, so run `uv run ruff format <file>.md` on new
   plans and docs.
 - **Clonal gates failed by design until Task 6.** Before it every synthetic row was `not_measured`.
-  Task 6 measures them; the slow golden test and `make bench-synth` have not been run on it.
+  Task 6 measures them. Task 7 ran the slow golden tests (5 passed) and the Done When section
+  records `make bench-synth` (exit 0, 0 regressions).
 - **Gate failures don't fail the benchmark commands.** `lumencell bench real` and
   `bench synth` exit 0 on gate failures; only regressions fail `bench-synth`.
 
@@ -474,7 +482,7 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 
 Reviewed by hand along the brief's untrusted-input paths (the `security-review` skill reviews a
 pending diff and phase 1 is already committed, so the diff `142a788..HEAD` was read directly).
-Phase 1 is not merged into `main` (stacked PRs #14 to #22, merge pending an owner permission), so
+Phase 1 is not merged into `main` (stacked PRs #14 to #23, merge pending an owner permission), so
 the diff is `142a788..HEAD` and the Done When commands ran on `pivot/19-phase1-security`, not `main`.
 
 | # | Severity | Where | Finding | Outcome |
@@ -486,7 +494,7 @@ the diff is `142a788..HEAD` and the Done When commands ran on `pivot/19-phase1-s
 
 Checked and found sound, no change:
 - Path traversal: trust file names are `clonal-<16 hex>` from a hash; the column names never reach a path or a job key (`score_clonal:<rid>:<hash>`); `TRUST_NAME` and the housekeeping patterns use `fullmatch`, so a trailing newline does not slip through (tested for names).
-- Terminal and log injection: every message that names a column uses `!r` (`check_settings`, `scoring_only_message`, the notes), so an escape or newline in a column name prints escaped. Pinned by `test_problems_escape_control_characters_in_column_names`. The CLI prints no raw column name.
+- Terminal and log injection: every message that names a column uses `!r` (`check_settings`, `scoring_only_message`, the notes), so an escape or newline in a column name prints escaped. Pinned by `test_problems_escape_control_characters_in_column_names`. The CLI prints one raw column name, the `symbol_source` var column in `cli.py` (a name from the user's own file, shown to that user in their terminal).
 - HTML and JSON injection: the web app has no view of the notes or the clonal settings yet (only the generated types), so there is no sink. Re-check when the phase 2 UI renders `notes` (React text nodes escape; keep `dangerouslySetInnerHTML` out). Trust files are written with `allow_nan=False` and read back as a JSON object only.
 - Many strata keys and many distinct values: strata keys must exist in `obs`, so the list is bounded by the file's columns, and now by 8.
 
@@ -500,7 +508,7 @@ Run on `pivot/19-phase1-security`, not `main`.
 | `make bench-synth`, exit code and `grep -c '^REGRESSION'` | exit 0, 0 regressions: PASS |
 | `ls benchmarks/results/real-*.json \| tail -1`; `grep -n 'TR-gene exclusion' benchmarks/thresholds.toml` | `real-2026-11-13.json` (the Task 9 file); changelog entry at `thresholds.toml:169`: PASS |
 | isolation, labels, scores, properties tests | 79 passed, exit 0: PASS |
-| calibration file `passed` | `clonal-calibration-2026-11-13.json False`: **FAILED**. `depth_only/N2` failed calibration in Task 8 and was recorded as a real failed check; see "Task 8 decisions and result". No data, threshold, seed or definition was changed. |
+| calibration file `passed` | `clonal-calibration-2026-11-13.json False`: **FAILED**. `depth_only/N2` failed calibration in Task 8 (57/200 vs bound 18) and was recorded as a real failed check; see "Task 8 decisions and result". No data, threshold, seed or definition was changed. |
 | `tests/api/test_clonal_trust.py` | 16 passed: PASS |
 | `lumencell synth` then `lumencell run` with the clone options (temp cache and state dirs) | output contains `clonal agreement: ok (own cells, m = 2)`: PASS |
 | `tests/unit/test_trust_constants.py`; first commit touching thresholds, baseline or results | 3 passed; `6ff4676` "Declare clonal agreement definitions ... (#7)", the Task 1 commit: PASS |
@@ -527,7 +535,9 @@ Run on `pivot/19-phase1-security`, not `main`.
 | `pivot/14-job-priorities` | #18 | phase 1 Task 12: job priorities and done-callbacks, stacked on #17 |
 | `pivot/15-score-clonal-job` | #19 | phase 1 Task 13: score_clonal job, stacked on #18 |
 | `pivot/16-run-trust-api` | #20 | phase 1 Task 14: clonal agreement on every run, stacked on #19 |
-| `pivot/17-cli-clonal` | (this PR) | phase 1 Task 15: clonal options in the CLI, stacked on #20 |
+| `pivot/17-cli-clonal` | #21 | phase 1 Task 15: clonal options in the CLI, stacked on #20 |
+| `pivot/18-handoff-corrections` | #22 | phase 1 Task 16: handoff corrections, stacked on #21 |
+| `pivot/19-phase1-security` | #23 | phase 1 Task 17: security review, Done When, final fixes, stacked on #22 |
 
 ## Verify the current state
 

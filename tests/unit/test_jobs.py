@@ -537,14 +537,14 @@ def test_a_run_from_before_isolation_is_refused(prepared_run: tuple[dict[str, ob
     assert trust["notes"] == ["made before inference isolation; run it again"]
 
 
-def test_a_run_on_another_prep_fails(prepared_run: tuple[dict[str, object], RunStore]) -> None:
+def test_a_run_on_another_prep_fails_the_job_and_writes_nothing(
+    prepared_run: tuple[dict[str, object], RunStore],
+) -> None:
     base, store = prepared_run
     store.update_graph("r4", {**store.graph("r4"), "prep_key": "0" * 16})
-    assert HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None) == "r4"
-    trust = store.read_trust("r4", trust_name(CLONAL))
-    assert trust is not None and trust["status"] == "failed"
-    assert trust["notes"] == ["the run was prepared with other settings"]
-    assert trust["primary"] is None
+    with pytest.raises(RuntimeError, match="prepared with other settings"):
+        HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None)
+    assert store.read_trust("r4", trust_name(CLONAL)) is None
 
 
 def test_a_trust_name_that_does_not_match_the_settings_is_refused(

@@ -123,9 +123,8 @@ class Runs:
             raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "invalid_root", str(exc)) from exc
         self._refuse_scoring_only(spec, params)
         self._resolve(spec)  # fail fast on a bad root
-        rid = run_id(
-            req.method, params, spec_text, req.terminals, self.view.prep_key, self.view.clonal_columns
-        )
+        columns, label_key = self.view.clonal_snapshot()  # one read for the run id and the payload
+        rid = run_id(req.method, params, spec_text, req.terminals, self.view.prep_key, columns)
         if self.store.exists(rid):
             return models.RunCreated(run_id=rid, job_id=None, state="done"), False
         payload = {
@@ -135,8 +134,8 @@ class Runs:
             "terminals": req.terminals,
             "params": params,
             "run_id": rid,
-            "label_key": self.view.label_key,
-            "clonal_columns": list(self.view.clonal_columns),
+            "label_key": label_key,
+            "clonal_columns": list(columns),
         }
         job = self.jobs.submit("infer", f"infer:{rid}", payload)
         state = "running" if job.state == "running" else "queued"
