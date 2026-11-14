@@ -6,15 +6,18 @@ LUMENCELL_DATA_DIR at tmp_path.
 
 import json
 import os
+import tempfile
 import time
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
 from lumencell.cli import app
+from lumencell.engine.store import RunStore
 from lumencell.prep.housekeeping import Removal, UnsafePath, apply_prune, list_cache, parse_age
 
 runner = CliRunner()
@@ -252,3 +255,89 @@ def test_a_cache_from_before_the_stamp_counts_its_newest_file_as_last_use(cache:
     assert abs(entry.last_used - (cache.now - DAY)) < 5
     assert runner.invoke(app, ["cache", "prune", "--older-than", "30d"]).exit_code == 0
     assert run.exists(), "a dataset used yesterday is kept"
+
+
+def test_prune_removes_old_trust_temp_files_only(cache: SimpleNamespace) -> None:
+    trust = cache.b / "runs" / "r2" / "trust"
+    kept = _write(trust / "clonal-0123456789abcdef.json", 30)
+    fresh = _write(trust / ".clonal-0123456789abcdef-abcd1234.tmp", 12)
+    old = _write(trust / ".clonal-0123456789abcdef-wxyz_789.tmp", 12)
+    stray = _write(trust / ".DS_Store", 6)
+    for p in (old, stray, kept):
+        _age(p, 2 * 3600, cache.now)
+    res = runner.invoke(app, ["cache", "prune", "--older-than", "30d"])
+    assert res.exit_code == 0, res.output
+    assert not old.exists()
+    assert fresh.exists() and kept.exists() and stray.exists()
+
+
+def test_prune_matches_the_temp_name_write_trust_really_creates(
+    cache: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = RunStore(cache.b)
+    (cache.b / "runs" / "r3").mkdir()
+    (cache.b / "runs" / "r3" / ".complete").write_text("x", encoding="utf-8")
+    made: list[Path] = []
+    real = tempfile.mkstemp
+
+    def spy(*a: Any, **k: Any) -> tuple[int, str]:
+        fd, name = real(*a, **k)
+        made.append(Path(name))
+        return fd, name
+
+    def killed(*_a: Any, **_k: Any) -> None:
+        raise OSError("killed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(tempfile, "mkstemp", spy)
+        patch.setattr(os, "replace", killed)
+        with pytest.raises(OSError):
+            store.write_trust("r3", "clonal-0123456789abcdef", {"v": 1})
+    [tmp] = made
+    assert tmp.parent == store.path("r3") / "trust"
+    tmp.write_text("{}", encoding="utf-8")  # a killed process would have left it behind
+    _age(tmp, 2 * 3600, cache.now)
+    res = runner.invoke(app, ["cache", "prune", "--older-than", "30d"])
+    assert res.exit_code == 0, res.output
+    assert not tmp.exists()
+
+
+@pytest.mark.parametrize(
+    ("name", "removed"),
+    [
+        (".a-0123456789abcdef-abcd1234.tmp", True),
+        (".a_b-0123456789abcdef-abcd1234.tmp", True),
+        ("." + "a" * 32 + "-0123456789abcdef-abcd1234.tmp", True),
+        ("." + "a" * 33 + "-0123456789abcdef-abcd1234.tmp", False),
+        ("._a-0123456789abcdef-abcd1234.tmp", False),
+        (".1a-0123456789abcdef-abcd1234.tmp", False),
+        (".Clonal-0123456789abcdef-abcd1234.tmp", False),
+        (".clonal-0123456789abcde-abcd1234.tmp", False),
+        (".clonal-0123456789abcdef0-abcd1234.tmp", False),
+        (".clonal-0123456789ABCDEF-abcd1234.tmp", False),
+        (".clonal-0123456789abcdef-abcd123.tmp", False),
+        (".clonal-0123456789abcdef-abcd12345.tmp", False),
+        ("clonal-0123456789abcdef-abcd1234.tmp", False),
+        (".clonal-0123456789abcdef-abcd1234.tmp.bak", False),
+        ("x.clonal-0123456789abcdef-abcd1234.tmp", False),
+        ("clonal-0123456789abcdef.json", False),
+    ],
+)
+def test_prune_trust_temp_name_shape(cache: SimpleNamespace, name: str, removed: bool) -> None:
+    f = _write(cache.b / "runs" / "r2" / "trust" / name, 8)
+    _age(f, 2 * 3600, cache.now)
+    assert runner.invoke(app, ["cache", "prune", "--older-than", "30d"]).exit_code == 0
+    assert f.exists() is (not removed)
+
+
+def test_prune_leaves_symlinked_trust_and_run_folders_alone(cache: SimpleNamespace, tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    t1 = _write(outside / "r" / "trust" / ".clonal-0123456789abcdef-abcd1234.tmp", 8)
+    t2 = _write(outside / "trust" / ".clonal-0123456789abcdef-abcd1234.tmp", 8)
+    for p in (t1, t2):
+        _age(p, 2 * 3600, cache.now)
+    run = cache.b / "runs" / "r2"
+    (run / "trust").symlink_to(outside / "trust", target_is_directory=True)  # trust folder is a link
+    (cache.b / "runs" / "rlink").symlink_to(outside / "r", target_is_directory=True)  # run folder is a link
+    assert runner.invoke(app, ["cache", "prune", "--older-than", "30d"]).exit_code == 0
+    assert t1.exists() and t2.exists()

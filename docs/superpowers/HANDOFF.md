@@ -19,6 +19,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   Task 9 (real benchmarks re-run after the TR-gene exclusion) is on branch `pivot/11-bench-real-rerun`, stacked on `pivot/10-clonal-calibration`.
   Task 10 (clonal settings for a dataset, `PUT`/`DELETE /api/v1/dataset/clonal`) is on branch
   `pivot/12-clonal-settings`, stacked on `pivot/11-bench-real-rerun`.
+  Task 11 (per-run `trust/` folder, atomic JSON results) is on branch `pivot/13-run-trust-store`,
+  stacked on `pivot/12-clonal-settings`.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -203,6 +205,17 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
   rise is the clonal gate alone.
 - **`terminal_share: NaN`** is on every synthetic baseline row. Expected: the key was added to
   `runner.py` in 0621edc (real datasets); main's baseline predates it.
+
+## Task 11 decisions
+
+- `<run>/trust/<name>.json`, `name` fully matching `TRUST_NAME`; `write_trust` needs a complete run
+  (`.complete`), writes via `mkstemp` and `os.replace`, and refuses NaN and infinity.
+- `read_trust` gives `None` for a missing run, missing file, unreadable file or non-object file
+  (the last two with one stderr line). Task 14 still validates content.
+- `save` of an existing run moves its `trust/` folder into the new folder before the swap, and
+  moves it back if the swap fails. `cache prune` removes `trust/` temp files older than the grace period.
+- Task 13: only the worker that owns a run writes its trust, and it treats `FileNotFoundError` from
+  `write_trust` as "run replaced" (retry or skip, logged).
 
 ## Task 10 decisions
 
@@ -406,7 +419,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/09-bench-remeasure` | #13 | merged (squash, bfb2539) |
 | `pivot/10-clonal-calibration` | #14 | phase 1 Task 8: one check failed, awaiting Shreyan |
 | `pivot/11-bench-real-rerun` | #15 | phase 1 Task 9: real re-run, stacked on #14 |
-| `pivot/12-clonal-settings` | (this PR) | phase 1 Task 10: clonal settings, stacked on #15 |
+| `pivot/12-clonal-settings` | #16 | phase 1 Task 10: clonal settings, stacked on #15 |
+| `pivot/13-run-trust-store` | (this PR) | phase 1 Task 11: run trust store, stacked on #16 |
 
 ## Verify the current state
 

@@ -15,7 +15,10 @@ run twice finds the existing one instead of recomputing it.
 import hashlib
 import json
 import logging
+import os
+import re
 import shutil
+import sys
 import tempfile
 from collections.abc import Sequence
 from dataclasses import asdict
@@ -43,6 +46,9 @@ log = logging.getLogger(__name__)
 
 # 2: result.json records the prep key, the clone-isolation version and the obs keys used.
 STORE_VERSION = 2
+
+# A trust file is named <kind>-<16 hex>; the name is checked before it reaches a path.
+TRUST_NAME = re.compile(r"[a-z][a-z_]{0,31}-[0-9a-f]{16}")
 
 
 def run_id(
@@ -169,12 +175,64 @@ class RunStore:
                     tmp / "curve_nodes.npz", sparse.csr_matrix(result.curve_nodes), compressed=False
                 )
             (tmp / ".complete").write_text(created, encoding="utf-8")
-            if final.exists():
-                shutil.rmtree(final)
-            tmp.rename(final)
+            old: Path | None = None
+            if final.exists():  # set the old run aside, so a failure below can put it back
+                old = Path(tempfile.mkdtemp(prefix=f".{rid}-", dir=self.dir))
+                old.rmdir()
+                final.rename(old)
+            try:
+                if old is not None and (old / "trust").is_dir():  # trust outlives a re-save
+                    (old / "trust").rename(tmp / "trust")
+                tmp.rename(final)
+            except BaseException:
+                if old is not None:
+                    if (tmp / "trust").is_dir() and not (old / "trust").exists():
+                        (tmp / "trust").rename(old / "trust")
+                    if not final.exists():
+                        old.rename(final)
+                raise
+            if old is not None:
+                shutil.rmtree(old, ignore_errors=True)
         except BaseException:
             shutil.rmtree(tmp, ignore_errors=True)
             raise
+
+    def trust_path(self, rid: str, name: str) -> Path:
+        if not TRUST_NAME.fullmatch(name):
+            raise ValueError(f"not a trust file name: {name!r}")
+        return self.path(rid) / "trust" / f"{name}.json"
+
+    def write_trust(self, rid: str, name: str, payload: dict[str, Any]) -> Path:
+        """Write one trust result into a complete run, by atomic rename."""
+        target = self.trust_path(rid, name)
+        if not (self.path(rid) / ".complete").exists():
+            raise FileNotFoundError(f"no complete run {rid!r}")
+        text = json.dumps(payload, indent=2, allow_nan=False)
+        target.parent.mkdir(exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix=f".{name}-", suffix=".tmp", dir=target.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(text)
+            os.replace(tmp, target)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
+        return target
+
+    def read_trust(self, rid: str, name: str) -> dict[str, Any] | None:
+        """A trust result, or None when missing, unreadable or not a JSON object."""
+        path = self.trust_path(rid, name)
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError) as e:
+            print(f"lumencell: ignoring unreadable trust file {path}: {e}", file=sys.stderr)
+            return None
+        if not isinstance(data, dict):
+            print(f"lumencell: ignoring trust file {path}: not a JSON object", file=sys.stderr)
+            return None
+        return data
 
     def graph(self, rid: str) -> dict[str, Any]:
         data: dict[str, Any] = json.loads((self.path(rid) / "result.json").read_text(encoding="utf-8"))
