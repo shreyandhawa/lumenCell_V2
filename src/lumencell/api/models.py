@@ -173,6 +173,75 @@ class ClonalSummary(Model):
     size_max: int
 
 
+# ---- trust ------------------------------------------------------------------------
+# Per-run trust results. Undefined statistics are null, never a stand-in number.
+
+
+class NullComparison(Model):
+    null: Literal["N1", "N2", "N3"]
+    mean_entropy_mean: float | None
+    mean_entropy_sd: float | None
+    eta: float | None
+    p: float | None
+
+
+class ClonalScore(Model):
+    """One clonal score of a run's lineages (spec 4.3). ``eta`` is against N1; ``p`` is the
+    largest p over the nulls, the headline."""
+
+    status: Literal["ok", "too_few_clones", "single_lineage"]
+    mode: Literal["own_cells", "oracle_cells"]
+    n_lineages: int
+    min_clone_size: int
+    n_cells: int
+    n_clones: int
+    effective_clones: float | None
+    n_donors: int
+    n_strata: int | None
+    n_permutations: int
+    seed: int
+    purity: float | None
+    mean_entropy: float | None
+    nulls: list[NullComparison]
+    eta: float | None
+    p: float | None
+    eta_base: float | None
+    delta_eta: float | None
+    p_delta: float | None
+    clone_weighted_purity: float | None
+    purity_without_largest: float | None
+
+
+class LineageCoupling(Model):
+    """How much two lineages share clones, against N1. Says nothing about which came first."""
+
+    a: int
+    b: int
+    observed: float | None
+    null_mean: float | None
+    z: float | None
+    p: float | None
+    p_adj: float | None
+
+
+ClonalStatus = Literal[
+    "ok", "not_configured", "single_lineage", "too_few_clones", "refused", "pending", "failed"
+]
+
+
+class ClonalAgreement(Model):
+    status: ClonalStatus
+    settings: ClonalSettings | None
+    primary: ClonalScore | None
+    sensitivity_m3: ClonalScore | None
+    coupling: list[LineageCoupling]
+    notes: list[str]
+
+
+class RunTrust(Model):
+    clonal: ClonalAgreement | None
+
+
 class DatasetInfo(Model):
     schema_version: int
     name: str

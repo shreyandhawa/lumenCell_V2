@@ -104,6 +104,72 @@ def handle_infer(payload: dict[str, Any], emit: Emit) -> str | None:
     return rid
 
 
+SCORE_CLONAL_KEYS = ("path", "prep_params", "run_id", "settings", "trust_name")
+
+
+def handle_score_clonal(payload: dict[str, Any], emit: Emit) -> str | None:
+    """Score a finished run against the dataset's clones and store it as the run's trust file.
+
+    Only this job writes a run's clonal trust. A run that is gone or incomplete is never scored
+    anywhere else: the job fails instead.
+    """
+    import numpy as np
+
+    from lumencell.api.models import ClonalSettings
+    from lumencell.engine.store import STORE_VERSION, RunStore
+    from lumencell.prep.cache import PrepCache, dataset_dir, prep_key
+    from lumencell.trust.clonal import agreement_for_run, not_scored, trust_name
+
+    missing = [k for k in SCORE_CLONAL_KEYS if k not in payload]
+    if missing:
+        raise ValueError(f"the score_clonal job's payload has no {', '.join(map(repr, missing))}")
+    ds = _dataset(payload["path"], payload.get("x_is"))
+    params = payload["prep_params"]
+    settings = ClonalSettings.model_validate(payload["settings"])
+    rid: str = payload["run_id"]
+    expected = trust_name(settings)
+    if payload["trust_name"] != expected:
+        raise ValueError(
+            f"the score_clonal job's trust_name {payload['trust_name']!r} is not the one for its "
+            f"settings ({expected!r}); nothing was written"
+        )
+    store = RunStore(dataset_dir(ds.fingerprint, _cache_root(payload)))
+    gone = f"run {rid} was replaced or is incomplete; not scored"
+    emit("load", 0, 2)
+    try:
+        if not (store.path(rid) / ".complete").exists():
+            raise FileNotFoundError(rid)
+        graph = store.graph(rid)
+        current = graph.get("store_version") == STORE_VERSION
+        same_prep = graph.get("prep_key") == prep_key(ds, params)
+    except FileNotFoundError:
+        raise RuntimeError(gone) from None
+    if not current:
+        agreement = not_scored("refused", settings, "made before inference isolation; run it again")
+    elif not same_prep:
+        agreement = not_scored("failed", settings, "the run was prepared with other settings")
+    else:
+        try:
+            result = store.load(rid)
+        except FileNotFoundError:
+            raise RuntimeError(gone) from None
+        prep = PrepCache(ds, _cache_root(payload)).run(params)
+        emit("score", 1, 2)
+        agreement = agreement_for_run(
+            result,
+            ds.obs,
+            settings,
+            np.asarray(prep.artifacts["pca"]),
+            params.neighbors_pcs,
+            graph["obs_keys"],
+        )
+    try:
+        store.write_trust(rid, expected, agreement.model_dump(mode="json"))
+    except FileNotFoundError:
+        raise RuntimeError(gone) from None
+    return rid
+
+
 def handle_sleep(payload: dict[str, Any], emit: Emit) -> str | None:
     """Diagnostic job: sleeps in steps. Used to test progress and cancellation."""
     steps = int(payload.get("steps", 5))
@@ -118,6 +184,7 @@ def handle_sleep(payload: dict[str, Any], emit: Emit) -> str | None:
 HANDLERS: dict[str, Callable[[dict[str, Any], Emit], str | None]] = {
     "prepare": handle_prepare,
     "infer": handle_infer,
+    "score_clonal": handle_score_clonal,
     "sleep": handle_sleep,
 }
 
