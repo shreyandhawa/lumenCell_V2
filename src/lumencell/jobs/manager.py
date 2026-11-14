@@ -12,6 +12,17 @@
   one is started before the next job is handed over.
 * A job whose payload cannot be pickled is refused at submit (PayloadError):
   the queue would drop it silently and the job would look running for ever.
+* Two priorities. Prepare, infer and every other kind run ahead of the queued
+  background kinds (BACKGROUND_KINDS: clonal scoring and the stability check).
+  A running job is never pre-empted, so a background job that already started
+  finishes first.
+* add_done_callback registers a function that runs once for each job that ends
+  "done" (not failed, cancelled, timed out or lost to a worker death). It runs
+  on the listener thread after the lock is released. Callbacks must be quick and
+  may only submit jobs: while one runs the listener reads no worker events, so a
+  slow one delays the next dispatch, and calling wait() from one deadlocks the
+  listener (it is the thread that ends jobs). wait() and subscribers are told a
+  job is done before its callbacks run. Callbacks are never removed.
 * Each kind of job has a time limit. A job that runs past it fails with a
   message saying so, and the worker is replaced, as for a cancel. The limits
   come from DEFAULT_TIME_LIMITS, then the LUMENCELL_JOB_TIME_LIMITS environment
@@ -25,9 +36,10 @@ import queue
 import sys
 import threading
 import time
+import traceback
 import uuid
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from multiprocessing.reduction import ForkingPickler
 from typing import Any
@@ -35,8 +47,15 @@ from typing import Any
 from lumencell.jobs.worker import HANDLERS, Task, worker_main
 
 ACTIVE = ("queued", "running")
+# Queued behind every other kind: slow work that nobody is waiting at the screen for.
+BACKGROUND_KINDS: frozenset[str] = frozenset({"score_clonal", "stability"})
 # Generous: about twenty times the 100k-cell budgets (prep 8 min, slowest method 10 min).
-DEFAULT_TIME_LIMITS: dict[str, float] = {"prepare": 3 * 3600, "infer": 3 * 3600, "sleep": 600}
+DEFAULT_TIME_LIMITS: dict[str, float] = {
+    "prepare": 3 * 3600,
+    "infer": 3 * 3600,
+    "score_clonal": 3600,
+    "sleep": 600,
+}
 FALLBACK_TIME_LIMIT = 3 * 3600.0
 TIME_LIMITS_ENV = "LUMENCELL_JOB_TIME_LIMITS"
 
@@ -135,7 +154,9 @@ class JobManager:
         self._lock = threading.RLock()
         self._wake = threading.Condition(self._lock)
         self._jobs: dict[str, Job] = {}
-        self._pending: deque[str] = deque()
+        self._foreground: deque[str] = deque()
+        self._background: deque[str] = deque()
+        self._callbacks: list[Callable[[Job], None]] = []
         self._running: str | None = None
         self._subscribers: dict[str, list[queue.Queue[dict[str, Any]]]] = {}
         self._stopping = False
@@ -195,9 +216,17 @@ class JobManager:
                     return job
             job = Job(job_id=uuid.uuid4().hex[:12], kind=kind, key=key, payload=payload)
             self._jobs[job.job_id] = job
-            self._pending.append(job.job_id)
+            (self._background if kind in BACKGROUND_KINDS else self._foreground).append(job.job_id)
             self._wake.notify_all()
             return job
+
+    def add_done_callback(self, callback: Callable[[Job], None]) -> None:
+        """Call `callback(job)` once for every job that reaches "done" (not failed,
+        cancelled, timed out or lost to a worker death). It runs on the listener thread
+        with the lock released. Callbacks must be quick and may only submit jobs: never
+        call wait() from one (it deadlocks the listener). They are never removed."""
+        with self._lock:
+            self._callbacks.append(callback)
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:
@@ -220,7 +249,9 @@ class JobManager:
             if job is None or job.state not in ACTIVE:
                 return job
             if job.state == "queued":
-                self._pending.remove(job_id)
+                for waiting in (self._foreground, self._background):
+                    if job_id in waiting:
+                        waiting.remove(job_id)
                 self._finish(job, "cancelled")
                 return job
             self._replace_worker()
@@ -286,15 +317,25 @@ class JobManager:
         self._publish(job)
         self._wake.notify_all()
 
+    def _take_next(self) -> str | None:
+        """The oldest queued foreground job, else the oldest background one. Call with
+        the lock held."""
+        if self._foreground:
+            return self._foreground.popleft()
+        if self._background:
+            return self._background.popleft()
+        return None
+
     def _dispatch_loop(self) -> None:
         with self._lock:
             while not self._stopping:
-                if self._running is None and self._pending:
+                if self._running is None and (self._foreground or self._background):
                     if self._worker is None or not self._worker.is_alive():
                         # It died between jobs (killed, or out of memory after the last
                         # one). Nothing was running, so nobody noticed until now.
                         self._spawn()
-                    job_id = self._pending.popleft()
+                    job_id = self._take_next()
+                    assert job_id is not None
                     job = self._jobs[job_id]
                     self._running = job_id
                     job.state = "running"
@@ -339,6 +380,8 @@ class JobManager:
                 msg = events.get(timeout=0.2)
             except (queue.Empty, OSError, ValueError, EOFError):
                 continue
+            finished: Job | None = None
+            callbacks: list[Callable[[Job], None]] = []
             with self._lock:
                 job = self._jobs.get(msg[1])
                 if job is None or job.state not in ACTIVE:
@@ -351,6 +394,15 @@ class JobManager:
                     job.result_id = msg[2]
                     self._running = None
                     self._finish(job, "done")
+                    finished = job
+                    callbacks = list(self._callbacks)
                 elif kind == "failed":
                     self._running = None
                     self._finish(job, "failed", msg[2])
+            if finished is not None:
+                for callback in callbacks:
+                    try:
+                        callback(finished)
+                    except BaseException:  # SystemExit too: the listener must outlive any callback
+                        print(f"lumencell: a callback after job {finished.job_id} failed", file=sys.stderr)
+                        traceback.print_exc()
