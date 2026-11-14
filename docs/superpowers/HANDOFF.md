@@ -470,6 +470,43 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 - Commit 33c281d and PR #5 were created at 07:57 under your account, not by the orchestrating
   session. Was that you, or a tool?
 
+## Security review (phase 1)
+
+Reviewed by hand along the brief's untrusted-input paths (the `security-review` skill reviews a
+pending diff and phase 1 is already committed, so the diff `142a788..HEAD` was read directly).
+Phase 1 is not merged into `main` (stacked PRs #14 to #22, merge pending an owner permission), so
+the diff is `142a788..HEAD` and the Done When commands ran on `pivot/19-phase1-security`, not `main`.
+
+| # | Severity | Where | Finding | Outcome |
+|---|---|---|---|---|
+| S1 | Low | `api/models.py` `ClonalSettings` | `clone_key`, `donor_key`, each strata key and the strata list had no length bound, so one PUT could push an unbounded list or name through `check_settings`, its error messages and the state file. | Fixed: 256 characters per name, 8 strata keys. Test: `test_oversized_settings_are_refused_before_the_file_is_looked_at`. `make contract` changed only `contracts/openapi.json`. |
+| S2 | Low | `engine/store.py` `trust_path` / `write_trust` / `read_trust` | The trust file name was checked (`TRUST_NAME`, `fullmatch`) but the run id was not; callers validate it today (`_RUN_ID` in `api/runs.py`, computed ids in the CLI), so nothing was reachable. | Fixed as defence in depth: `RUN_ID` fullmatch in `trust_path`. Test: `test_trust_paths_refuse_a_run_id_that_is_not_a_plain_name`. |
+| S3 | Info | `bench/calibration.py` / `tests/clonal/test_calibration.py:32` | `LUMENCELL_CALIBRATION_OUT` is written as given, following symlinks, and the parent directory must exist. The variable is set by whoever runs the slow test, not by file or request data. | Recorded, no change. |
+| S4 | Info | `engine/store.py` `read_trust`, `prep/housekeeping.py` | Trust files are read without a size cap and through symlinks. Anyone who can plant files in the cache directory already owns the user's account. Housekeeping anchors `_TRUST_TEMP` with `fullmatch`, skips a symlinked `trust/` folder, and `check_prune` refuses symlinked removals. | Recorded, no change. |
+
+Checked and found sound, no change:
+- Path traversal: trust file names are `clonal-<16 hex>` from a hash; the column names never reach a path or a job key (`score_clonal:<rid>:<hash>`); `TRUST_NAME` and the housekeeping patterns use `fullmatch`, so a trailing newline does not slip through (tested for names).
+- Terminal and log injection: every message that names a column uses `!r` (`check_settings`, `scoring_only_message`, the notes), so an escape or newline in a column name prints escaped. Pinned by `test_problems_escape_control_characters_in_column_names`. The CLI prints no raw column name.
+- HTML and JSON injection: the web app has no view of the notes or the clonal settings yet (only the generated types), so there is no sink. Re-check when the phase 2 UI renders `notes` (React text nodes escape; keep `dangerouslySetInnerHTML` out). Trust files are written with `allow_nan=False` and read back as a JSON object only.
+- Many strata keys and many distinct values: strata keys must exist in `obs`, so the list is bounded by the file's columns, and now by 8.
+
+### Done When (phase 1)
+
+Run on `pivot/19-phase1-security`, not `main`.
+
+| Command | Result |
+|---|---|
+| `make ci; echo $?` | CI_RESULT |
+| `make bench-synth`, exit code and `grep -c '^REGRESSION'` | exit 0, 0 regressions: PASS |
+| `ls benchmarks/results/real-*.json \| tail -1`; `grep -n 'TR-gene exclusion' benchmarks/thresholds.toml` | `real-2026-11-13.json` (the Task 9 file); changelog entry at `thresholds.toml:169`: PASS |
+| isolation, labels, scores, properties tests | 79 passed, exit 0: PASS |
+| calibration file `passed` | `clonal-calibration-2026-11-13.json False`: **FAILED**. `depth_only/N2` failed calibration in Task 8 and was recorded as a real failed check; see "Task 8 decisions and result". No data, threshold, seed or definition was changed. |
+| `tests/api/test_clonal_trust.py` | 16 passed: PASS |
+| `lumencell synth` then `lumencell run` with the clone options (temp cache and state dirs) | output contains `clonal agreement: ok (own cells, m = 2)`: PASS |
+| `tests/unit/test_trust_constants.py`; first commit touching thresholds, baseline or results | 3 passed; `6ff4676` "Declare clonal agreement definitions ... (#7)", the Task 1 commit: PASS |
+| `git diff 142a788 -- docs/HANDOFF.md` | hunks cover lines 3, 32, 49, 71-73, 89-90, 159-160 and 185: PASS |
+| this section | present: PASS |
+
 ## Branches and PRs
 
 | Branch | PR | State |

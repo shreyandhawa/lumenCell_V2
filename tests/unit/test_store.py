@@ -333,3 +333,14 @@ def test_a_missing_trust_file_is_silent(
     assert store.read_trust("abc", TRUST) is None
     assert store.read_trust("nope", TRUST) is None
     assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("rid", ["../x", "a/b", "..", "", "a" * 65, "abc\n"])
+def test_trust_paths_refuse_a_run_id_that_is_not_a_plain_name(tmp_path: Path, rid: str) -> None:
+    store = RunStore(tmp_path)
+    with pytest.raises(ValueError):
+        store.trust_path(rid, TRUST)
+    with pytest.raises(ValueError):
+        store.write_trust(rid, TRUST, {})
+    with pytest.raises(ValueError):
+        store.read_trust(rid, TRUST)
