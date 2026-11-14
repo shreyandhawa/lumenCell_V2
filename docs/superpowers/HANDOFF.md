@@ -496,7 +496,7 @@ Run on `pivot/19-phase1-security`, not `main`.
 
 | Command | Result |
 |---|---|
-| `make ci; echo $?` | CI_RESULT |
+| `make ci; echo $?` | exit 0 (run after the fixes): PASS |
 | `make bench-synth`, exit code and `grep -c '^REGRESSION'` | exit 0, 0 regressions: PASS |
 | `ls benchmarks/results/real-*.json \| tail -1`; `grep -n 'TR-gene exclusion' benchmarks/thresholds.toml` | `real-2026-11-13.json` (the Task 9 file); changelog entry at `thresholds.toml:169`: PASS |
 | isolation, labels, scores, properties tests | 79 passed, exit 0: PASS |
