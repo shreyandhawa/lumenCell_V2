@@ -27,6 +27,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   `pivot/15-score-clonal-job`, stacked on `pivot/14-job-priorities`.
   Task 14 (clonal agreement on every run's GET, scored in the background and healed on GET) is on
   branch `pivot/16-run-trust-api`, stacked on `pivot/15-score-clonal-job`.
+  Task 15 (clonal options on `lumencell run`, `--fate-bias` on `lumencell synth`) is on branch
+  `pivot/17-cli-clonal`, stacked on `pivot/16-run-trust-api`.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -487,7 +489,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/13-run-trust-store` | #17 | phase 1 Task 11: run trust store, stacked on #16 |
 | `pivot/14-job-priorities` | #18 | phase 1 Task 12: job priorities and done-callbacks, stacked on #17 |
 | `pivot/15-score-clonal-job` | #19 | phase 1 Task 13: score_clonal job, stacked on #18 |
-| `pivot/16-run-trust-api` | (this PR) | phase 1 Task 14: clonal agreement on every run, stacked on #19 |
+| `pivot/16-run-trust-api` | #20 | phase 1 Task 14: clonal agreement on every run, stacked on #19 |
+| `pivot/17-cli-clonal` | (this PR) | phase 1 Task 15: clonal options in the CLI, stacked on #20 |
 
 ## Verify the current state
 

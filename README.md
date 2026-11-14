@@ -34,8 +34,10 @@ uv run lumencell launch your-data.h5ad --root "cluster:clusters=Ductal"
 `X` (or `layers["counts"]` / `.raw`) should hold raw counts, or log-normalised values.
 
 Other commands: `lumencell prepare` (precompute), `lumencell roots` (suggestions),
-`lumencell run` (run from the terminal), `lumencell export` (write results into a
-copy of the file), `lumencell synth` (synthetic data with a known trajectory).
+`lumencell run` (run from the terminal; add `--clone-key` with `--donor-key` or `--single-donor`,
+and optionally `--strata`, to score the run against clone labels), `lumencell export` (write results into a
+copy of the file), `lumencell synth` (synthetic data with a known trajectory; `--fate-bias` adds
+clone and donor columns).
 
 ## Methods
 

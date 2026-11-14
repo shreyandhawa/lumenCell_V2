@@ -1,9 +1,11 @@
 """The terminal commands: prepare, roots, run, export."""
 
+import json
 from pathlib import Path
 
 import anndata as ad
 import numpy as np
+import pandas as pd
 import pytest
 from scipy import sparse
 from typer.testing import CliRunner
@@ -152,3 +154,273 @@ def test_prepare_warns_when_ids_cannot_be_matched(tmp_path: Path, cache_env: Non
     assert "receptor genes: 0 matched (symbols from var_names)" in result.output
     assert "receptor genes could not be matched" in result.output
     assert "clone identity may reach the PCA" in result.output
+
+
+# ---- clonal agreement ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def clonal_data(data: Path) -> Path:
+    from lumencell.bench.synth_clones import ClonalLayer, add_clones
+
+    base = ad.read_h5ad(data)
+    del base.obs["clone_id"]
+    adata = add_clones(base, ClonalLayer(fate_bias=0.8), seed=0)
+    adata.write_h5ad(data)
+    return data
+
+
+CLONAL = ["--clone-key", "clone_id", "--donor-key", "donor"]
+ROOT = ["--root", "cluster:true_label=trunk_early"]
+
+
+def test_run_prints_clonal_agreement(clonal_data: Path) -> None:
+    result = runner.invoke(app, ["run", str(clonal_data), *ROOT, *CLONAL])
+    assert result.exit_code == 0, result.output
+    assert "clonal agreement: ok (own cells, m = 2)" in result.output
+    assert "m = 3:" in result.output and "delta" in result.output
+    assert "headline p" in result.output and "the largest over N1" in result.output
+    assert "nan" not in result.output and "None" not in result.output
+    rid = result.output.split("run ")[1].split(":")[0]
+    from lumencell.api.models import ClonalSettings
+    from lumencell.trust.clonal import trust_name
+
+    store = RunStore(dataset_dir(load(clonal_data).fingerprint))
+    name = trust_name(ClonalSettings(clone_key="clone_id", donor_key="donor"))
+    assert store.trust_path(rid, name).exists()
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (["--clone-key", "clone_id", "--donor-key", "donor", "--single-donor"], "not both"),
+        (["--clone-key", "nope", "--donor-key", "donor"], "nope"),
+        (["--donor-key", "donor"], "--donor-key needs --clone-key"),
+        (["--single-donor"], "--single-donor needs --clone-key"),
+        (["--strata", "donor"], "--strata needs --clone-key"),
+        (["--clone-key", "clone_id"], "single_donor"),
+    ],
+)
+def test_run_refuses_invalid_clonal_options(clonal_data: Path, extra: list[str], message: str) -> None:
+    result = runner.invoke(app, ["run", str(clonal_data), *ROOT, *extra])
+    assert result.exit_code == 2, result.output
+    assert message in result.output
+
+
+def test_run_refuses_a_clone_column_as_root(clonal_data: Path) -> None:
+    result = runner.invoke(app, ["run", str(clonal_data), "--root", "cluster:clone_id=c0", *CLONAL])
+    assert result.exit_code == 2, result.output
+    assert "only to score" in result.output
+
+
+def test_run_id_with_settings_matches_the_api_and_differs_without(clonal_data: Path) -> None:
+    from lumencell.api import models
+    from lumencell.api.convert import to_api_spec
+    from lumencell.api.session import Session
+    from lumencell.engine.roots import parse_root
+    from lumencell.jobs.manager import JobManager
+
+    plain = runner.invoke(app, ["run", str(clonal_data), *ROOT])
+    scored = runner.invoke(app, ["run", str(clonal_data), *ROOT, *CLONAL])
+    rid_plain = plain.output.split("run ")[1].split(":")[0]
+    rid = scored.output.split("run ")[1].split(":")[0]
+    assert rid != rid_plain
+
+    jobs = JobManager()  # not started: the job is only queued
+    session = Session(clonal_data, jobs)
+    session.set_clonal(models.ClonalSettings(clone_key="clone_id", donor_key="donor"))
+    created, _ = session.runs.create_run(
+        models.TrajectoryRequest(method="paga_dpt", root=to_api_spec(parse_root(ROOT[1])))
+    )
+    assert created.run_id == rid
+    jobs.shutdown()
+
+
+def test_clonal_lines_print_missing_statistics_as_a_dash_and_a_refusal_with_its_note() -> None:
+    from lumencell.api.models import ClonalAgreement, ClonalSettings
+    from lumencell.cli import _clonal_lines
+
+    refused = ClonalAgreement(
+        status="refused",
+        settings=ClonalSettings(clone_key="c", single_donor=True),
+        primary=None,
+        sensitivity_m3=None,
+        coupling=[],
+        notes=["The run used 'x', which lumenCell keeps only for scoring; run it again without it."],
+    )
+    text = "\n".join(_clonal_lines(refused))
+    assert text.startswith("clonal agreement: refused") and "only for scoring" in text
+
+
+@pytest.fixture
+def stratified(clonal_data: Path) -> Path:
+    adata = ad.read_h5ad(clonal_data)
+    n = adata.n_obs
+    adata.obs["s1"] = pd.Categorical(["a", "b"] * (n // 2))
+    adata.obs["s2"] = pd.Categorical(["x", "y", "z"] * (n // 3))
+    adata.obs["lineage_tag"] = adata.obs["clone_id"].copy()
+    adata.write_h5ad(clonal_data)
+    return clonal_data
+
+
+def test_strata_are_split_stripped_stored_and_stay_visible(stratified: Path) -> None:
+    from lumencell.api import models
+    from lumencell.api.convert import to_api_spec
+    from lumencell.api.session import Session
+    from lumencell.engine.roots import parse_root
+    from lumencell.jobs.manager import JobManager
+    from lumencell.trust.clonal import trust_name
+
+    result = runner.invoke(
+        app, ["run", str(stratified), "--root", "cluster:s1=a", *CLONAL, "--strata", "s1, s2,"]
+    )
+    assert result.exit_code == 0, result.output
+    rid = result.output.split("run ")[1].split(":")[0]
+    settings = models.ClonalSettings(clone_key="clone_id", donor_key="donor", strata_keys=["s1", "s2"])
+    store = RunStore(dataset_dir(load(stratified).fingerprint))
+    stored = json.loads(store.trust_path(rid, trust_name(settings)).read_text())
+    assert stored["settings"]["strata_keys"] == ["s1", "s2"]
+    jobs = JobManager()
+    session = Session(stratified, jobs)
+    session.set_clonal(settings)
+    created, _ = session.runs.create_run(
+        models.TrajectoryRequest(method="paga_dpt", root=to_api_spec(parse_root("cluster:s1=a")))
+    )
+    jobs.shutdown()
+    assert created.run_id == rid
+
+
+def test_strata_naming_a_missing_column_is_refused(stratified: Path) -> None:
+    result = runner.invoke(app, ["run", str(stratified), *ROOT, *CLONAL, "--strata", "s1,nope"])
+    assert result.exit_code == 2 and "nope" in result.output
+
+
+def test_a_neutrally_named_clone_or_donor_column_is_scoring_only(stratified: Path) -> None:
+    tag = ["--clone-key", "lineage_tag", "--donor-key", "donor"]
+    for root in ("cluster:lineage_tag=c0", "cluster:donor=d0"):
+        result = runner.invoke(app, ["run", str(stratified), "--root", root, *tag])
+        assert result.exit_code == 2, result.output
+        assert "only to score" in result.output
+    seen: list[set[str]] = []
+    import lumencell.engine.registry as registry
+
+    real = registry.run_method
+
+    def spy(ctx, *a, **k):  # type: ignore[no-untyped-def]
+        seen.append(set(ctx.obs.columns))
+        return real(ctx, *a, **k)
+
+    import pytest as _p
+
+    mp = _p.MonkeyPatch()
+    mp.setattr(registry, "run_method", spy)
+    try:
+        ok = runner.invoke(app, ["run", str(stratified), *ROOT, *tag, "--strata", "s1"])
+    finally:
+        mp.undo()
+    assert ok.exit_code == 0, ok.output
+    assert "lineage_tag" not in seen[0] and "donor" not in seen[0] and "s1" in seen[0]
+
+
+def test_agreement_gets_the_prep_pcs_and_the_run_obs_keys(
+    clonal_data: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lumencell.trust.clonal as clonal
+
+    calls: list[tuple[object, object]] = []
+    real = clonal.agreement_for_run
+
+    def spy(result, obs, settings, pca, neighbors_pcs, obs_keys):  # type: ignore[no-untyped-def]
+        calls.append((neighbors_pcs, list(obs_keys)))
+        return real(result, obs, settings, pca, neighbors_pcs, obs_keys)
+
+    monkeypatch.setattr(clonal, "agreement_for_run", spy)
+    result = runner.invoke(app, ["run", str(clonal_data), *ROOT, *CLONAL])
+    assert result.exit_code == 0, result.output
+    assert calls == [(PrepParams().neighbors_pcs, ["lumencell_leiden", "true_label"])]
+
+
+def test_a_trust_write_failure_keeps_the_run_and_exits_one(
+    clonal_data: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(self, rid, name, payload):  # type: ignore[no-untyped-def]
+        raise OSError("disk full")
+
+    monkeypatch.setattr(RunStore, "write_trust", boom)
+    result = runner.invoke(app, ["run", str(clonal_data), *ROOT, *CLONAL])
+    assert result.exit_code == 1
+    rid = result.output.split("run ")[1].split(":")[0]
+    assert RunStore(dataset_dir(load(clonal_data).fingerprint)).exists(rid)
+    assert f"run {rid} was saved" in result.output and "disk full" in result.output
+    assert "clonal agreement: ok" in result.output
+
+
+def test_a_scoring_failure_keeps_the_run_and_exits_one(
+    clonal_data: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lumencell.trust.clonal as clonal
+
+    def boom(*a, **k):  # type: ignore[no-untyped-def]
+        raise RuntimeError("bad scores")
+
+    monkeypatch.setattr(clonal, "agreement_for_run", boom)
+    result = runner.invoke(app, ["run", str(clonal_data), *ROOT, *CLONAL])
+    assert result.exit_code == 1
+    assert "was saved" in result.output and "bad scores" in result.output
+
+
+def _agreement(**over):  # type: ignore[no-untyped-def]
+    from lumencell.api.models import ClonalAgreement, ClonalScore, ClonalSettings, NullComparison
+
+    def score(m: int, **kw):  # type: ignore[no-untyped-def]
+        base = dict(
+            status="ok", mode="own_cells", n_lineages=3, min_clone_size=m, n_cells=1234, n_clones=567,
+            effective_clones=45.67, n_donors=3, n_strata=None, n_permutations=100, seed=1, purity=0.12345,
+            mean_entropy=0.5, nulls=[NullComparison(null=n, mean_entropy_mean=0.1, mean_entropy_sd=0.1,
+            eta=0.2, p=0.01) for n in ("N1", "N2")], eta=0.2, p=0.01234, eta_base=0.3, delta_eta=-0.1,
+            p_delta=0.5, clone_weighted_purity=0.1, purity_without_largest=0.1,
+        )  # fmt: skip
+        return ClonalScore(**{**base, **kw})
+
+    primary = score(2, **over.get("primary", {}))
+    m3 = score(3, **{"eta": 0.4, "p": 0.2, **over.get("m3", {})})
+    return ClonalAgreement(
+        status=over.get("status", "ok"),
+        settings=ClonalSettings(clone_key="c", single_donor=True),
+        primary=primary,
+        sensitivity_m3=m3,
+        coupling=[],
+        notes=["a note"],
+    )
+
+
+def test_clonal_lines_are_exact() -> None:
+    from lumencell.cli import _clonal_lines
+
+    assert _clonal_lines(_agreement(status="too_few_clones")) == [
+        "clonal agreement: too_few_clones (own cells, m = 2)",
+        "  cells 1,234, clones 567 (effective 45.7), donors 3",
+        "  purity 0.123",
+        "  eta against N1 0.200",
+        "  headline p 0.0123 (the largest over N1, N2)",
+        "  eta_base 0.300, delta -0.100, p for delta 0.5000",
+        "  m = 3: eta 0.400, headline p 0.2000",
+        "  note: a note",
+    ]
+
+
+def test_clonal_lines_print_every_missing_value_as_a_dash() -> None:
+    from lumencell.cli import _clonal_lines
+
+    none = dict(eta=None, p=None, eta_base=None, delta_eta=None, p_delta=None, effective_clones=None,
+                purity=None, nulls=[])  # fmt: skip
+    text = _clonal_lines(_agreement(primary=none, m3={"eta": None, "p": None}))
+    assert text[1:7] == [
+        "  cells 1,234, clones 567 (effective –), donors 3",
+        "  purity –",
+        "  eta against N1 –",
+        "  headline p –",
+        "  eta_base –, delta –, p for delta –",
+        "  m = 3: eta –, headline p –",
+    ]
+    assert not any("nan" in t or "None" in t for t in text)

@@ -11,6 +11,7 @@ import typer
 from lumencell import __version__
 
 if TYPE_CHECKING:
+    from lumencell.api.models import ClonalAgreement, ClonalSettings
     from lumencell.data.loader import Dataset
     from lumencell.prep.pipeline import PrepResult
     from lumencell.prep.stages import PrepParams
@@ -120,30 +121,138 @@ def run(
     method: str = "paga_dpt",
     terminals: Annotated[str | None, typer.Option(help="Comma-separated terminal cluster labels.")] = None,
     x_is: XIsOpt = None,
+    clone_key: Annotated[
+        str | None, typer.Option(help="obs column with clone labels; scores the run's lineages against them.")
+    ] = None,
+    donor_key: Annotated[str | None, typer.Option(help="obs column with the donor of each cell.")] = None,
+    single_donor: Annotated[
+        bool, typer.Option(help="The file holds one donor (instead of --donor-key).")
+    ] = False,
+    strata: Annotated[
+        str | None, typer.Option(help="Comma-separated obs columns; clones are only compared within them.")
+    ] = None,
 ) -> None:
-    """Run a trajectory method from the terminal and save the run (launch shows it)."""
+    """Run a trajectory method from the terminal and save the run (launch shows it).
+
+    With --clone-key the run is also scored against the clones (never used to infer it).
+    """
     from lumencell.engine.context import InferenceContext
     from lumencell.engine.registry import UnknownMethodError, run_method
-    from lumencell.engine.roots import RootError, format_root, parse_root
+    from lumencell.engine.roots import ClusterRoot, RootError, format_root, parse_root
     from lumencell.engine.store import RunStore, run_id
     from lumencell.prep.cache import dataset_dir, prep_key
 
+    clonal = _clonal_settings(clone_key, donor_key, single_donor, strata)
     ds, prep, params = _prepared(data, x_is, False)
-    ctx = InferenceContext.from_prep(ds, prep, params)
+    columns: tuple[str, ...] = ()
+    if clonal is not None:
+        from lumencell.trust.clonal import check_settings, settings_columns
+
+        problems = check_settings(ds.obs, clonal)
+        if problems:
+            raise typer.BadParameter("; ".join(problems), param_hint="--clone-key")
+        columns = settings_columns(clonal)
+    ctx = InferenceContext.from_prep(ds, prep, params, clonal_columns=columns)
     terms = [t.strip() for t in terminals.split(",")] if terminals else None
     try:
         spec = parse_root(root)
+        if isinstance(spec, ClusterRoot) and spec.key in ctx.scoring_only:
+            from lumencell.clonal.isolation import scoring_only_message
+
+            raise ValueError(scoring_only_message(spec.key, "root column"))
         result = run_method(ctx, method, spec, terminals=terms)
     except (RootError, UnknownMethodError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     key = prep_key(ds, params)
-    rid = run_id(method, result.params, format_root(spec), terms, key)
-    RunStore(dataset_dir(ds.fingerprint)).save(rid, result, terminals=terms, prep_key=key)
+    rid = run_id(method, result.params, format_root(spec), terms, key, columns)
+    store = RunStore(dataset_dir(ds.fingerprint))
+    store.save(rid, result, terminals=terms, prep_key=key)
     typer.echo(f"run {rid}: {len(result.lineages)} lineages, {result.n_unassigned} cells unassigned")
     for lin in result.lineages:
         typer.echo(f"  {lin.name}: {lin.n_cells:,} cells")
     for w in result.warnings:
         typer.echo(f"  {w.severity}: {w.message}")
+    if clonal is not None:
+        import numpy as np
+
+        from lumencell.trust.clonal import agreement_for_run, trust_name
+
+        try:
+            agreement = agreement_for_run(
+                result,
+                ds.obs,
+                clonal,
+                np.asarray(prep.artifacts["pca"]),
+                params.neighbors_pcs,
+                result.obs_keys,
+            )
+        except Exception as exc:  # the run is saved whatever scoring does
+            typer.echo(f"run {rid} was saved, but scoring its clonal agreement failed: {exc}", err=True)
+            raise typer.Exit(1) from exc
+        failure: OSError | None = None
+        try:
+            store.write_trust(rid, trust_name(clonal), agreement.model_dump(mode="json"))
+        except OSError as exc:
+            failure = exc
+        for line in _clonal_lines(agreement):
+            typer.echo(line)
+        if failure is not None:
+            typer.echo(
+                f"run {rid} was saved, but its clonal agreement could not be stored: {failure}", err=True
+            )
+            raise typer.Exit(1)
+
+
+def _clonal_settings(
+    clone_key: str | None, donor_key: str | None, single_donor: bool, strata: str | None
+) -> "ClonalSettings | None":
+    from pydantic import ValidationError
+
+    from lumencell.api.models import ClonalSettings
+
+    if clone_key is None:
+        for given, flag in (
+            (donor_key, "--donor-key"),
+            (single_donor, "--single-donor"),
+            (strata, "--strata"),
+        ):
+            if given:
+                raise typer.BadParameter(f"{flag} needs --clone-key", param_hint=flag)
+        return None
+    keys = [k.strip() for k in strata.split(",") if k.strip()] if strata else []
+    try:
+        return ClonalSettings(
+            clone_key=clone_key, donor_key=donor_key, single_donor=single_donor, strata_keys=keys
+        )
+    except ValidationError as exc:
+        reasons = "; ".join(e["msg"].removeprefix("Value error, ") for e in exc.errors(include_url=False))
+        raise typer.BadParameter(reasons, param_hint="--donor-key / --single-donor") from exc
+
+
+def _fmt(x: float | None, digits: int = 3) -> str:
+    return "–" if x is None else f"{x:.{digits}f}"
+
+
+def _clonal_lines(agreement: "ClonalAgreement") -> list[str]:
+    """The printed clonal block. It says how well lineages follow clones, never which came first."""
+    p, m3 = agreement.primary, agreement.sensitivity_m3
+    if p is None:
+        head = [f"clonal agreement: {agreement.status}"]
+    else:
+        head = [f"clonal agreement: {agreement.status} (own cells, m = {p.min_clone_size})"]
+        nulls = ", ".join(n.null for n in p.nulls)
+        over = f" (the largest over {nulls})" if nulls else ""
+        effective = _fmt(p.effective_clones, 1)
+        head += [
+            f"  cells {p.n_cells:,}, clones {p.n_clones:,} (effective {effective}), donors {p.n_donors}",
+            f"  purity {_fmt(p.purity)}",
+            f"  eta against N1 {_fmt(p.eta)}",
+            f"  headline p {_fmt(p.p, 4)}{over}",
+            f"  eta_base {_fmt(p.eta_base)}, delta {_fmt(p.delta_eta)}, p for delta {_fmt(p.p_delta, 4)}",
+        ]
+        if m3 is not None:
+            head.append(f"  m = {m3.min_clone_size}: eta {_fmt(m3.eta)}, headline p {_fmt(m3.p, 4)}")
+    return head + [f"  note: {n}" for n in agreement.notes]
 
 
 @app.command()
@@ -557,6 +666,14 @@ def synth(
     n_genes: Annotated[int, typer.Option(min=10)] = 2000,
     seed: int = 0,
     store_root: Annotated[bool, typer.Option(help="Also store the true root in uns['iroot'].")] = False,
+    fate_bias: Annotated[
+        float | None,
+        typer.Option(
+            min=0.0,
+            max=1.0,
+            help="Add clone_id and donor columns; 0: clones ignore fate, 1: follow it.",
+        ),
+    ] = None,
 ) -> None:
     """Write a synthetic dataset with a known trajectory (raw counts, no embedding)."""
     from lumencell.bench.synth import PRESETS, TOPOLOGIES, generate
@@ -566,6 +683,10 @@ def synth(
     if preset not in PRESETS:
         raise typer.BadParameter(f"choose one of {', '.join(PRESETS)}", param_hint="--preset")
     adata = generate(topology, preset, n_cells=n_cells, n_genes=n_genes, seed=seed, store_root=store_root)
+    if fate_bias is not None:
+        from lumencell.bench.synth_clones import ClonalLayer, add_clones
+
+        adata = add_clones(adata, ClonalLayer(fate_bias=fate_bias), seed=seed)
     output.parent.mkdir(parents=True, exist_ok=True)
     adata.write_h5ad(output)
     typer.echo(
