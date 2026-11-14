@@ -68,13 +68,13 @@ Cases failing each gate (a case can fail several): PAGA + DPT: `branch_accuracy`
 
 The clonal gate is not a branch gate: a method that merges two true lineages can score a clonal ratio above 1, and lineage recall catches that.
 
-**Real datasets** (`benchmarks/results/real-2026-11-10.json`, commit `abe3f73`). Spearman is against stage order (embryo time for gastrulation):
+**Real datasets** (`benchmarks/results/real-2026-11-13.json`, commit `4b0b1d5`). Spearman is against stage order (embryo time for gastrulation):
 
 | Method | bonemarrow | gastrulation_erythroid | pancreas |
 |---|---|---|---|
-| PAGA + DPT | Spearman 0.73, branch 0.92, terminal 0.95 (pass) | Spearman 0.75, branch –, terminal 0.94 (pass) | Spearman 0.95, branch 0.63, terminal 0.93 (fail: branch_accuracy, lineage_recall) |
-| Palantir | Spearman 0.75, branch 0.64, terminal 0.84 (fail: branch_accuracy) | Spearman 0.72, branch –, terminal 0.59 (fail: terminal_share) | Spearman 0.94, branch 0.84, terminal 0.94 (pass) |
-| scFates | Spearman 0.78, branch 0.94, terminal 0.96 (pass) | Spearman 0.80, branch –, terminal 0.61 (fail: terminal_share) | Spearman 0.94, branch 0.75, terminal 0.80 (fail: branch_accuracy) |
+| PAGA + DPT | Spearman 0.73, branch 0.62, terminal 0.99 (fail: branch_accuracy, lineage_recall) | Spearman 0.75, branch –, terminal 0.94 (pass) | Spearman 0.95, branch 0.63, terminal 0.93 (fail: branch_accuracy, lineage_recall) |
+| Palantir | Spearman 0.73, branch 0.94, terminal 0.99 (pass) | Spearman 0.72, branch –, terminal 0.58 (fail: terminal_share) | Spearman 0.94, branch 0.84, terminal 0.94 (pass) |
+| scFates | Spearman 0.67, branch 0.79, terminal 0.95 (fail: pt_spearman_lineage) | Spearman 0.80, branch –, terminal 0.61 (fail: terminal_share) | Spearman 0.94, branch 0.75, terminal 0.80 (fail: branch_accuracy) |
 <!-- bench:end -->
 
 ## Development

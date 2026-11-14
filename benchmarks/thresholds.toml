@@ -165,3 +165,23 @@ max_drop = 0.03
 #   calibrated as it must be; depth_only/N2 57, NOT calibrated: FAILED. Oracle eta rises with
 #   fate_bias and p at fate_bias 0 is above 0.01 on all 9 monotonic cases. No threshold or
 #   definition changed.
+#
+# 2026-11-13  TR-gene exclusion re-run (Task 9). Results in benchmarks/results/real-2026-11-13.json,
+#   run at 4b0b1d5; compared with real-2026-11-10.json (run at abe3f73, before the exclusion).
+#   Receptor genes matched, and how many of them the old selection would have kept as HVGs:
+#   pancreas 0 matched, 0 would have been HVGs; bonemarrow 11 matched, 6; gastrulation_erythroid
+#   258 matched, 3. All matches are genuine TCR genes (bone marrow's 11, and the 258 mouse
+#   Trav/Traj/Trbv/... genes). Bone marrow's 6 would-be HVGs: TRAC, TRDC, TRGC1, TRGC2, TRBC1,
+#   TRBC2. Real rows now carry clonal_status = not_applicable. Moved: pancreas no metric moved. bonemarrow moved on all three methods, and
+#   n_clusters 12 -> 13. paga_dpt branch_accuracy 0.917 -> 0.617 and lineage_recall 1.0 -> 0.5, both
+#   now failing their gates; scfates_ppt pt_spearman_lineage 0.781 -> 0.668 now fails its gate;
+#   palantir branch_accuracy 0.639 -> 0.943 and terminal_share 0.839 -> 0.986 improved.
+#   gastrulation_erythroid: paga_dpt lineage_recall 0.0 -> 1.0, other metrics within 0.002 except
+#   palantir terminal_share 0.591 -> 0.579 (a threshold flip for lineage_recall, not a gain in the
+#   method). Attribution: the exclusion alone causes every move. With exclude_receptor_genes off at
+#   HEAD the old file is reproduced to 3 decimals, and on it reproduces the new file, for every moved
+#   metric; cold-cache bone marrow paga_dpt at 744a0a8 vs 7b6254b gives branch_accuracy 0.9171 ->
+#   0.6171 and 12 -> 13 clusters, with identical repeats (no run-to-run variance). Since abe3f73
+#   only 7b6254b changes the expression path. Fragility, stated plainly: swapping 6 (bone marrow) or
+#   3 (gastrulation) of 2000 HVGs flips real-data gates; in bone marrow Leiden goes 12 -> 13 and
+#   one lineage fails to match. No bug found. The failing gates stay failing; thresholds unchanged.

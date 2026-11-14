@@ -16,6 +16,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   benchmark) merged as 857d03d (PR #12). Task 7 (re-measured baseline) merged as bfb2539
   (PR #13). Task 8 (calibration of the nulls) is on branch `pivot/10-clonal-calibration`; one
   check failed (see Open questions), so it stops for Shreyan after the PR is opened.
+  Task 9 (real benchmarks re-run after the TR-gene exclusion) is on branch `pivot/11-bench-real-rerun`, stacked on `pivot/10-clonal-calibration`.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -201,6 +202,27 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
 - **`terminal_share: NaN`** is on every synthetic baseline row. Expected: the key was added to
   `runner.py` in 0621edc (real datasets); main's baseline predates it.
 
+## Task 9 result
+
+`make bench-real` exit 0 at 4b0b1d5 (3 real_data tests passed); record
+`benchmarks/results/real-2026-11-13.json`. Real rows are `clonal_status = not_applicable`.
+- `hvg_info` receptor_genes / receptor_hvg_without_exclusion: pancreas 0 / 0, bonemarrow 11 / 6,
+  gastrulation_erythroid 258 / 3.
+- Moved: pancreas nothing. Bone marrow: paga_dpt branch_accuracy 0.917 -> 0.617 and lineage_recall
+  1.0 -> 0.5 (gates now fail), scfates_ppt pt_spearman_lineage 0.781 -> 0.668 (fails), palantir
+  branch_accuracy 0.639 -> 0.943 (improves). Gastrulation: paga_dpt lineage_recall 0.0 -> 1.0, a
+  threshold flip, not a gain.
+  Eight gates fail in total, as the log lists. No threshold changed.
+- **Attribution: the exclusion alone causes every move.** Exclusion off at HEAD reproduces the
+  11-10 file to 3 dp, on reproduces the new file (reviewer's check); cold-cache bone marrow
+  paga_dpt at 744a0a8 vs 7b6254b is 0.9171 -> 0.6171, 12 -> 13 clusters, identical repeats. Only
+  7b6254b changed the expression path since abe3f73. The would-be HVGs in bone marrow are TRAC,
+  TRDC, TRGC1, TRGC2, TRBC1, TRBC2.
+- **Fragility:** swapping 6 (bone marrow) or 3 (gastrulation) of 2000 HVGs flips real-data gates;
+  in bone marrow Leiden goes 12 -> 13 and one lineage fails to match. No bug found; failing gates
+  stay failing; thresholds unchanged.
+  Full table: `.superpowers/sdd/2026-11-12-phase-1-clonotypes/task-9-report.md`.
+
 ## Task 8 decisions and result
 
 Run 2026-11-13 at cb5c9c3 (the pre-declaration commit), 200 seeds (100-299), 39 min. Nothing was
@@ -368,6 +390,7 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/08-bench-clonal` | #12 | merged (squash, 857d03d) |
 | `pivot/09-bench-remeasure` | #13 | merged (squash, bfb2539) |
 | `pivot/10-clonal-calibration` | #14 | phase 1 Task 8: one check failed, awaiting Shreyan |
+| `pivot/11-bench-real-rerun` | (this PR) | phase 1 Task 9: real re-run, stacked on #14 |
 
 ## Verify the current state
 
