@@ -7,6 +7,7 @@ the work: the dataset view, the runs, and the user's saved choices.
 """
 
 import sys
+import threading
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,12 @@ class Session:
         self.jobs = jobs
         self.params = prep_params or PrepParams()
         self.cache_root = cache_root
+        # Serialises the writers of the saved choices (clonal settings, root), so the state file,
+        # self._clonal and the view never disagree and the queued scoring matches the settings.
+        # Lock order: this lock, then the view's, the state file's or the job manager's, each
+        # taken and released inside. Nothing takes this lock while holding another one, and the
+        # job manager's listener (_on_job_done) never takes it.
+        self._settings_lock = threading.RLock()
         # Without its matrix: expression is served from the prep cache, held once.
         self.ds: Dataset = load(self.path, x_is, keep_matrix=False)  # type: ignore[arg-type]
         self.cache = PrepCache(self.ds, cache_root)
@@ -72,7 +79,10 @@ class Session:
             self.state,
             self._job_payload,
             self._resolve,
+            self.clonal_settings,
         )
+        # Scores each run this session's file finishes; runs on the job manager's listener thread.
+        jobs.add_done_callback(self._on_job_done)
 
     def _saved_clonal(self) -> models.ClonalSettings | None:
         """The saved clonal settings, if they are still valid for this file (checked once)."""
@@ -161,6 +171,10 @@ class Session:
         return self._clonal
 
     def set_clonal(self, settings: models.ClonalSettings) -> models.ClonalSummary:
+        with self._settings_lock:
+            return self._set_clonal(settings)
+
+    def _set_clonal(self, settings: models.ClonalSettings) -> models.ClonalSummary:
         problems = check_settings(self.ds.obs, settings)
         if problems:
             raise ApiError(
@@ -192,15 +206,19 @@ class Session:
         self.state.update(change)
         self._clonal = settings
         self.view.set_clonal(columns)
+        # After the settings are in place: a run finishing now is scored under them by
+        # _on_job_done, or is listed here, or both (the job key makes that one job).
+        self.runs.submit_clonal_all()
         return summary
 
     def clear_clonal(self) -> None:
         def change(state: dict[str, Any]) -> None:
             state.pop("clonal", None)
 
-        self.state.update(change)
-        self._clonal = None
-        self.view.set_clonal(())
+        with self._settings_lock:
+            self.state.update(change)
+            self._clonal = None
+            self.view.set_clonal(())
 
     # ---- methods -------------------------------------------------------------------------
 
@@ -245,12 +263,14 @@ class Session:
         return to_api_root(self._resolve(from_api_spec(spec)))
 
     def set_root(self, spec: ApiRootSpec) -> models.ResolvedRoot:
-        resolved = self._resolve(from_api_spec(spec))
+        # Under the settings lock: set_clonal checks the saved root against the columns it names.
+        with self._settings_lock:
+            resolved = self._resolve(from_api_spec(spec))
 
-        def change(state: dict[str, Any]) -> None:
-            state["root"] = resolved.spec
+            def change(state: dict[str, Any]) -> None:
+                state["root"] = resolved.spec
 
-        self.state.update(change)
+            self.state.update(change)
         return to_api_root(resolved)
 
     def root_suggestions(self) -> models.RootSuggestions:
@@ -271,12 +291,25 @@ class Session:
 
     # ---- jobs ----------------------------------------------------------------------------
 
+    def _on_job_done(self, job: Job) -> None:
+        """Queue the trust jobs of a run this session's file just finished.
+
+        Runs on the job manager's listener thread with its lock released, so it only submits:
+        it never takes the settings lock, never waits, and reads only this one run's trust files.
+        """
+        if (
+            job.kind == "infer"
+            and job.payload.get("path") == str(self.path)
+            and job.payload.get("cache_root") == self._job_payload()["cache_root"]
+            and job.result_id
+        ):
+            self.runs.submit_trust_jobs(job.result_id)
+
     @staticmethod
     def job_info(job: Job) -> models.JobInfo:
-        kind = job.kind if job.kind in ("prepare", "infer", "heatmap") else "prepare"
         return models.JobInfo(
             job_id=job.job_id,
-            kind=kind,
+            kind=job.kind,
             state=job.state,
             stage=job.stage,
             fraction=job.fraction,

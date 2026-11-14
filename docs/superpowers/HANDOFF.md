@@ -25,6 +25,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   stacked on `pivot/13-run-trust-store`.
   Task 13 (the `score_clonal` worker job and the clonal agreement models) is on branch
   `pivot/15-score-clonal-job`, stacked on `pivot/14-job-priorities`.
+  Task 14 (clonal agreement on every run's GET, scored in the background and healed on GET) is on
+  branch `pivot/16-run-trust-api`, stacked on `pivot/15-score-clonal-job`.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
   Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
@@ -209,6 +211,31 @@ The orchestrating session reached 33% of its context after Task 4 and handed off
   rise is the clonal gate alone.
 - **`terminal_share: NaN`** is on every synthetic baseline row. Expected: the key was added to
   `runner.py` in 0621edc (real datasets); main's baseline predates it.
+
+## Task 14 decisions
+
+- `TrajectoryRun.trust: RunTrust | None` (no default; always filled for a done run).
+  `JobKind` gains `score_clonal`, and `JobInfo.kind` is `JobKind | str`: a kind the contract does
+  not list (`sleep`) is reported by its own name, no longer as `prepare`.
+- `Runs.clonal_agreement`: no settings gives `not_configured`; a store version other than 2 gives
+  `refused` and queues nothing; a stored file gives its `ClonalAgreement`; else `pending` while the
+  job is queued or running, `failed` with the job's error (or `cancelled`) after it ends badly.
+  It is looked up by the current settings' `trust_name` only, so a superseded job's file, which
+  still gets written (F21, parked), is never served.
+- `Runs._trust_lookup` (phase 2 reuses it): the file, else `jobs.find(f"{kind}:{rid}:{h}")`, else a
+  new job. A done job whose file is missing is resubmitted (after one re-read, as the job may have
+  written it since). A failed or cancelled job is not resubmitted by a GET; a settings PUT or a
+  restart retries it. It takes an optional `validate`: a file that parses but does not validate
+  counts as missing, with one stderr line naming it (F13).
+- Background submission: `Session._on_job_done` (a done-callback, listener thread) calls
+  `submit_trust_jobs(rid)` for an `infer` job on this session's file; `set_clonal` ends with
+  `submit_clonal_all()`. `clear_clonal` submits nothing (controller ruling). Dedup is the job key
+  `score_clonal:<rid>:<trust_hash>`, decided under the manager's lock.
+- No deadlock: none of the trust code takes a lock of its own. The manager's lock is taken per call
+  (`find`, `submit`) and never held while another lock is taken; the state-file lock is released
+  before `set_clonal` submits; `Runs._lock` only guards the in-memory caches. The callback never
+  waits.
+- `Runs` takes a seventh argument, `clonal` (a getter of the current settings).
 
 ## Task 13 decisions
 
@@ -459,7 +486,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 | `pivot/12-clonal-settings` | #16 | phase 1 Task 10: clonal settings, stacked on #15 |
 | `pivot/13-run-trust-store` | #17 | phase 1 Task 11: run trust store, stacked on #16 |
 | `pivot/14-job-priorities` | #18 | phase 1 Task 12: job priorities and done-callbacks, stacked on #17 |
-| `pivot/15-score-clonal-job` | (this PR) | phase 1 Task 13: score_clonal job, stacked on #18 |
+| `pivot/15-score-clonal-job` | #19 | phase 1 Task 13: score_clonal job, stacked on #18 |
+| `pivot/16-run-trust-api` | (this PR) | phase 1 Task 14: clonal agreement on every run, stacked on #19 |
 
 ## Verify the current state
 

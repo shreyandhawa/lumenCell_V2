@@ -117,4 +117,5 @@ export const run: T.TrajectoryRun = {
     terminals_source: "auto",
     created_at: "2026-11-10T00:00:00Z",
   },
+  trust: null,
 };
