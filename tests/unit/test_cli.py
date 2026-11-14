@@ -65,3 +65,26 @@ def test_synth_can_add_clones(tmp_path: Path) -> None:
     assert {"clone_id", "donor"} <= set(ad.read_h5ad(biased).obs.columns)
     assert not {"clone_id", "donor"} & set(ad.read_h5ad(plain).obs.columns)
     assert runner.invoke(app, ["synth", str(plain), "--fate-bias", "1.5"]).exit_code == 2
+
+
+def test_synth_fate_bias_reaches_add_clones(tmp_path: Path, monkeypatch: object) -> None:
+    import pytest
+
+    import lumencell.bench.synth_clones as sc
+
+    assert isinstance(monkeypatch, pytest.MonkeyPatch)
+    seen: list[tuple[float, int]] = []
+    real = sc.add_clones
+
+    def spy(adata, layer, seed):  # type: ignore[no-untyped-def]
+        seen.append((layer.fate_bias, seed))
+        return real(adata, layer, seed)
+
+    monkeypatch.setattr(sc, "add_clones", spy)
+    base = ["--n-cells", "300", "--n-genes", "50"]
+    out = tmp_path / "z.h5ad"
+    zero = runner.invoke(app, ["synth", str(out), *base, "--fate-bias", "0"])
+    assert zero.exit_code == 0 and {"clone_id", "donor"} <= set(ad.read_h5ad(out).obs.columns)
+    assert runner.invoke(app, ["synth", str(out), *base, "--fate-bias", "0.7", "--seed", "3"]).exit_code == 0
+    assert seen == [(0.0, 0), (0.7, 3)]
+    assert runner.invoke(app, ["synth", str(out), "--fate-bias", "-0.1"]).exit_code == 2

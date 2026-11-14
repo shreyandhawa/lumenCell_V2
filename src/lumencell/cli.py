@@ -177,12 +177,30 @@ def run(
 
         from lumencell.trust.clonal import agreement_for_run, trust_name
 
-        agreement = agreement_for_run(
-            result, ds.obs, clonal, np.asarray(prep.artifacts["pca"]), params.neighbors_pcs, result.obs_keys
-        )
-        store.write_trust(rid, trust_name(clonal), agreement.model_dump(mode="json"))
+        try:
+            agreement = agreement_for_run(
+                result,
+                ds.obs,
+                clonal,
+                np.asarray(prep.artifacts["pca"]),
+                params.neighbors_pcs,
+                result.obs_keys,
+            )
+        except Exception as exc:  # the run is saved whatever scoring does
+            typer.echo(f"run {rid} was saved, but scoring its clonal agreement failed: {exc}", err=True)
+            raise typer.Exit(1) from exc
+        failure: OSError | None = None
+        try:
+            store.write_trust(rid, trust_name(clonal), agreement.model_dump(mode="json"))
+        except OSError as exc:
+            failure = exc
         for line in _clonal_lines(agreement):
             typer.echo(line)
+        if failure is not None:
+            typer.echo(
+                f"run {rid} was saved, but its clonal agreement could not be stored: {failure}", err=True
+            )
+            raise typer.Exit(1)
 
 
 def _clonal_settings(
@@ -222,13 +240,14 @@ def _clonal_lines(agreement: "ClonalAgreement") -> list[str]:
         head = [f"clonal agreement: {agreement.status}"]
     else:
         head = [f"clonal agreement: {agreement.status} (own cells, m = {p.min_clone_size})"]
-        nulls = ", ".join(n.null for n in p.nulls) or "–"
+        nulls = ", ".join(n.null for n in p.nulls)
+        over = f" (the largest over {nulls})" if nulls else ""
         effective = _fmt(p.effective_clones, 1)
         head += [
             f"  cells {p.n_cells:,}, clones {p.n_clones:,} (effective {effective}), donors {p.n_donors}",
             f"  purity {_fmt(p.purity)}",
             f"  eta against N1 {_fmt(p.eta)}",
-            f"  headline p {_fmt(p.p, 4)} (the largest over {nulls})",
+            f"  headline p {_fmt(p.p, 4)}{over}",
             f"  eta_base {_fmt(p.eta_base)}, delta {_fmt(p.delta_eta)}, p for delta {_fmt(p.p_delta, 4)}",
         ]
         if m3 is not None:
