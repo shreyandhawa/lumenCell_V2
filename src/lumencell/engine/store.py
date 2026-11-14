@@ -49,6 +49,8 @@ STORE_VERSION = 2
 
 # A trust file is named <kind>-<16 hex>; the name is checked before it reaches a path.
 TRUST_NAME = re.compile(r"[a-z][a-z_]{0,31}-[0-9a-f]{16}")
+# Run ids name folders; the trust paths check them too, whoever the caller is.
+RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 def run_id(
@@ -200,6 +202,8 @@ class RunStore:
     def trust_path(self, rid: str, name: str) -> Path:
         if not TRUST_NAME.fullmatch(name):
             raise ValueError(f"not a trust file name: {name!r}")
+        if not RUN_ID.fullmatch(rid):
+            raise ValueError(f"not a run id: {rid!r}")
         return self.path(rid) / "trust" / f"{name}.json"
 
     def write_trust(self, rid: str, name: str, payload: dict[str, Any]) -> Path:

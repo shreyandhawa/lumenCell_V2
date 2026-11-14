@@ -144,13 +144,20 @@ class RootSuggestions(Model):
     suggestions: list[RootSuggestion]
 
 
+MAX_COLUMN_NAME = 256
+MAX_STRATA = 8
+
+
 class ClonalSettings(Model):
     """Which obs columns hold the clone labels, the donors and the strata (spec 4.1)."""
 
-    clone_key: str = Field(min_length=1)
-    donor_key: str | None = None
+    # Bounded so a request cannot carry an unbounded list or name into the checks and messages.
+    clone_key: str = Field(min_length=1, max_length=MAX_COLUMN_NAME)
+    donor_key: str | None = Field(default=None, max_length=MAX_COLUMN_NAME)
     single_donor: bool = False
-    strata_keys: list[str] = []
+    strata_keys: list[Annotated[str, Field(max_length=MAX_COLUMN_NAME)]] = Field(
+        default=[], max_length=MAX_STRATA
+    )
 
     @model_validator(mode="after")
     def _one_donor_rule(self) -> "ClonalSettings":

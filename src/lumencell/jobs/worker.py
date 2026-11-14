@@ -147,7 +147,9 @@ def handle_score_clonal(payload: dict[str, Any], emit: Emit) -> str | None:
     if not current:
         agreement = not_scored("refused", settings, "made before inference isolation; run it again")
     elif not same_prep:
-        agreement = not_scored("failed", settings, "the run was prepared with other settings")
+        # Not a saved verdict: the prep key includes settings the session can change back, and a
+        # stored "failed" file would block rescoring once the matching prep is reopened.
+        raise RuntimeError("the run was prepared with other settings; not scored")
     else:
         try:
             result = store.load(rid)

@@ -413,3 +413,25 @@ def test_run_id_without_columns_is_the_id_from_before_this_task(monkeypatch: pyt
     args = ("paga_dpt", {"a": 1}, "cluster:k=v", None, "prepkey")
     assert run_id(*args) == "443cbd44c784478d"
     assert run_id(*args, ()) == "443cbd44c784478d"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"clone_key": "x" * 257, "donor_key": "donor"},
+        {"clone_key": "clone_id", "donor_key": "y" * 257},
+        {"clone_key": "clone_id", "donor_key": "donor", "strata_keys": ["z" * 257]},
+        {"clone_key": "clone_id", "donor_key": "donor", "strata_keys": [f"s{i}" for i in range(9)]},
+    ],
+)
+def test_oversized_settings_are_refused_before_the_file_is_looked_at(
+    client: TestClient, body: dict[str, Any]
+) -> None:
+    res = _put(client, body)
+    assert res.status_code == 422 and res.json()["error"]["code"] == "invalid_request"
+
+
+def test_problems_escape_control_characters_in_column_names(client: TestClient) -> None:
+    res = _put(client, {"clone_key": "bad\x1b[31m\nname", "donor_key": "donor"})
+    (problem,) = res.json()["error"]["detail"]["problems"]
+    assert "\x1b" not in problem and "\n" not in problem

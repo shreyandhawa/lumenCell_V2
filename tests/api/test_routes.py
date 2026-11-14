@@ -313,6 +313,7 @@ def _runs_without_a_server(
         label_key=label_key,
         ds=SimpleNamespace(obs=pd.DataFrame(columns=columns)),
         clonal_columns=clonal_columns,
+        clonal_snapshot=lambda: (clonal_columns, label_key),
         ctx=lambda: SimpleNamespace(scoring_only=scoring_only_columns(columns, clonal_columns)),
     )
     runs = Runs(

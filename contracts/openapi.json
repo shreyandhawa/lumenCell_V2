@@ -302,6 +302,7 @@
         "description": "Which obs columns hold the clone labels, the donors and the strata (spec 4.1).",
         "properties": {
           "clone_key": {
+            "maxLength": 256,
             "minLength": 1,
             "title": "Clone Key",
             "type": "string"
@@ -309,6 +310,7 @@
           "donor_key": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -325,8 +327,10 @@
           "strata_keys": {
             "default": [],
             "items": {
+              "maxLength": 256,
               "type": "string"
             },
+            "maxItems": 8,
             "title": "Strata Keys",
             "type": "array"
           }
@@ -342,6 +346,7 @@
         "description": "Which obs columns hold the clone labels, the donors and the strata (spec 4.1).",
         "properties": {
           "clone_key": {
+            "maxLength": 256,
             "minLength": 1,
             "title": "Clone Key",
             "type": "string"
@@ -349,6 +354,7 @@
           "donor_key": {
             "anyOf": [
               {
+                "maxLength": 256,
                 "type": "string"
               },
               {
@@ -365,8 +371,10 @@
           "strata_keys": {
             "default": [],
             "items": {
+              "maxLength": 256,
               "type": "string"
             },
+            "maxItems": 8,
             "title": "Strata Keys",
             "type": "array"
           }

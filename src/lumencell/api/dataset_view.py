@@ -152,6 +152,11 @@ class DatasetView:
             self._ctx = None
             self.label_key = detect_label_key(inference_obs(self.ds.obs, named)[0])
 
+    def clonal_snapshot(self) -> tuple[tuple[str, ...], str | None]:
+        """The clonal columns and the label key as one pair, never half of an update."""
+        with self._lock:
+            return self.clonal_columns, self.label_key
+
     def ctx(self) -> InferenceContext:
         with self._lock:
             if self._ctx is None:

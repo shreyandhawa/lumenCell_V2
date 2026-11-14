@@ -179,7 +179,7 @@ def run(
 
         try:
             agreement = agreement_for_run(
-                result,
+                store.load(rid),  # as the worker does, so the CLI file matches an API rescore
                 ds.obs,
                 clonal,
                 np.asarray(prep.artifacts["pca"]),
