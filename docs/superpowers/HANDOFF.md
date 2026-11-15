@@ -500,7 +500,7 @@ Checked and found sound, no change:
 
 ### Done When (phase 1)
 
-Run on `pivot/19-phase1-security`, not `main`.
+Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (aac08ed, after #14-#23 merged, 2026-11-14). The `main` run gave the same results: `make ci` exit 0; `make bench-synth` exit 0 with 0 regressions; 79 isolation/labels/scores/properties tests passed; 16 trust API tests passed; 3 constants tests passed; `clonal agreement: ok (own cells, m = 2)`; `clonal-calibration-2026-11-13.json` still `passed=False` (the recorded `depth_only/N2` failure, unchanged).
 
 | Command | Result |
 |---|---|
