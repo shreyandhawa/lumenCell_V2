@@ -87,6 +87,16 @@ def test_the_store_records_who_named_the_terminals(tmp_path: Path, result: Traje
     assert store.graph("named")["terminals_source"] == "user"
 
 
+def test_result_json_records_the_requested_terminals(tmp_path: Path, result: TrajectoryResult) -> None:
+    store = RunStore(tmp_path)
+    store.save("auto", result)
+    store.save("named", result, terminals=["3", "5"], clonal_columns=["donor", "clone_id"])
+    assert store.graph("auto")["terminals"] is None
+    assert store.graph("named")["terminals"] == ["3", "5"]
+    assert store.graph("auto")["clonal_columns"] == []
+    assert store.graph("named")["clonal_columns"] == ["clone_id", "donor"]
+
+
 def test_listing_skips_runs_it_cannot_read(tmp_path: Path, result: TrajectoryResult) -> None:
     store = RunStore(tmp_path)
     for rid in ("good", "damaged", "other_version"):

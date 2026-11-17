@@ -99,7 +99,11 @@ def handle_infer(payload: dict[str, Any], emit: Emit) -> str | None:
     )
     rid: str = payload["run_id"]
     RunStore(dataset_dir(ds.fingerprint, _cache_root(payload))).save(
-        rid, result, terminals=payload.get("terminals"), prep_key=prep_key(ds, params)
+        rid,
+        result,
+        terminals=payload.get("terminals"),
+        prep_key=prep_key(ds, params),
+        clonal_columns=clonal_columns,
     )
     return rid
 
@@ -172,6 +176,78 @@ def handle_score_clonal(payload: dict[str, Any], emit: Emit) -> str | None:
     return rid
 
 
+STABILITY_KEYS = ("path", "prep_params", "run_id", "trust_name", "label_key")
+
+
+def handle_stability(payload: dict[str, Any], emit: Emit) -> str | None:
+    """Rerun a finished run on reseeded and subsampled prep and store the agreement as its trust file.
+
+    The terminals and the scoring-only columns come from the run's own record (``result.json``),
+    never from the session's current settings. A run made before they were recorded is reported
+    ``not_available`` rather than replayed with a guess. Replicate prep stays in memory.
+    """
+    from lumencell.engine.stability import RunSpec, StabilityError, run_stability
+    from lumencell.engine.store import STORE_VERSION, RunStore
+    from lumencell.prep.cache import PrepCache, dataset_dir, prep_key
+    from lumencell.trust.stability import not_measured, stability_name, to_api_stability
+
+    missing = [k for k in STABILITY_KEYS if k not in payload]
+    if missing:
+        raise ValueError(f"the stability job's payload has no {', '.join(map(repr, missing))}")
+    ds = _dataset(payload["path"], payload.get("x_is"))
+    params = payload["prep_params"]
+    rid: str = payload["run_id"]
+    if payload["trust_name"] != stability_name():
+        raise ValueError(
+            f"the stability job's trust_name {payload['trust_name']!r} is not {stability_name()!r}; "
+            "nothing was written"
+        )
+    store = RunStore(dataset_dir(ds.fingerprint, _cache_root(payload)))
+    gone = f"run {rid} was replaced or is incomplete; stability not measured"
+    emit("load", 0, 1)
+    try:
+        if not (store.path(rid) / ".complete").exists():
+            raise FileNotFoundError(rid)
+        graph = store.graph(rid)
+    except FileNotFoundError:
+        raise RuntimeError(gone) from None
+    if graph.get("store_version") != STORE_VERSION:
+        stability = not_measured("not_available", "made before inference isolation; run it again")
+    elif graph.get("prep_key") != prep_key(ds, params):
+        stability = not_measured("failed", "the run was prepared with other settings")
+    elif graph.get("terminals_source") == "user" and "terminals" not in graph:
+        stability = not_measured(
+            "not_available", "the terminals this run was asked for were not recorded; run it again"
+        )
+    elif not isinstance(graph.get("clonal_columns"), list):
+        # Replaying with () could let clone labels reach inference, so an unrecorded set is refused.
+        stability = not_measured(
+            "not_available", "the clone columns this run used were not recorded; run it again"
+        )
+    else:
+        try:
+            result = store.load(rid)
+        except FileNotFoundError:
+            raise RuntimeError(gone) from None
+        prep = PrepCache(ds, _cache_root(payload)).run(params)
+        spec = RunSpec(
+            graph["method"],
+            graph["params"],
+            graph.get("terminals"),
+            payload["label_key"],
+            tuple(graph["clonal_columns"]),
+        )
+        try:
+            stability = to_api_stability(run_stability(ds, prep, params, result, spec, progress=emit))
+        except StabilityError as e:
+            stability = not_measured("failed", str(e))
+    try:
+        store.write_trust(rid, payload["trust_name"], stability.model_dump(mode="json"))
+    except FileNotFoundError:
+        raise RuntimeError(gone) from None
+    return rid
+
+
 def handle_sleep(payload: dict[str, Any], emit: Emit) -> str | None:
     """Diagnostic job: sleeps in steps. Used to test progress and cancellation."""
     steps = int(payload.get("steps", 5))
@@ -187,6 +263,7 @@ HANDLERS: dict[str, Callable[[dict[str, Any], Emit], str | None]] = {
     "prepare": handle_prepare,
     "infer": handle_infer,
     "score_clonal": handle_score_clonal,
+    "stability": handle_stability,
     "sleep": handle_sleep,
 }
 

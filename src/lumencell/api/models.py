@@ -245,6 +245,55 @@ class ClonalAgreement(Model):
     notes: list[str]
 
 
+ReplicateKind = Literal["reseed", "subsample"]
+
+
+class StabilityReplicate(Model):
+    kind: ReplicateKind
+    index: int
+    seed: int
+    method_seed: int | None
+    n_cells: int
+    n_compared: int
+    n_lineages: int
+    spearman: float | None
+    share_matched: float | None
+    mean_jaccard: float | None
+    terminals: list[str] | None
+    error: str | None
+
+
+class StabilitySummary(Model):
+    kind: ReplicateKind
+    r: int
+    fraction: float
+    seeds: list[int]
+    spearman_median: float | None
+    spearman_min: float | None
+    share_matched_median: float | None
+    share_matched_min: float | None
+    mean_jaccard_median: float | None
+    mean_jaccard_min: float | None
+    n_lineages_median: float | None
+    n_lineages_min: int
+    replicates: list[StabilityReplicate]
+
+
+StabilityStatus = Literal["ok", "pending", "failed", "not_available"]
+
+
+class Stability(Model):
+    status: StabilityStatus
+    match_jaccard: float
+    reference_lineages: int | None
+    n_failed: int
+    reseeds: StabilitySummary | None
+    subsamples: StabilitySummary | None
+    lineage_stability: float | None
+    pseudotime_stability: float | None
+    notes: list[str]
+
+
 class RunTrust(Model):
     clonal: ClonalAgreement | None
 
