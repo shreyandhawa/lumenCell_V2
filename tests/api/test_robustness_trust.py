@@ -31,7 +31,7 @@ from lumencell.jobs.manager import BACKGROUND_KINDS, Job, JobManager
 from lumencell.jobs.worker import HANDLERS
 from lumencell.prep.cache import PrepCache
 from lumencell.prep.stages import PrepParams
-from lumencell.trust.stability import stability_hash, stability_name
+from lumencell.trust.stability import not_measured, stability_hash, stability_name
 
 ROOT = {"kind": "cluster", "key": "true_label", "value": "trunk_early"}
 CLONES = {"clone_key": "clone_id", "donor_key": "donor"}
@@ -365,3 +365,60 @@ def test_a_dataset_without_paga_edges_is_not_supported(
     c2 = _check(trust, "C2")
     assert c2["state"] == "fail" and c2["value"] is None and c2["reason"]
     assert client.get("/api/v1/dataset").json()["tree_likeness"] is None
+    assert trust["tree_support"]["checks"][1]["value"] is None
+    assert session.dataset_info().tree_likeness is None
+
+
+def test_a_cancelled_stability_is_named_in_the_reasons_under_the_served_thresholds(
+    prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
+) -> None:
+    """R10, unpatched: C3 and C4 are left out, and their reasons still say stability was cancelled."""
+    session = _session(prepared, cache_root, jobs, tmp_path)
+    _save_run(session, "r1")
+    client = _client(session)
+    _trust(client, "r1")
+    (job,) = _stability_jobs(session)
+    jobs.cancel(job.job_id)
+    trust = _trust(client, "r1")
+    support = trust["tree_support"]
+    assert support["level"] == "provisional"
+    assert _check(trust, "C3")["state"] == "excluded"
+    assert any("stability" in r and "cancelled" in r for r in support["reasons"]), support["reasons"]
+
+
+def test_submit_stability_skips_when_the_file_exists(
+    prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
+) -> None:
+    session = _session(prepared, cache_root, jobs, tmp_path)
+    _save_run(session, "r1")
+    stored = not_measured("failed", "x").model_dump(mode="json")
+    stored["status"] = "ok"
+    session.runs.store.write_trust("r1", stability_name(), stored)
+    assert [j for j in session.runs.submit_trust_jobs("r1") if j.kind == "stability"] == []
+    assert _stability_jobs(session) == []
+
+
+def test_tree_likeness_is_computed_once_per_prep(
+    prepared: tuple[Path, Path],
+    cache_root: Path,
+    jobs: JobManager,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import lumencell.api.dataset_view as dv
+
+    calls: list[int] = []
+    real = dv.tree_likeness
+    monkeypatch.setattr(dv, "tree_likeness", lambda *a: calls.append(1) or real(*a))
+    session = _session(prepared, cache_root, jobs, tmp_path)
+    _save_run(session, "r1")
+    client = _client(session)
+    _trust(client, "r1")
+    _trust(client, "r1")
+    assert len(calls) == 1
+    view = session.view
+    prep = view.loaded_prep()
+    assert prep is not None
+    view._prep = type(prep)(artifacts=dict(prep.artifacts), stages=prep.stages)
+    view.tree_likeness()
+    assert len(calls) == 2

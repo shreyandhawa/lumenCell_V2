@@ -273,6 +273,16 @@ on that clean tree, 2026-11-17, 6.2 min, once: `benchmarks/results/verdict-verif
 - Extra tests beyond the plan: a failed stability job is served with its error and not resubmitted;
   a stability file that does not validate counts as missing with one stderr line.
 
+Fix round 1 (PR #34 review):
+- **R10.** A check left out (tau None) stays `excluded` and the level is unchanged, but its reason now
+  also says when its evidence is missing: C3/C4 say they wait for the stability run (pending) or carry
+  the stability note, e.g. "cancelled" (unavailable); C2 says it waits for the dataset's prep.
+- **R11.** `DatasetView.tree_likeness()` is cached per loaded prep object, under the view's lock, so a
+  run GET no longer recomputes it; a different prep object recomputes.
+- **Tests.** Pinned the served mappings that mutation found unpinned: `stability_evidence` (done, counts,
+  values, NaN, failed note), `clonal_evidence` (failed and ok), a NaN check value served as null, the
+  no-edges GET's null C2 value and dataset tree-likeness, and submit skipping an existing stability file.
+
 ## Phase 2 Task 1 decisions
 
 - **F14 declared.** `[tree_support.verification] on_failure = "provisional"` sits after

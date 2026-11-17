@@ -76,6 +76,8 @@ class DatasetView:
         self._lock = threading.RLock()
         self._ready = False
         self._prep: PrepResult | None = None
+        # tree_likeness of the prep it was computed from; a different or dropped prep invalidates it.
+        self._tree: tuple[PrepResult, float] | None = None
         self._ctx: InferenceContext | None = None
 
     # ---- prep --------------------------------------------------------------------------
@@ -120,7 +122,11 @@ class DatasetView:
         prep = self.loaded_prep()
         if prep is None:
             return None
-        return tree_likeness(prep.artifacts["paga_connectivities"], prep.artifacts["paga_tree"])
+        with self._lock:
+            if self._tree is None or self._tree[0] is not prep:
+                value = tree_likeness(prep.artifacts["paga_connectivities"], prep.artifacts["paga_tree"])
+                self._tree = (prep, value)
+            return self._tree[1]
 
     @staticmethod
     def _by_gene(prep: PrepResult) -> PrepResult:
