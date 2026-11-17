@@ -982,7 +982,7 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/29-verdict-verification` | #33 | merged (merge commit, keeps the recorded commit 37197c8), phase 2 Task 9 (FAILED, verdict capped) |
 | `pivot/30-robustness-api` | #34 | merged (squash), phase 2 Task 11 (stability and the capped verdict served; cell cycle deferred to Task 4) |
 | `pivot/31-bench-real-stability` | #35 | merged (merge commit, 4961426, keeps the measured commit 99c3786), phase 2 Task 12 |
-| `pivot/32-phase2-security` | PR_NUM | open, phase 2 Task 13 (security review; Done When recorded) |
+| `pivot/32-phase2-security` | #36 | open, phase 2 Task 13 (security review; Done When recorded) |
 
 ## Verify the current state
 
