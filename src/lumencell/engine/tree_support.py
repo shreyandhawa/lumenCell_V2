@@ -70,6 +70,8 @@ class StabilityEvidence:
 @dataclass(frozen=True)
 class ClonalEvidence:
     state: Literal["not_configured", "pending", "scored"]
+    # Required: a default would hide L < 2, where C5 does not apply. Unused until scored.
+    n_lineages: int
     status: str = ""
     p: float = math.nan
     delta_eta: float = math.nan
@@ -77,7 +79,7 @@ class ClonalEvidence:
 
     @classmethod
     def from_result(cls, r: ClonalResult) -> "ClonalEvidence":
-        return cls("scored", status=r.status, p=r.p, delta_eta=r.delta_eta)
+        return cls("scored", r.n_lineages, status=r.status, p=r.p, delta_eta=r.delta_eta)
 
 
 @dataclass(frozen=True)
@@ -177,6 +179,15 @@ def _c5(c: ClonalEvidence, t: Thresholds) -> Check:
         return _check("C5", "not_applicable", math.nan, p_max)
     if c.state == "pending":
         return _check("C5", "pending", math.nan, p_max, "Clonal support is still being scored.")
+    if c.n_lineages < 2:
+        return _check(
+            "C5",
+            "not_applicable",
+            math.nan,
+            p_max,
+            f"Clonal support needs at least two lineages; there {'is' if c.n_lineages == 1 else 'are'} "
+            f"{c.n_lineages}.",
+        )
     if c.status == "ok":
         if c.p <= p_max and c.delta_eta > 0:
             return _check("C5", "pass", c.p, p_max)
@@ -200,10 +211,10 @@ def _c5(c: ClonalEvidence, t: Thresholds) -> Check:
 
 def _level(checks: tuple[Check, ...]) -> Level:
     """The one place that decides the level."""
-    first_two = checks[:2]
+    first_two = checks[:2]  # C1 and C2 are never "unavailable"
     if any(c.state == "fail" for c in first_two):
         return "not_supported"
-    if any(c.state in ("pending", "unavailable") for c in first_two):
+    if any(c.state == "pending" for c in first_two):
         return "provisional"
     rest = checks[2:]
     if any(c.state == "fail" for c in rest):

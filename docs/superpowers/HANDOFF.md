@@ -186,6 +186,13 @@ One Sonnet scan checked the plan against `main`; its full table is in the ledger
   fail gives `weak` even while others are pending; then pending/unavailable gives `provisional`.
   An `excluded` or `not_applicable` check never changes the level. A NaN C3/C4/C5 value fails.
   C2 `excluded` (tau_tree `None`) wins over pending.
+- **Fix round 1.** (1) F12: `ClonalEvidence.n_lineages` is required (no default), set by `from_result`;
+  `_c5` is `not_applicable` with a reason when scored with `n_lineages < 2` (pending is checked first, so a
+  pending caller passes any value); L >= 2 `single_lineage` still fails.
+- **Fix round 1.** (2) Survivor tests: exact-threshold passes (C2-C4), max-symmetrisation of PAGA
+  connectivity (upper-only, lower-only tree), excluded C2 with `None`, and not_supported over other fails.
+- **Fix round 1.** (3) Removed the dead `unavailable` branch from the C1/C2 level handling.
+- **Fix round 1.** (4) Comment in `engine/topology.py::_paga`: non-Leiden branch still raises on an edgeless graph.
 
 ## Controller handoff (2026-11-13, after Task 4)
 

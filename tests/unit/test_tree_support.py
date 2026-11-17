@@ -18,8 +18,8 @@ from tests.conftest import Prepared
 
 TAU = Thresholds(tau_tree=0.7, tau_lin=0.8, tau_pt=0.85)
 GOOD_STAB = StabilityEvidence("done", lineage=0.9, pseudotime=0.95)
-OK_CLONAL = ClonalEvidence("scored", status="ok", p=0.001, delta_eta=0.2)
-NO_CLONES = ClonalEvidence("not_configured")
+OK_CLONAL = ClonalEvidence("scored", 3, status="ok", p=0.001, delta_eta=0.2)
+NO_CLONES = ClonalEvidence("not_configured", 0)
 
 
 def _v(
@@ -72,8 +72,8 @@ def test_coverage_is_the_finite_share() -> None:
 
 PENDING = StabilityEvidence("pending")
 UNAVAIL = StabilityEvidence("unavailable", note="no replicate ran")
-BAD_C5 = ClonalEvidence("scored", status="ok", p=0.5, delta_eta=0.2)
-N_A = ClonalEvidence("scored", status="single_lineage")
+BAD_C5 = ClonalEvidence("scored", 3, status="ok", p=0.5, delta_eta=0.2)
+N_A = ClonalEvidence("scored", 3, status="single_lineage")
 LEVEL_CASES = [
     (dict(cov=0.5), "not_supported"),
     (dict(tree=0.1), "not_supported"),
@@ -116,16 +116,16 @@ def test_c1_bound_is_inclusive() -> None:
 
 
 C5_CASES = [
-    (ClonalEvidence("scored", status="ok", p=0.01, delta_eta=0.001), "pass", "supported"),
-    (ClonalEvidence("scored", status="ok", p=0.011, delta_eta=0.1), "fail", "weak"),
-    (ClonalEvidence("scored", status="ok", p=0.001, delta_eta=0.0), "fail", "weak"),
-    (ClonalEvidence("scored", status="ok", p=0.001, delta_eta=math.nan), "fail", "weak"),
-    (ClonalEvidence("scored", status="ok", p=math.nan, delta_eta=0.1), "fail", "weak"),
-    (ClonalEvidence("scored", status="too_few_clones"), "fail", "weak"),
-    (ClonalEvidence("scored", status="refused"), "fail", "weak"),
-    (ClonalEvidence("scored", status="failed"), "fail", "weak"),
+    (ClonalEvidence("scored", 3, status="ok", p=0.01, delta_eta=0.001), "pass", "supported"),
+    (ClonalEvidence("scored", 3, status="ok", p=0.011, delta_eta=0.1), "fail", "weak"),
+    (ClonalEvidence("scored", 3, status="ok", p=0.001, delta_eta=0.0), "fail", "weak"),
+    (ClonalEvidence("scored", 3, status="ok", p=0.001, delta_eta=math.nan), "fail", "weak"),
+    (ClonalEvidence("scored", 3, status="ok", p=math.nan, delta_eta=0.1), "fail", "weak"),
+    (ClonalEvidence("scored", 3, status="too_few_clones"), "fail", "weak"),
+    (ClonalEvidence("scored", 3, status="refused"), "fail", "weak"),
+    (ClonalEvidence("scored", 3, status="failed"), "fail", "weak"),
     (NO_CLONES, "not_applicable", "supported"),
-    (ClonalEvidence("pending"), "pending", "provisional"),
+    (ClonalEvidence("pending", 0), "pending", "provisional"),
 ]
 
 
@@ -155,10 +155,10 @@ def test_c5_reasons_claim_no_direction() -> None:
 
 def test_from_result_reads_the_clonal_result() -> None:
     r = ClonalResult.__new__(ClonalResult)
-    for k, val in dict(status="ok", p=0.004, delta_eta=0.3).items():
+    for k, val in dict(status="ok", p=0.004, delta_eta=0.3, n_lineages=3).items():
         object.__setattr__(r, k, val)
     e = ClonalEvidence.from_result(r)
-    assert (e.state, e.status, e.p, e.delta_eta) == ("scored", "ok", 0.004, 0.3)
+    assert (e.state, e.status, e.p, e.delta_eta, e.n_lineages) == ("scored", "ok", 0.004, 0.3, 3)
 
 
 def test_reasons_one_per_check_that_did_not_pass_or_apply() -> None:
@@ -169,3 +169,48 @@ def test_reasons_one_per_check_that_did_not_pass_or_apply() -> None:
     assert all(c.name == CHECK_NAMES[c.id] for c in v.checks)
     clean = _v()
     assert clean.reasons == () and all(c.reason is None for c in clean.checks)
+
+
+def test_c5_is_not_applicable_below_two_lineages() -> None:
+    v = _v(clonal=ClonalEvidence("scored", 1, status="single_lineage"))
+    c5 = _check(v, "C5")
+    assert c5.state == "not_applicable" and c5.reason
+    assert v.level == "supported"
+
+
+def test_c5_with_two_lineages_in_one_still_fails() -> None:
+    c5 = _check(_v(clonal=ClonalEvidence("scored", 2, status="single_lineage")), "C5")
+    assert c5.state == "fail"
+
+
+def test_n_lineages_has_no_default() -> None:
+    with pytest.raises(TypeError):
+        ClonalEvidence("scored")  # type: ignore[call-arg]
+
+
+def test_values_exactly_at_the_thresholds_pass() -> None:
+    v = _v(tree=0.7, stab=StabilityEvidence("done", lineage=0.8, pseudotime=0.85))
+    assert [_check(v, c).state for c in ("C2", "C3", "C4")] == ["pass"] * 3
+    assert v.level == "supported"
+
+
+def test_tree_likeness_symmetrises_by_maximum() -> None:
+    upper = sparse.csr_matrix(np.array([[0, 0.5, 0], [0, 0, 0.4], [0, 0, 0]]))
+    tree_lower = sparse.csr_matrix(np.array([[0, 0, 0], [0.5, 0, 0], [0, 0.4, 0]]))
+    assert tree_likeness(upper, upper) == pytest.approx(1.0)
+    assert tree_likeness(upper, tree_lower) == pytest.approx(1.0)
+    lower = upper.T.tocsr()
+    assert tree_likeness(lower, upper) == pytest.approx(1.0)
+
+
+def test_excluded_c2_stays_excluded_when_tree_likeness_is_none() -> None:
+    thr = Thresholds(None, 0.8, 0.85)
+    for tree in (0.9, None):
+        c2 = _check(_v(tree=tree, thresholds=thr), "C2")
+        assert c2.state == "excluded" and c2.reason
+
+
+def test_not_supported_wins_over_other_fails() -> None:
+    low_stab = StabilityEvidence("done", lineage=0.1, pseudotime=0.95)
+    assert _v(cov=0.5, stab=low_stab).level == "not_supported"
+    assert _v(tree=0.1, clonal=BAD_C5).level == "not_supported"
