@@ -10,6 +10,7 @@ from lumencell.engine.tree_support import (
     ClonalEvidence,
     StabilityEvidence,
     Thresholds,
+    calibrated_thresholds,
     coverage,
     tree_likeness,
     verdict,
@@ -214,3 +215,11 @@ def test_not_supported_wins_over_other_fails() -> None:
     low_stab = StabilityEvidence("done", lineage=0.1, pseudotime=0.95)
     assert _v(cov=0.5, stab=low_stab).level == "not_supported"
     assert _v(tree=0.1, clonal=BAD_C5).level == "not_supported"
+
+
+def test_calibrated_thresholds_are_the_committed_taus() -> None:
+    from lumencell.trust import constants
+
+    t = calibrated_thresholds()
+    assert (t.tau_tree, t.tau_lin, t.tau_pt) == (constants.TAU_TREE, constants.TAU_LIN, constants.TAU_PT)
+    assert (t.coverage_min, t.clonal_p_max) == (constants.COVERAGE_MIN, constants.CLONAL_P_MAX)

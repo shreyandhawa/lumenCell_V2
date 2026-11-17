@@ -22,7 +22,10 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - **Next:** phase 2. Merged to `main`: Task 1 (#26), Task 5 (#27), Task 6 (#28), Task 7 (#29).
   N2a (#30) passed its calibration on seeds 300-499 and was adopted: the runtime N2 uses the
   lineage-onset split and the clonal metric_version is 2 (see "Phase 2 N2a decisions and result").
-  Next: Task 8 (verdict calibration), Task 10 alongside; Tasks 2-4 wait for the download approval.
+  Task 8 (verdict calibration, `pivot/27-verdict-calibration`) is recorded: C2, C3 and C4 are all
+  non-discriminating, so no tau is set (see "Phase 2 Task 8 decisions and result"). Next: Task 9,
+  which is expected to fail and trigger the declared `on_failure = "provisional"` cap; Task 10
+  alongside; Tasks 2-4 wait for the download approval.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -142,6 +145,52 @@ entry point `tests/clonal/test_calibration_n2_amended.py`; 7adf711 records the r
 - **bench-synth** at metric_version 2: exit 0, 0 `REGRESSION` lines. 29 gate lines are reported
   (as before: clonal_excess_ratio and pt_spearman rows); no clonal_p gate row fails.
 - Caveat: each onset is the earliest exclusive scored cell, so one stray early cell moves a cut (as declared; the calibration passed).
+
+## Phase 2 Task 8 decisions and result
+
+Two commits: 0a584d5 adds `bench/verdict_calibration.py` and its tests (make ci 0); the run was made on
+that clean tree; the second commit records the file and applies the rule. Run 2026-11-17, 6.3 min,
+run once: `benchmarks/results/verdict-calibration-2026-11-17.json` (commit 0a584d5, `complete`, 72 of 72
+records). The quantile arithmetic was recomputed independently from the records and matches exactly.
+
+| Check | Matrix q10 (n) | Control q90 (n) | Result |
+|---|---|---|---|
+| C2 x0.5 | 0.908 (12) | 0.852 (12) | discriminates, tau 0.880 |
+| C2 x1.0 | 0.833 (12) | 1.000 (12) | non-discriminating |
+| C2 x2.0 | 0.714 (12) | 0.919 (12) | non-discriminating |
+| C3 | 1.000 (36) | 1.000 (31) | non-discriminating (touch) |
+| C4 | 0.998 (36) | 0.999 (31) | non-discriminating |
+
+- **By the declared rule:** C2 must discriminate at all three resolutions and fails at x1.0 and x2.0, so
+  C2, C3 and C4 are all non-discriminating. `[tree_support.calibrated]` holds only
+  `non_discriminating = ["C2", "C3", "C4"]`; `TAU_TREE`, `TAU_LIN` and `TAU_PT` are `None`;
+  `calibrated_thresholds()` returns them. Nothing was re-run; rule, seeds and controls unchanged (F14).
+- **Runs left out (5, reference failed, all on `two_groups`):** palantir seeds 0 and 2
+  (`InvariantError: fate probabilities must sum to 1`) and scfates_ppt seeds 0-2
+  (`IndexError: index 0 is out of bounds for axis 0 with size 0`). Both methods fail on a kNN graph
+  in two unconnected parts. That is an engine finding (an unhandled disconnected graph gives an
+  internal error, not a clear message), not fixed here. Their datasets still give C2 through the
+  paga_dpt record. No stability call raised; no prep failed.
+- **NaN only where expected:** no NaN in coverage, C3 or C4 of any kept record. C2 is NaN (no PAGA edges,
+  counted as 0) for blob seeds 1-2 and two_groups seeds 0-2 at x0.5 only.
+- **Reading, plainly.** On these synthetic trees every method is almost perfectly stable (C3 exactly 1.0 on
+  all 36 matrix runs, C4 0.993-0.9996), so the 10% matrix quantile sits at the top of the scale and any
+  control that is also stable reaches it. Controls that are stable are common: 11 of 31 control runs
+  find one lineage, which scores C3 = 1.0 trivially, and paga_dpt and palantir give C4 0.996-1.0 on
+  loop and sheet. C4 was expected to drop out (Process Notes). C2 at x1.0 is beaten by two_groups,
+  whose two unconnected components form a forest, so all their weight is on the tree (1.0), and by
+  loop (0.91-0.93): PAGA keeps the loop's closing edge weak. two_groups would be caught by C1 instead
+  (paga_dpt coverage 0.50-0.51). blob is clearly not tree-like at x1.0 and x2.0 (0.05-0.23) but is a
+  single cluster or a pair (1.0 or NaN) at x0.5. So the checks as defined do not separate trees from
+  these controls on this matrix; the controls show where they fail (single lineages, forests, loops).
+- **Consequence for Task 9.** With every tau `None`, a run's level depends on C1 (and C5, not applicable
+  here). Every control run with coverage >= 0.95 will be verdicted `supported`, so the verification is
+  expected to fail and the declared `on_failure = "provisional"` cap to apply. Not rescued here.
+- **Checks applied (data:validate-data, statistics by hand):** quantiles reproduced; denominators
+  (12 datasets per group for C2, 36 and 31 runs for C3/C4) match the records; the left-out runs are all one
+  control kind, and leaving them out cannot change any result (without two_groups the control q90 is
+  still 1.0 for C3 and >= 0.998 for C4, and loop alone beats the matrix at C2 x1.0 and x2.0).
+  Caveat: each control quantile rests on 12 datasets or 31 runs, so it is set by its top two to four values.
 
 ## Phase 2 Task 1 decisions
 
@@ -715,6 +764,7 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/25-stability-engine` | #28 | merged (squash, 4387948), phase 2 Task 6 |
 | `pivot/26-tree-support` | #29 | merged (squash, 14b8979), phase 2 Task 7 (with the PAGA no-edge fix) |
 | `pivot/24-n2-amendment` | #30 | phase 2 N2a; merged with a merge commit so the recorded commit 2b15c77 stays on `main` |
+| `pivot/27-verdict-calibration` | open | phase 2 Task 8; merge with a merge commit so the recorded commit 0a584d5 stays on `main` |
 
 ## Verify the current state
 

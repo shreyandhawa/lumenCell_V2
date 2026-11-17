@@ -243,3 +243,20 @@ def test_calibration_on_the_declared_seeds(tmp_path_factory: pytest.TempPathFact
     print(f"n_failed: {cal.n_failed}")
     assert payload["complete"]
     assert len(records) == 72
+
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+def test_the_committed_taus_follow_from_the_recorded_calibration() -> None:
+    newest = sorted((REPO / "benchmarks" / "results").glob("verdict-calibration-*.json"))[-1]
+    doc = json.loads(newest.read_text())
+    assert doc["complete"] is True
+    assert not doc["commit"].endswith("-dirty")
+    cal = derive(records_from_payload(doc), CAL)
+    expected: dict[str, object] = {"non_discriminating": list(cal.non_discriminating)}
+    for key, tau in (("tau_tree", cal.tau_tree), ("tau_lin", cal.tau_lin), ("tau_pt", cal.tau_pt)):
+        if tau is not None:
+            expected[key] = tau
+    assert CFG["tree_support"]["calibrated"] == expected
+    assert doc["taus"] == {"tau_tree": cal.tau_tree, "tau_lin": cal.tau_lin, "tau_pt": cal.tau_pt}

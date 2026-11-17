@@ -259,7 +259,14 @@ def test_robustness_definitions_are_declared() -> None:
         "max_controls_supported": 0,
         "on_failure": "provisional",
     }
-    assert "calibrated" not in cfg["tree_support"]
+    # Task 8 appends the derived taus: each check is either a tau or listed as non-discriminating.
+    calibrated = cfg["tree_support"]["calibrated"]
+    assert set(calibrated) <= {"tau_tree", "tau_lin", "tau_pt", "non_discriminating"}
+    assert set(calibrated["non_discriminating"]) <= {"C2", "C3", "C4"}
+    for check, key in (("C2", "tau_tree"), ("C3", "tau_lin"), ("C4", "tau_pt")):
+        assert (key in calibrated) != (check in calibrated["non_discriminating"]), check
+        if key in calibrated:
+            assert isinstance(calibrated[key], float)
 
 
 def test_controls_sit_outside_the_gated_matrix() -> None:

@@ -27,6 +27,10 @@ SUBSAMPLE_FRACTION = 0.8
 STABILITY_SEED = 0
 MATCH_JACCARD = 0.6
 COVERAGE_MIN = 0.95
+# [tree_support.calibrated] (2026-11-17): None means non-discriminating, so the check is left out.
+TAU_TREE: float | None = None
+TAU_LIN: float | None = None
+TAU_PT: float | None = None
 
 # A validation limit (spec 4.1), not a threshold: not mirrored in the TOML.
 MAX_DONORS = 1000
