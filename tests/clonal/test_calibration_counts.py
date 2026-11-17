@@ -16,6 +16,7 @@ from lumencell.bench.calibration import (
     write_report,
 )
 from lumencell.bench.gates import REPO, load_thresholds
+from lumencell.clonal.scores import ClonalResult
 
 NAN = math.nan
 
@@ -195,3 +196,68 @@ def test_the_n2_amendment_calibration_is_declared_on_fresh_seeds() -> None:
     used = set(range(phase1["seed_start"], phase1["seed_start"] + phase1["n_seeds"])) | set(range(6))
     assert not used & set(fresh)
     assert rejection_bound(amended["n_seeds"], amended["alpha"], amended["binomial_quantile"]) == 18
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "table", "split", "keys"),
+    [
+        ({}, "calibration", "none", False),
+        (
+            {"table": "calibration_n2_amended", "n2_split": "lineage_onset"},
+            "calibration_n2_amended",
+            "lineage_onset",
+            True,
+        ),
+    ],
+)
+def test_run_calibration_reads_its_table_and_passes_the_split_to_every_score(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    kwargs: dict[str, str],
+    table: str,
+    split: str,
+    keys: bool,
+) -> None:
+    import lumencell.bench.calibration as cal
+
+    seen: list[str] = []
+    generated: list[int] = []
+
+    def gen(topology: str, preset: str, **kw: object) -> str:
+        generated.append(int(kw["seed"]))  # type: ignore[call-overload]
+        return topology
+
+    def null_ps(*args: object) -> dict[str, float]:
+        seen.append(str(args[-1]))
+        return {"m": 0.5}
+
+    def oracle(*args: object) -> ClonalResult:
+        seen.append(str(args[-1]))
+        return _FakeResult()  # type: ignore[return-value]
+
+    def ignored(*args: object) -> float:
+        seen.append(str(args[-1]))
+        return 0.5
+
+    def mono(*args: object) -> MonotonicCase:
+        seen.append(str(args[-1]))
+        return MonotonicCase("t", 0, (0.0, 1.0), (0.0, 1.0), 0.5)
+
+    monkeypatch.setattr(cal, "generate", gen)
+    monkeypatch.setattr(cal, "_null_p_values", null_ps)
+    monkeypatch.setattr(cal, "_oracle", oracle)
+    monkeypatch.setattr(cal, "_donors_ignored_n1", ignored)
+    monkeypatch.setattr(cal, "_monotonic_case", mono)
+    cfg = load_thresholds()
+    report = cal.run_calibration(cfg, ["m"], tmp_path, **kwargs)  # type: ignore[arg-type]
+    declared = cfg["clonal"][table]
+    assert report.config["calibration"] == declared
+    assert generated[0] == declared["seed_start"]
+    assert set(seen) == {split}
+    assert ("n2_split" in report.config) is keys
+    if keys:
+        assert (report.config["table"], report.config["n2_split"]) == (table, split)
+
+
+class _FakeResult:
+    nulls = (type("N", (), {"p": 0.5})(), type("N", (), {"p": 0.5})())

@@ -13,9 +13,9 @@ score was computed; spec §4.3 explains them. In short, over the scored cells (`
   log L cancels, as in the chance-corrected measures of Vinh, Epps & Bailey (JMLR 11(95):
   2837-2854, 2010).
 - Each null shuffles clone identities among the scored cells, B times, within strata: N1 donor,
-  N2 donor x pseudotime decile, N3 the declared strata (with donor). p = (1 + #{H_b <= H_obs}) /
-  (B + 1), one-sided, never zero (Phipson & Smyth, Stat Appl Genet Mol Biol 2010,
-  doi:10.2202/1544-6115.1585).
+  N2 donor x pseudotime decile (x lineage-onset segment under the N2a split), N3 the declared
+  strata (with donor). p = (1 + #{H_b <= H_obs}) / (B + 1), one-sided, never zero (Phipson &
+  Smyth, Stat Appl Genet Mol Biol 2010, doi:10.2202/1544-6115.1585).
 - The lineage-free baseline (``kmeans_partition``) is scored on the same cells and the same N1
   shuffles: η_base, Δη = η - η_base, and a paired permutation p for Δη.
 - Coupling (reported, never gated): the cosine of each lineage pair's raw count columns
@@ -44,6 +44,13 @@ from lumencell.trust.constants import (
 )
 
 Mode = Literal["own_cells", "oracle_cells"]
+# N2's strata: "none" is donor x decile (metric_version 1); "lineage_onset" adds the N2a split,
+# donor x decile x segment, segment = the number of lineage onsets at or below a cell's pseudotime.
+N2Split = Literal["none", "lineage_onset"]
+N2_SPLITS: tuple[N2Split, ...] = ("none", "lineage_onset")
+# The runtime N2. It moves to "lineage_onset" only with CLONAL_METRIC_VERSION 2, by the adoption
+# rule declared under [clonal] in benchmarks/thresholds.toml.
+RUNTIME_N2_SPLIT: N2Split = "none"
 NullName = Literal["N1", "N2", "N3"]
 ScoreStatus = Literal["ok", "single_lineage", "too_few_clones"]
 
@@ -147,6 +154,7 @@ def score_with_baseline(
     oracle_cells: BoolArray | None = None,
     min_clone_size: int = MIN_CLONE_SIZE,
     seed: int = CLONAL_SEED,
+    n2_split: N2Split = RUNTIME_N2_SPLIT,
 ) -> ClonalResult:
     """``baseline_space``, then ``kmeans_partition`` with ``k`` clusters, then ``score_clonal``.
 
@@ -162,6 +170,7 @@ def score_with_baseline(
         oracle_cells=oracle_cells,
         min_clone_size=min_clone_size,
         seed=seed,
+        n2_split=n2_split,
     )
 
 
@@ -177,6 +186,7 @@ def score_clonal(
     n_permutations: int = N_PERMUTATIONS,
     seed: int = CLONAL_SEED,
     n_bins: int = PSEUDOTIME_BINS,
+    n2_split: N2Split = RUNTIME_N2_SPLIT,
 ) -> ClonalResult:
     """Score the ``(L, n)`` lineage masks ``membership`` against the clones in ``codes``.
 
@@ -185,9 +195,12 @@ def score_clonal(
     method's lineages as spec §3 says (one lineage 1; k lineages 1/k each; none 1/L each). The
     scored cells are the candidates with a clone that has at least ``min_clone_size`` candidates.
     The status is ``single_lineage`` when fewer than two lineages hold scored mass.
-    ``pseudotime`` defines N2's deciles (NaN: a stratum of its own); ``baseline`` is the
-    lineage-free partition (``kmeans_partition``), scored on the same cells.
+    ``pseudotime`` defines N2's deciles (NaN: a stratum of its own), and with
+    ``n2_split="lineage_onset"`` also N2's onset segments (``_onset_segments``); ``baseline`` is
+    the lineage-free partition (``kmeans_partition``), scored on the same cells.
     """
+    if n2_split not in N2_SPLITS:
+        raise ValueError(f"n2_split must be one of {N2_SPLITS}; got {n2_split!r}")
     membership, pseudotime, baseline = _checked(
         membership,
         codes,
@@ -262,7 +275,7 @@ def score_clonal(
         clone, donor, np.random.default_rng([seed, 1]), n_permutations, sizes, [method, base], pairs[defined]
     )
     stratified: list[tuple[NullName, IntArray]] = [
-        ("N2", donor * (n_bins + 1) + _pseudotime_bins(pseudotime[cells], n_bins))
+        ("N2", _n2_groups(donor, pseudotime[cells], weights, n_bins, n2_split))
     ]
     if codes.stratum is not None:
         stratified.append(("N3", codes.stratum[cells]))
@@ -377,6 +390,33 @@ def _pseudotime_bins(pseudotime: F64, n_bins: int) -> IntArray:
         rank = rankdata(pseudotime[finite], method="average")
         bins[finite] = np.minimum(n_bins - 1, np.floor(n_bins * (rank - 1) / n_finite)).astype(np.int64)
     return bins
+
+
+def _onset_segments(weights: F64, pseudotime: F64) -> IntArray:
+    """The N2a segment of each scored cell: how many lineage onsets lie at or below its pseudotime.
+
+    A lineage's onset is the smallest finite pseudotime among the scored cells whose whole weight
+    (1) is on it; a lineage with no such cell adds no cut. Near-equal onsets are not merged. A cell
+    without a finite pseudotime is segment 0 (its decile bin already sets it apart). Reads only
+    the weights and pseudotime, never a clone label.
+    """
+    finite = np.isfinite(pseudotime)
+    whole = (weights == 1.0) & finite[:, None]
+    onsets = np.sort(
+        [float(pseudotime[whole[:, j]].min()) for j in range(weights.shape[1]) if whole[:, j].any()]
+    )
+    segments = np.zeros(pseudotime.shape, dtype=np.int64)
+    segments[finite] = np.searchsorted(onsets, pseudotime[finite], side="right")
+    return segments
+
+
+def _n2_groups(donor: IntArray, pseudotime: F64, weights: F64, n_bins: int, n2_split: N2Split) -> IntArray:
+    """N2's stratum of each scored cell: donor x decile, and x onset segment for "lineage_onset"."""
+    groups = donor * (n_bins + 1) + _pseudotime_bins(pseudotime, n_bins)
+    if n2_split == "none":
+        return groups
+    split: IntArray = groups * (weights.shape[1] + 1) + _onset_segments(weights, pseudotime)
+    return split
 
 
 def _counts(ids: IntArray, weights: F64, n_clones: int) -> F64:
