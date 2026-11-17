@@ -19,7 +19,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks, plus the
     N2 amendment (see "Phase 2 rulings")
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 2, Task 1 (declare the robustness definitions) on `pivot/22-robustness-definitions`.
+- **Next:** phase 2, Task 1 (declare the robustness definitions) is done on
+  `pivot/22-robustness-definitions` (PR open, stacked on #25), awaiting review. Then Tasks 2-4, 5, 6, 7.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -98,6 +99,14 @@ One Sonnet scan checked the plan against `main`; its full table is in the ledger
   re-runs that one cheap stage. That is not a regression.
 - **Execution order:** 1, 5, N2a, 6, 7, then 2-4 (once the downloads are approved), 8 with 10
   alongside, 9, 11, 12, 13.
+
+## Phase 2 Task 1 decisions
+
+- **F14 declared.** `[tree_support.verification] on_failure = "provisional"` sits after
+  `max_controls_supported`, dated 2026-11-17. It has no runtime constant; Task 9 adds `VERDICT_VERIFIED`.
+- **`test_every_scalar_clonal_key_is_mirrored` narrowed.** It took every two-part `MIRRORED` path as a
+  clonal key; it now counts only paths starting with `clonal`, since phase 2 adds `cell_cycle`,
+  `stability` and `tree_support` paths.
 
 ## Controller handoff (2026-11-13, after Task 4)
 
@@ -574,7 +583,8 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/18-handoff-corrections` | #22 | merged (merge commit, dd6fc6a), phase 1 Task 16 |
 | `pivot/19-phase1-security` | #23 | merged (merge commit, aac08ed), phase 1 Task 17 |
 | `pivot/20-done-when-on-main` | #24 | merged (merge commit, 2217f76), phase 1 Done When re-run on `main` |
-| `pivot/21-phase2-start` | (this PR) | phase 2 start: current state, Shreyan's two rulings |
+| `pivot/21-phase2-start` | #25 | open, phase 2 start: current state, Shreyan's two rulings |
+| `pivot/22-robustness-definitions` | (this PR) | open, stacked on #25, phase 2 Task 1 |
 
 ## Verify the current state
 
