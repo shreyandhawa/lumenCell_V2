@@ -16,6 +16,7 @@ from lumencell.bench.calibration import (
     write_report,
 )
 from lumencell.bench.gates import REPO, load_thresholds
+from lumencell.clonal.scores import ClonalResult
 
 NAN = math.nan
 
@@ -181,3 +182,159 @@ def test_the_recorded_run_matches_the_declared_configuration() -> None:
 def test_the_declared_bound_is_18() -> None:
     cfg = load_thresholds()["clonal"]["calibration"]
     assert rejection_bound(cfg["n_seeds"], cfg["alpha"], cfg["binomial_quantile"]) == 18
+
+
+def test_the_n2_amendment_calibration_is_declared_on_fresh_seeds() -> None:
+    clonal = load_thresholds()["clonal"]
+    phase1, amended = clonal["calibration"], clonal["calibration_n2_amended"]
+    assert (amended["seed_start"], amended["n_seeds"]) == (300, 200)
+    # Everything but the seed range is the phase 1 configuration.
+    same = {k: v for k, v in amended.items() if k not in ("seed_start", "n_seeds")}
+    assert same == {k: v for k, v in phase1.items() if k not in ("seed_start", "n_seeds")}
+    assert set(amended) == set(phase1)
+    fresh = range(amended["seed_start"], amended["seed_start"] + amended["n_seeds"])
+    used = set(range(phase1["seed_start"], phase1["seed_start"] + phase1["n_seeds"])) | set(range(6))
+    assert not used & set(fresh)
+    assert rejection_bound(amended["n_seeds"], amended["alpha"], amended["binomial_quantile"]) == 18
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "table", "split", "keys"),
+    [
+        ({}, "calibration", "none", False),
+        (
+            {"table": "calibration_n2_amended", "n2_split": "lineage_onset"},
+            "calibration_n2_amended",
+            "lineage_onset",
+            True,
+        ),
+    ],
+)
+def test_run_calibration_reads_its_table_and_passes_the_split_to_every_score(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    kwargs: dict[str, str],
+    table: str,
+    split: str,
+    keys: bool,
+) -> None:
+    import lumencell.bench.calibration as cal
+
+    seen: list[str] = []
+    generated: list[int] = []
+
+    def gen(topology: str, preset: str, **kw: object) -> str:
+        generated.append(int(kw["seed"]))  # type: ignore[call-overload]
+        return topology
+
+    def null_ps(*args: object) -> dict[str, float]:
+        seen.append(str(args[-1]))
+        return {"m": 0.5}
+
+    def oracle(*args: object) -> ClonalResult:
+        seen.append(str(args[-1]))
+        return _FakeResult()  # type: ignore[return-value]
+
+    def ignored(*args: object) -> float:
+        seen.append(str(args[-1]))
+        return 0.5
+
+    def mono(*args: object) -> MonotonicCase:
+        seen.append(str(args[-1]))
+        return MonotonicCase("t", 0, (0.0, 1.0), (0.0, 1.0), 0.5)
+
+    monkeypatch.setattr(cal, "generate", gen)
+    monkeypatch.setattr(cal, "_null_p_values", null_ps)
+    monkeypatch.setattr(cal, "_oracle", oracle)
+    monkeypatch.setattr(cal, "_donors_ignored_n1", ignored)
+    monkeypatch.setattr(cal, "_monotonic_case", mono)
+    cfg = load_thresholds()
+    report = cal.run_calibration(cfg, ["m"], tmp_path, **kwargs)  # type: ignore[arg-type]
+    declared = cfg["clonal"][table]
+    assert report.config["calibration"] == declared
+    assert generated[0] == declared["seed_start"]
+    assert set(seen) == {split}
+    assert ("n2_split" in report.config) is keys
+    if keys:
+        assert (report.config["table"], report.config["n2_split"]) == (table, split)
+
+
+class _FakeResult:
+    nulls = (type("N", (), {"p": 0.5})(), type("N", (), {"p": 0.5})())
+
+
+def test_the_recorded_n2_amendment_run_matches_its_declaration_and_the_adoption_rule() -> None:
+    from lumencell.clonal.scores import RUNTIME_N2_SPLIT
+    from lumencell.trust.constants import CLONAL_METRIC_VERSION
+
+    cfg = load_thresholds()["clonal"]["calibration_n2_amended"]
+    path = REPO / "benchmarks" / "results" / "clonal-calibration-n2-amended-2026-11-17.json"
+    doc = json.loads(path.read_text())
+    assert doc["config"]["calibration"] == cfg
+    assert (doc["config"]["table"], doc["config"]["n2_split"]) == ("calibration_n2_amended", "lineage_onset")
+    assert doc["config"]["errors"] == [] and not doc["commit"].endswith("-dirty")
+    for c in doc["checks"]:
+        scored = [p for p in c["p_values"] if p is not None]
+        assert c["n"] == len(c["p_values"]) == cfg["n_seeds"]
+        assert c["rejections"] == sum(p <= cfg["alpha"] for p in scored)
+        assert c["bound"] == int(binom.ppf(cfg["binomial_quantile"], len(scored), cfg["alpha"]))
+    # The pre-declared adoption rule: version 2 and the split at run time if and only if it passed.
+    assert doc["passed"] is all(c["passed"] for c in doc["checks"]) is True
+    assert (CLONAL_METRIC_VERSION, RUNTIME_N2_SPLIT) == (2, "lineage_onset")
+
+
+@pytest.mark.parametrize("split", ["lineage_onset", "none"])
+def test_every_calibration_path_forwards_the_split(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, split: str
+) -> None:
+    from types import SimpleNamespace
+
+    import anndata as ad
+    import numpy as np
+
+    from lumencell.bench import calibration as cal
+    from lumencell.clonal.labels import encode_clones
+
+    seen: list[str] = []
+
+    def fake(*args: object, **kwargs: object) -> SimpleNamespace:
+        seen.append(str(kwargs["n2_split"]))
+        return SimpleNamespace(nulls=[SimpleNamespace(p=0.5)], eta=0.1, p=0.5)
+
+    monkeypatch.setattr(cal, "score_clonal", fake)
+    monkeypatch.setattr(cal, "score_with_baseline", fake)
+    truth = SimpleNamespace(
+        membership=lambda: np.ones((2, 4), dtype=bool),
+        order=np.arange(4.0),
+        n_obs=4,
+        exclusive=lambda: np.zeros(4, dtype=int),
+    )
+    codes = encode_clones(np.array(list("aabb"), dtype=object), np.array(list("xxxx"), dtype=object))
+    monkeypatch.setattr(cal, "_oracle_inputs", lambda *a: (truth, codes))
+
+    cal._score_oracle(truth, codes, split)  # type: ignore[arg-type]
+    cal._donors_ignored_n1(None, None, 0, split)  # type: ignore[arg-type]
+    cal._monotonic_case(None, "t", 0, [0.0, 1.0], lambda **kw: None, split)  # type: ignore[arg-type]
+    assert seen == [split] * 4
+
+    obs = {"clone_id": ["a", "a", "b", "b"], "donor": ["x"] * 4}
+    import pandas as pd
+
+    adata = ad.AnnData(X=np.zeros((4, 2)), obs=pd.DataFrame(obs, index=list("wxyz")))
+    monkeypatch.setattr(cal, "truth_from_adata", lambda b: SimpleNamespace(meta={"root_label": "r"}))
+    monkeypatch.setattr(cal, "add_clones", lambda *a: adata)
+    monkeypatch.setattr(cal, "load", lambda p: None)
+    monkeypatch.setattr(
+        cal, "run_pipeline", lambda ds, pp: SimpleNamespace(artifacts={"pca": np.zeros((4, 2))})
+    )
+    monkeypatch.setattr(cal, "InferenceContext", SimpleNamespace(from_prep=lambda *a, **k: None))
+    monkeypatch.setattr(
+        cal,
+        "run_method",
+        lambda *a: SimpleNamespace(membership=np.ones((2, 4), dtype=bool), pseudotime=np.arange(4.0)),
+    )
+    seen.clear()
+    errors: list[str] = []
+    out = cal._null_p_values(None, None, 0, ["m"], tmp_path, errors, split)  # type: ignore[arg-type]
+    assert errors == [] and out == {"m": 0.5}
+    assert seen == [split]

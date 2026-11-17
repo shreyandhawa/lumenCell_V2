@@ -19,11 +19,10 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks, plus the
     N2 amendment (see "Phase 2 rulings")
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 2, Task 1 (declare the robustness definitions) is done on
-  `pivot/22-robustness-definitions` (PR #26), and Task 5 (negative controls) on
-  `pivot/23-synth-controls` (stacked on #26); both await review. Task 6 (stability replicates
-  and their comparison) is done on `pivot/25-stability-engine`, stacked on
-  `pivot/23-synth-controls`, and awaits review. Then N2a (if not yet run), 7, then 2-4.
+- **Next:** phase 2. Merged to `main`: Task 1 (#26), Task 5 (#27), Task 6 (#28), Task 7 (#29).
+  N2a (#30) passed its calibration on seeds 300-499 and was adopted: the runtime N2 uses the
+  lineage-onset split and the clonal metric_version is 2 (see "Phase 2 N2a decisions and result").
+  Next: Task 8 (verdict calibration), Task 10 alongside; Tasks 2-4 wait for the download approval.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -102,6 +101,47 @@ One Sonnet scan checked the plan against `main`; its full table is in the ledger
   re-runs that one cheap stage. That is not a regression.
 - **Execution order:** 1, 5, N2a, 6, 7, then 2-4 (once the downloads are approved), 8 with 10
   alongside, 9, 11, 12, 13.
+
+## Phase 2 N2a decisions and result
+
+Three commits, in the declared order: b0e235a declares the amendment, its reasons, the adoption rule
+and `[clonal.calibration_n2_amended]` (seeds 300-499) before any measurement; 2b15c77 implements it
+(`n2_split` on `score_clonal`, `_onset_segments`, `run_calibration(table=, n2_split=)`) and the slow
+entry point `tests/clonal/test_calibration_n2_amended.py`; 7adf711 records the run and adopts it, then
+`origin/main` (#26 and #27, squash-merged) is merged in.
+- **Run:** 2026-11-17 at 2b15c77 (clean tree), 200 seeds, 30.4 min, run once. Record:
+  `benchmarks/results/clonal-calibration-n2-amended-2026-11-17.json`. Bound 18, no NaN p, no
+  method error. Every null p, so every headline p, used the amended N2.
+
+| Check | Rej. | Expected | Result |
+|---|---|---|---|
+| null/paga_dpt | 4 | calibrated | pass |
+| null/palantir | 3 | calibrated | pass |
+| null/scfates_ppt | 3 | calibrated | pass |
+| donor_confound/N1 | 15 | calibrated | pass |
+| donor_confound/N1_donors_ignored | 200 | not calibrated | pass (has teeth) |
+| depth_only/N1 | 200 | not calibrated | pass (has teeth) |
+| depth_only/N2 (amended) | 8 | calibrated | pass |
+| monotonicity, 9 cases | all rise; p at 0 is 0.13-0.996 | | pass |
+
+- **Reading.** The amended N2 brings depth_only from 57/200 (phase 1, seeds 100-299) to 8/200
+  (4%), so the split removes the diagnosed excess. The method nulls stay conservative (1.5-2%).
+  donor_confound/N1 is 15/200 (7.5%) against 7/200 in phase 1: inside the bound, but above
+  nominal. N1 does not use N2 at all, so this is seed-range variation, not the amendment; it is
+  worth watching if a later run lands near 18. Monotonicity remains a weak check (see Task 8).
+- **Adopted, by the pre-declared rule:** `RUNTIME_N2_SPLIT = "lineage_onset"` (scores.py),
+  `CLONAL_METRIC_VERSION` and `[clonal] metric_version` 1 -> 2. `trust_hash` changes, so every stored
+  clonal score is re-scored on its next GET. No test pinned a v1 hash. Phase 1's calibration entry
+  point keeps `n2_split="none"`, so it still describes its recorded file.
+- **Implementation notes.** Onsets come from scored cells whose weight on the lineage is exactly 1
+  (own-cells: every scored cell; oracle-cells: cells in exactly one of the method's lineages).
+  NaN-pseudotime cells are segment 0, already apart through decile bin `n_bins`. The stratum id is
+  `(donor * (n_bins + 1) + decile) * (L + 1) + segment`; with "none" it is the v1 id exactly.
+  Cells after the step but before the later lineages' onsets form a thin segment (as declared:
+  near-equal onsets are not merged).
+- **bench-synth** at metric_version 2: exit 0, 0 `REGRESSION` lines. 29 gate lines are reported
+  (as before: clonal_excess_ratio and pt_spearman rows); no clonal_p gate row fails.
+- Caveat: each onset is the earliest exclusive scored cell, so one stray early cell moves a cut (as declared; the calibration passed).
 
 ## Phase 2 Task 1 decisions
 
@@ -670,10 +710,11 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/19-phase1-security` | #23 | merged (merge commit, aac08ed), phase 1 Task 17 |
 | `pivot/20-done-when-on-main` | #24 | merged (merge commit, 2217f76), phase 1 Done When re-run on `main` |
 | `pivot/21-phase2-start` | #25 | merged (squash, e1c63d4), phase 2 start: current state, Shreyan's two rulings |
-| `pivot/22-robustness-definitions` | #26 | open, phase 2 Task 1 |
-| `pivot/23-synth-controls` | #27 | open, stacked on #26, phase 2 Task 5 |
-| `pivot/25-stability-engine` | #28 | open, stacked on `pivot/23-synth-controls`, phase 2 Task 6 |
-| `pivot/26-tree-support` | (this PR) | open, stacked on `pivot/25-stability-engine`, phase 2 Task 7 (with the PAGA no-edge fix) |
+| `pivot/22-robustness-definitions` | #26 | merged (squash, c8a50d9), phase 2 Task 1 |
+| `pivot/23-synth-controls` | #27 | merged (squash, 7257f5e), phase 2 Task 5 |
+| `pivot/25-stability-engine` | #28 | merged (squash, 4387948), phase 2 Task 6 |
+| `pivot/26-tree-support` | #29 | merged (squash, 14b8979), phase 2 Task 7 (with the PAGA no-edge fix) |
+| `pivot/24-n2-amendment` | #30 | phase 2 N2a; merged with a merge commit so the recorded commit 2b15c77 stays on `main` |
 
 ## Verify the current state
 

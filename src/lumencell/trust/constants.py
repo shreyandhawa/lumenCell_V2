@@ -5,7 +5,7 @@ tests/unit/test_trust_constants.py keeps the two equal: change the TOML first, w
 changelog entry, then this file.
 """
 
-CLONAL_METRIC_VERSION = 1
+CLONAL_METRIC_VERSION = 2  # 2: N2 with the lineage-onset split (N2a, 2026-11-17)
 MIN_CLONE_SIZE = 2
 SENSITIVITY_CLONE_SIZE = 3
 MIN_CLONES = 20

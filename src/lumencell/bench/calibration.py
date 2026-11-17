@@ -1,8 +1,10 @@
 """Calibration of the clonal nulls: slow, run once and recorded.
 
 Definitions are in ``[clonal.calibration]`` of ``benchmarks/thresholds.toml``, declared before the
-run. Each check draws one p-value per seed and counts rejections (p <= alpha) against the upper
-bound of a binomial: ``int(binom.ppf(quantile, n_scored, alpha))``, 18 for 200 seeds. A p-value
+run; the N2a amendment is calibrated the same way on ``[clonal.calibration_n2_amended]`` with
+``n2_split="lineage_onset"`` (``run_calibration``'s ``table`` and ``n2_split``).
+Each check draws one p-value per seed and counts rejections (p <= alpha) against the upper bound
+of a binomial: ``int(binom.ppf(quantile, n_scored, alpha))``, 18 for 200 seeds. A p-value
 that is NaN is kept as ``None``, counted in ``n_nan`` and left out of ``n_scored`` and of the
 rejections. A method that raises on a seed is a NaN p and is listed in ``config["errors"]``.
 
@@ -32,7 +34,7 @@ from lumencell.bench.synth import generate, truth_from_adata
 from lumencell.bench.synth_clones import ClonalLayer, Control, add_clones, clone_truth
 from lumencell.bench.truth import Truth
 from lumencell.clonal.labels import CloneCodes, encode_clones
-from lumencell.clonal.scores import ClonalResult, score_clonal, score_with_baseline
+from lumencell.clonal.scores import ClonalResult, N2Split, score_clonal, score_with_baseline
 from lumencell.data.loader import load
 from lumencell.engine.context import InferenceContext
 from lumencell.engine.registry import run_method
@@ -137,8 +139,19 @@ class CalibrationReport:
         )
 
 
-def run_calibration(cfg: dict[str, Any], methods: Sequence[str], workdir: Path) -> CalibrationReport:
-    cal, syn, layer_cfg = cfg["clonal"]["calibration"], cfg["synthetic"], cfg["clonal"]["synthetic"]
+def run_calibration(
+    cfg: dict[str, Any],
+    methods: Sequence[str],
+    workdir: Path,
+    *,
+    table: str = "calibration",
+    n2_split: N2Split = "none",
+) -> CalibrationReport:
+    """Every check on the seeds of ``[clonal.<table>]``, with N2 built by ``n2_split``.
+
+    The defaults are phase 1's recorded run: ``[clonal.calibration]`` and the decile N2.
+    """
+    cal, syn, layer_cfg = cfg["clonal"][table], cfg["synthetic"], cfg["clonal"]["synthetic"]
     alpha, quantile = cal["alpha"], cal["binomial_quantile"]
     topologies: list[str] = cal["topologies"]
     seeds = range(cal["seed_start"], cal["seed_start"] + cal["n_seeds"])
@@ -164,15 +177,17 @@ def run_calibration(cfg: dict[str, Any], methods: Sequence[str], workdir: Path) 
         base = gen(topology, seed)
 
         # null/<method>: prep once, shared by the methods.
-        for method, p in _null_p_values(base, layer(), seed, methods, workdir, errors).items():
+        for method, p in _null_p_values(base, layer(), seed, methods, workdir, errors, n2_split).items():
             ps[f"null/{method}"].append(p)
 
-        confound = _oracle(base, layer("donor_confound"), seed)
+        confound = _oracle(base, layer("donor_confound"), seed, n2_split)
         ps["donor_confound/N1"].append(confound.nulls[0].p if confound.nulls else math.nan)
-        ps["donor_confound/N1_donors_ignored"].append(_donors_ignored_n1(base, layer("donor_confound"), seed))
+        ps["donor_confound/N1_donors_ignored"].append(
+            _donors_ignored_n1(base, layer("donor_confound"), seed, n2_split)
+        )
 
         depth_base = base if topology == cal["depth_only_topology"] else gen(cal["depth_only_topology"], seed)
-        depth = _oracle(depth_base, layer("depth_only"), seed)
+        depth = _oracle(depth_base, layer("depth_only"), seed, n2_split)
         ps["depth_only/N2"].append(_null_p(depth, 1))
         ps["depth_only/N1"].append(_null_p(depth, 0))
         print(f"calibration: seed {seed} done", file=sys.stderr, flush=True)
@@ -188,17 +203,20 @@ def run_calibration(cfg: dict[str, Any], methods: Sequence[str], workdir: Path) 
     checks = [count_rejections(name, *controls[name], values, alpha, quantile) for name, values in ps.items()]
 
     monotonic = tuple(
-        _monotonic_case(gen(topology, seed), topology, seed, cal["monotonic_fate_bias"], layer)
+        _monotonic_case(gen(topology, seed), topology, seed, cal["monotonic_fate_bias"], layer, n2_split)
         for topology in cal["monotonic_topologies"]
         for seed in cal["monotonic_seeds"]
     )
-    config = {
+    config: dict[str, Any] = {
         "calibration": cal,
         "synthetic": syn,
         "clonal_synthetic": layer_cfg,
         "methods": list(methods),
         "errors": errors,
     }
+    if (table, n2_split) != ("calibration", "none"):
+        # Phase 1's recorded file has neither key; any other run says what it calibrated.
+        config.update(table=table, n2_split=n2_split)
     return CalibrationReport(tuple(checks), monotonic, config, _commit())
 
 
@@ -234,6 +252,7 @@ def _null_p_values(
     methods: Sequence[str],
     workdir: Path,
     errors: list[str],
+    n2_split: N2Split,
 ) -> dict[str, float]:
     """Headline own-cells p of each method on one seed (NaN where a method raises or is undefined)."""
     truth = truth_from_adata(base)
@@ -260,6 +279,7 @@ def _null_p_values(
                     pca,
                     pp.neighbors_pcs,
                     int(result.membership.shape[0]),
+                    n2_split=n2_split,
                 )
                 out[method] = score.p
             except Exception as exc:
@@ -279,7 +299,7 @@ def _oracle_inputs(base: ad.AnnData, layer: ClonalLayer, seed: int) -> tuple[Tru
     return truth, encode_clones(truth.clone_ids, truth.donors)
 
 
-def _score_oracle(truth: Truth, codes: CloneCodes) -> ClonalResult:
+def _score_oracle(truth: Truth, codes: CloneCodes, n2_split: N2Split) -> ClonalResult:
     """The true lineages on their single-lineage cells, true order, constant baseline."""
     return score_clonal(
         truth.membership(),
@@ -287,17 +307,18 @@ def _score_oracle(truth: Truth, codes: CloneCodes) -> ClonalResult:
         truth.order,
         np.zeros(truth.n_obs, dtype=np.int64),
         oracle_cells=truth.exclusive() >= 0,
+        n2_split=n2_split,
     )
 
 
-def _oracle(base: ad.AnnData, layer: ClonalLayer, seed: int) -> ClonalResult:
-    return _score_oracle(*_oracle_inputs(base, layer, seed))
+def _oracle(base: ad.AnnData, layer: ClonalLayer, seed: int, n2_split: N2Split) -> ClonalResult:
+    return _score_oracle(*_oracle_inputs(base, layer, seed), n2_split)
 
 
-def _donors_ignored_n1(base: ad.AnnData, layer: ClonalLayer, seed: int) -> float:
+def _donors_ignored_n1(base: ad.AnnData, layer: ClonalLayer, seed: int, n2_split: N2Split) -> float:
     """N1 on the same data with every donor code 0 (clone ids stay keyed by donor)."""
     truth, codes = _oracle_inputs(base, layer, seed)
-    result = _score_oracle(truth, dataclasses.replace(codes, donor=np.zeros_like(codes.donor)))
+    result = _score_oracle(truth, dataclasses.replace(codes, donor=np.zeros_like(codes.donor)), n2_split)
     return _null_p(result, 0)
 
 
@@ -306,9 +327,14 @@ def _null_p(result: ClonalResult, index: int) -> float:
 
 
 def _monotonic_case(
-    base: ad.AnnData, topology: str, seed: int, fate_bias: Sequence[float], layer: Callable[..., ClonalLayer]
+    base: ad.AnnData,
+    topology: str,
+    seed: int,
+    fate_bias: Sequence[float],
+    layer: Callable[..., ClonalLayer],
+    n2_split: N2Split,
 ) -> MonotonicCase:
-    results = [_oracle(base, layer(fate_bias=fb), seed) for fb in fate_bias]
+    results = [_oracle(base, layer(fate_bias=fb), seed, n2_split) for fb in fate_bias]
     zero = list(fate_bias).index(0.0)
     return MonotonicCase(
         topology=topology,
