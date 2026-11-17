@@ -307,3 +307,11 @@ def test_the_committed_verification_failed_so_the_served_verdict_is_capped() -> 
     from lumencell.trust import constants
 
     assert constants.VERDICT_VERIFIED is False
+
+
+def test_a_pending_c2_gets_no_cap_note(monkeypatch: pytest.MonkeyPatch) -> None:
+    _unverified(monkeypatch)
+    v = _v(tree=None)
+    assert _check(v, "C2").state == "pending"
+    assert v.level == "provisional"
+    assert not any("failed its verification" in r for r in v.reasons)

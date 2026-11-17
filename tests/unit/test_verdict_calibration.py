@@ -333,6 +333,54 @@ def test_the_verification_payload_is_strict_json_and_has_passed(tmp_path: Path) 
     assert again == ver
 
 
+def test_a_weak_control_is_not_counted_as_supported() -> None:
+    tau = Thresholds(tau_tree=None, tau_lin=0.9, tau_pt=None)
+    recs = [_rec("matrix", "m/seed3"), _rec("control", "loop/seed3", lin=0.1)]
+    ver = verify(recs, tau, 0)
+    assert ("loop/seed3", "paga_dpt", "weak") in ver.verdicts
+    assert ver.controls_supported == ()
+    assert ver.passed is True
+
+
+def test_the_verdict_reads_tree_likeness_at_factor_one() -> None:
+    tau = Thresholds(tau_tree=0.5, tau_lin=None, tau_pt=None)
+    trees = [0.9 if f == 1.0 else 0.1 for f in FACTORS]
+    assert verify([_rec("matrix", "m/seed3", tree=trees)], tau, 0).verdicts[0][2] == "supported"
+    trees = [0.1 if f == 1.0 else 0.9 for f in FACTORS]
+    assert verify([_rec("matrix", "m/seed3", tree=trees)], tau, 0).verdicts[0][2] == "not_supported"
+
+
+def test_n_failed_counts_only_the_failed_runs() -> None:
+    recs = [_rec("matrix", "m/seed3"), _rec("matrix", "m/seed4"), _rec("control", "loop/seed3", error="boom")]
+    assert verify(recs, LOOSE, 0).n_failed == 1
+
+
+def test_the_matrix_share_ignores_controls_and_is_zero_without_matrix_runs() -> None:
+    recs = [_rec("matrix", "m/seed3"), _cov(_rec("matrix", "m/seed4"), 0.5), _rec("control", "loop/seed3")]
+    assert verify(recs, LOOSE, 0).matrix_supported_share == 0.5
+    assert verify([_rec("control", "loop/seed3")], LOOSE, 0).matrix_supported_share == 0.0
+
+
+def test_a_failed_verification_payload_says_so_by_kind() -> None:
+    recs = [_rec("matrix", "m/seed3"), _rec("control", "loop/seed3"), _cov(_rec("control", "blob/seed3"), 0.5)]
+    ver = verify(recs, LOOSE, 0)
+    payload = verification_payload(recs, ver, LOOSE, CFG, "abc")
+    assert payload["passed"] is False
+    assert payload["controls_supported"] == ["loop/seed3 paga_dpt"]
+    assert payload["controls_supported_by_kind"] == {"loop": 1}
+    assert payload["level_counts"]["control"] == {"supported": 1, "not_supported": 1}
+
+
+def test_the_payload_is_complete_only_with_every_expected_run() -> None:
+    runs = sorted(expected_verification_runs(CFG))
+    recs = [_rec(g, d, m) for g, d, m in runs]
+    assert verification_payload(recs, verify(recs, LOOSE, 0), LOOSE, CFG, "abc")["complete"] is True
+    part = recs[:-1]
+    assert verification_payload(part, verify(part, LOOSE, 0), LOOSE, CFG, "abc")["complete"] is False
+    extra = [*recs, _rec("matrix", "m/seed99")]
+    assert verification_payload(extra, verify(extra, LOOSE, 0), LOOSE, CFG, "abc")["complete"] is True
+
+
 def test_expected_verification_runs_use_the_fresh_seeds() -> None:
     runs = expected_verification_runs(CFG)
     assert {int(d.rsplit("seed", 1)[1]) for _, d, _ in runs} == set(VER["matrix_seeds"]) | set(

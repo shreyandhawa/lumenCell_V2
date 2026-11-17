@@ -215,8 +215,18 @@ on that clean tree, 2026-11-17, 6.2 min, once: `benchmarks/results/verdict-verif
   `verdict(..., verified=None)` reads the constant; `verify` passes `verified=True` so the rule is measured,
   not the cap. The share of matrix runs supported is reported, not gated. The existing verdict tests run
   with the constant patched True; the capped state has its own tests.
-- **Open for Shreyan (plan Step 6):** Tasks 11 and 12 wait for the owner's decision on how to make the
-  checks discriminate (a different C1/C2 definition, harder matrix/controls, or accepting a provisional-only verdict).
+- **Tasks 11 and 12 go ahead with the cap (ruling F14, which supersedes plan Step 6).** Shreyan ruled on
+  2026-11-17 ("yes downloads and a"): option (a), accept a provisional-only verdict. The F14 cap stays
+  (`VERDICT_VERIFIED = False`); wherever the verdict is served or documented, the failed verification is
+  stated plainly. Nothing is re-run or tuned to rescue it.
+- **Follow-up, a pre-declared redesign of C1/C2 (not in phase 2).** Task 8 and this run show C1 (coverage)
+  passes on every control and C2 (PAGA tree-likeness) does not separate loops, forests and single clusters
+  from trees; C3 saturates (share_matched is a Jaccard >= 0.6 threshold, median of 5). A redesign must be
+  declared in `thresholds.toml` with reasons and a date before any run that measures it, calibrated on a
+  fresh seed range (not 0-5), and verified on another; until then the served verdict stays provisional.
+- Test fix round (after review): survivor tests for a weak control, the factor-1.0 tree-likeness, n_failed,
+  the matrix share, a failed payload by kind, `complete`, and no cap note on a pending C2. The recorded
+  run and the measured commit 37197c8 are unchanged.
 
 ## Phase 2 Task 1 decisions
 
@@ -719,9 +729,10 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
   approved a pre-declared N2 amendment for phase 2 (see "Phase 2 rulings").
 - **Reordering cells (closed 2026-11-17).** Within Monte Carlo error accepted (see "Phase 2
   rulings").
-- **Verdict verification failed (2026-11-17, Task 9).** 28 of 31 control runs were verdicted supported
-  (max 0); the served verdict is capped at provisional until it passes. The rule, taus and seeds were not
-  changed. Tasks 11 and 12 wait for your decision; see "Phase 2 Task 9 decisions and result".
+- **Verdict verification failed (closed 2026-11-17).** 28 of 31 control runs were verdicted supported
+  (max 0); the served verdict is capped at provisional. Shreyan ruled option (a): accept a
+  provisional-only verdict, keep the cap, state the failure plainly, and record a pre-declared C1/C2
+  redesign as follow-up work (see "Phase 2 Task 9 decisions and result"). Tasks 11 and 12 proceed.
 - Commit 33c281d and PR #5 were created at 07:57 under your account, not by the orchestrating
   session. Was that you, or a tool?
 
