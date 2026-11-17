@@ -142,3 +142,13 @@ def test_a_replicate_error_is_one_escaped_line_of_bounded_length() -> None:
 def test_a_not_measured_note_is_escaped_and_bounded() -> None:
     note = not_measured("failed", "boom\r\n\x1b[2J" + "y" * 5000).notes[0]
     assert note.isprintable() and len(note) < 400
+
+
+def test_safe_text_pins_the_cap_the_marker_and_every_control_character() -> None:
+    from lumencell.trust.stability import NOTE_LIMIT, safe_text
+
+    assert NOTE_LIMIT == 300
+    assert safe_text("a" * 300) == "a" * 300
+    assert safe_text("a" * 301) == "a" * 299 + "\u2026"
+    assert len(safe_text("a" * 5000)) == 300
+    assert safe_text("a\x7fb\x85c\u2028d") == "a\\x7fb\\x85c\\u2028d"
