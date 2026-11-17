@@ -233,11 +233,12 @@ on that clean tree, 2026-11-17, 6.2 min, once: `benchmarks/results/verdict-verif
 ## Phase 2 Task 12 decisions and result
 
 `bench real` (default `--stability`) now runs `stability_row` after each method; the run is
-`benchmarks/results/real-2026-11-17.json` (commit b2f2a5f plus this task's code, `make bench-real` exit 0,
-2 min 9 s, 9 of 9 rows, stability `ok` on all, none failed).
+`benchmarks/results/real-2026-11-17.json` (measured on commit 99c3786, a clean tree, re-run for provenance; `make bench-real` exit 0,
+2 min, 9 of 9 rows, stability `ok` on all, none failed).
 
 - **Identity check: PASS.** Every gated metric and `n_clusters` is identical to `real-2026-11-13.json` for
-  all 9 dataset/method rows (NaN equals NaN). `runtime_seconds` stops before stability (F17).
+  all 9 dataset/method rows (NaN equals NaN). `runtime_seconds` stops before stability (F17) and differs from 2026-11-13 because of a warm cache and
+  machine load (not gated). C3, C4, tree-likeness and levels are unchanged from the first run.
 - **Verdict cap (F14, ruling (a)).** `verdict(...)` is called without `verified=` and with
   `calibrated_thresholds()` (all taus None), so a supported or weak verdict is capped at provisional
   because the verification failed on fresh seeds (2026-11-17), and C2-C4 are non-discriminating. A

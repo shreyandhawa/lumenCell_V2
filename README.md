@@ -70,7 +70,7 @@ Cases failing each gate (a case can fail several): PAGA + DPT: `branch_accuracy`
 
 The clonal gate is not a branch gate: a method that merges two true lineages can score a clonal ratio above 1, and lineage recall catches that.
 
-**Real datasets** (`benchmarks/results/real-2026-11-17.json`, commit `b2f2a5f`). Spearman is against stage order (embryo time for gastrulation):
+**Real datasets** (`benchmarks/results/real-2026-11-17.json`, commit `99c3786`). Spearman is against stage order (embryo time for gastrulation):
 
 | Method | bonemarrow | gastrulation_erythroid | pancreas |
 |---|---|---|---|
