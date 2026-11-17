@@ -36,7 +36,26 @@ def test_runtime_constants_equal_the_thresholds_file() -> None:
         value: Any = reduce(lambda node, key: node[key], path, thresholds)
         assert getattr(constants, name) == value, name
     declared = {n for n in vars(constants) if n.isupper()} - {"MAX_DONORS"}
-    assert set(MIRRORED) == declared
+    assert set(MIRRORED) | set(CALIBRATED) == declared
+
+
+# tau constant -> (its check, its key in [tree_support.calibrated]). None when non-discriminating.
+CALIBRATED: dict[str, tuple[str, str]] = {
+    "TAU_TREE": ("C2", "tau_tree"),
+    "TAU_LIN": ("C3", "tau_lin"),
+    "TAU_PT": ("C4", "tau_pt"),
+}
+
+
+def test_calibrated_taus_equal_the_thresholds_file() -> None:
+    calibrated = load_thresholds()["tree_support"]["calibrated"]
+    for name, (check, key) in CALIBRATED.items():
+        value = getattr(constants, name)
+        if check in calibrated["non_discriminating"]:
+            assert value is None, name
+            assert key not in calibrated, name
+        else:
+            assert value == calibrated[key], name
 
 
 def test_every_scalar_clonal_key_is_mirrored() -> None:

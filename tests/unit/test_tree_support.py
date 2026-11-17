@@ -10,6 +10,7 @@ from lumencell.engine.tree_support import (
     ClonalEvidence,
     StabilityEvidence,
     Thresholds,
+    calibrated_thresholds,
     coverage,
     tree_likeness,
     verdict,
@@ -214,3 +215,26 @@ def test_not_supported_wins_over_other_fails() -> None:
     low_stab = StabilityEvidence("done", lineage=0.1, pseudotime=0.95)
     assert _v(cov=0.5, stab=low_stab).level == "not_supported"
     assert _v(tree=0.1, clonal=BAD_C5).level == "not_supported"
+
+
+def test_calibrated_thresholds_are_the_committed_taus() -> None:
+    from lumencell.trust import constants
+
+    t = calibrated_thresholds()
+    assert (t.tau_tree, t.tau_lin, t.tau_pt) == (constants.TAU_TREE, constants.TAU_LIN, constants.TAU_PT)
+    assert (t.coverage_min, t.clonal_p_max) == (constants.COVERAGE_MIN, constants.CLONAL_P_MAX)
+
+
+def test_calibrated_thresholds_read_the_module_taus(monkeypatch: pytest.MonkeyPatch) -> None:
+    import lumencell.engine.tree_support as ts
+
+    monkeypatch.setattr(ts, "TAU_TREE", 0.7)
+    monkeypatch.setattr(ts, "TAU_LIN", 0.8)
+    monkeypatch.setattr(ts, "TAU_PT", 0.9)
+    assert calibrated_thresholds() == Thresholds(0.7, 0.8, 0.9)
+
+
+def test_the_committed_calibration_leaves_c2_to_c4_out_and_still_gives_a_verdict() -> None:
+    v = _v(thresholds=calibrated_thresholds())
+    assert {_check(v, cid).state for cid in ("C2", "C3", "C4")} == {"excluded"}
+    assert v.level == "supported"
