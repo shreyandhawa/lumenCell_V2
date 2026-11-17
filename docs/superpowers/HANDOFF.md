@@ -192,6 +192,32 @@ records). The quantile arithmetic was recomputed independently from the records 
   still 1.0 for C3 and >= 0.998 for C4, and loop alone beats the matrix at C2 x1.0 and x2.0).
   Caveat: each control quantile rests on 12 datasets or 31 runs, so it is set by its top two to four values.
 
+## Phase 2 Task 9 decisions and result
+
+Two commits: 37197c8 adds `verify`, `Verification` and `verification_payload` (make ci 0); the run was made
+on that clean tree, 2026-11-17, 6.2 min, once: `benchmarks/results/verdict-verification-2026-11-17.json`
+(commit 37197c8, `complete`, 72 of 72 records). The second commit records the file and applies F14.
+
+- **Result: verification FAILED, as expected.** Controls verdicted supported: 28 of 31 control runs (max 0):
+  blob 9, loop 9, sheet 9, two_groups 1 (palantir seed 5). The 3 not supported are two_groups paga_dpt
+  seeds 3-5 (coverage 0.48-0.51, C1 fails). `passed` is false.
+- **Matrix:** 36 of 36 runs verdicted supported (share 1.0, reported, not gated).
+- **Runs left out (5, reference failed, all two_groups):** palantir seeds 3 and 4, scfates_ppt seeds 3-5,
+  the same two engine findings as Task 8 (a kNN graph in two parts gives an internal error). One palantir
+  subsample replicate raised (non-finite input) on a dataset that still ran; it counts as zero agreement.
+- **Reading, plainly.** With C2, C3 and C4 all non-discriminating (Task 8) the verdict is C1 alone, and C1
+  only asks that 95% of cells have a pseudotime. Every single-lineage, loop or sheet control reaches
+  that, so the verdict cannot tell a tree from these controls: supported means "connected", not "a tree".
+  Nothing was tuned or re-run; rule, taus (all None), seeds and controls unchanged.
+- **F14 applied.** `[tree_support.verified]` (passed = false, date, source) mirrors into
+  `VERDICT_VERIFIED = False` and `VERDICT_VERIFIED_ON`. In `_level`, while it is False, supported and weak
+  become provisional with a reason naming the failed verification and its date; not_supported is kept.
+  `verdict(..., verified=None)` reads the constant; `verify` passes `verified=True` so the rule is measured,
+  not the cap. The share of matrix runs supported is reported, not gated. The existing verdict tests run
+  with the constant patched True; the capped state has its own tests.
+- **Open for Shreyan (plan Step 6):** Tasks 11 and 12 wait for the owner's decision on how to make the
+  checks discriminate (a different C1/C2 definition, harder matrix/controls, or accepting a provisional-only verdict).
+
 ## Phase 2 Task 1 decisions
 
 - **F14 declared.** `[tree_support.verification] on_failure = "provisional"` sits after
@@ -693,6 +719,9 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
   approved a pre-declared N2 amendment for phase 2 (see "Phase 2 rulings").
 - **Reordering cells (closed 2026-11-17).** Within Monte Carlo error accepted (see "Phase 2
   rulings").
+- **Verdict verification failed (2026-11-17, Task 9).** 28 of 31 control runs were verdicted supported
+  (max 0); the served verdict is capped at provisional until it passes. The rule, taus and seeds were not
+  changed. Tasks 11 and 12 wait for your decision; see "Phase 2 Task 9 decisions and result".
 - Commit 33c281d and PR #5 were created at 07:57 under your account, not by the orchestrating
   session. Was that you, or a tool?
 

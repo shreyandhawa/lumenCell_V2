@@ -27,6 +27,8 @@ MIRRORED: dict[str, tuple[str, ...]] = {
     "STABILITY_SEED": ("stability", "seed"),
     "MATCH_JACCARD": ("stability", "match_jaccard"),
     "COVERAGE_MIN": ("tree_support", "coverage_min"),
+    "VERDICT_VERIFIED": ("tree_support", "verified", "passed"),
+    "VERDICT_VERIFIED_ON": ("tree_support", "verified", "date"),
 }
 
 
@@ -83,3 +85,15 @@ def test_every_scalar_robustness_key_is_mirrored() -> None:
 def test_the_clonal_p_gate_equals_the_runtime_p_max() -> None:
     gates = load_thresholds()["synthetic"]["gates"]
     assert gates["clonal_p"]["max"] == constants.CLONAL_P_MAX
+
+
+def test_the_verified_flag_follows_the_recorded_verification() -> None:
+    import json
+    from pathlib import Path
+
+    verified = load_thresholds()["tree_support"]["verified"]
+    results = Path(__file__).resolve().parents[2] / "benchmarks" / "results"
+    doc = json.loads((results / verified["source"].rsplit("/", 1)[1]).read_text())
+    assert verified["passed"] is doc["passed"]
+    assert verified["date"] in verified["source"]
+    assert constants.VERDICT_VERIFIED is doc["passed"]

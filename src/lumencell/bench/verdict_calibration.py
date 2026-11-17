@@ -354,7 +354,10 @@ class Verification:
 
 
 def verify(records: Sequence[RunRecord], thresholds: Thresholds, max_controls_supported: int) -> Verification:
-    """Verdict every run that did not fail (factor-1.0 tree-likeness, stability, no clones)."""
+    """Verdict every run that did not fail (factor-1.0 tree-likeness, stability, no clones).
+
+    ``verified=True`` skips the served cap, so the rule itself is what is measured.
+    """
     verdicts: list[tuple[str, str, str]] = []
     controls: list[str] = []
     matrix_levels: list[str] = []
@@ -367,6 +370,7 @@ def verify(records: Sequence[RunRecord], thresholds: Thresholds, max_controls_su
             StabilityEvidence("done", r.lineage_stability, r.pseudotime_stability),
             ClonalEvidence("not_configured", r.n_lineages),
             thresholds,
+            verified=True,
         )
         verdicts.append((r.dataset, r.method, v.level))
         if r.group == "control" and v.level == "supported":

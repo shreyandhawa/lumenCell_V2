@@ -14,7 +14,15 @@ import numpy.typing as npt
 from scipy import sparse
 
 from lumencell.clonal.scores import ClonalResult
-from lumencell.trust.constants import CLONAL_P_MAX, COVERAGE_MIN, TAU_LIN, TAU_PT, TAU_TREE
+from lumencell.trust.constants import (
+    CLONAL_P_MAX,
+    COVERAGE_MIN,
+    TAU_LIN,
+    TAU_PT,
+    TAU_TREE,
+    VERDICT_VERIFIED,
+    VERDICT_VERIFIED_ON,
+)
 
 CheckId = Literal["C1", "C2", "C3", "C4", "C5"]
 CheckState = Literal["pass", "fail", "not_applicable", "pending", "unavailable", "excluded"]
@@ -214,19 +222,30 @@ def _c5(c: ClonalEvidence, t: Thresholds) -> Check:
     )
 
 
-def _level(checks: tuple[Check, ...]) -> Level:
-    """The one place that decides the level."""
+def _unverified_note() -> str:
+    return (
+        f"The verdict rule failed its verification on {VERDICT_VERIFIED_ON}: control runs were "
+        "verdicted supported. Until it passes, no run is shown above provisional, unless it is not supported."
+    )
+
+
+def _level(checks: tuple[Check, ...], verified: bool) -> tuple[Level, str | None]:
+    """The one place that decides the level, and the note when it is capped (a failed verification).
+
+    A failed C1 or C2 stays not_supported: that is a real failure whether or not the rule is verified.
+    """
     first_two = checks[:2]  # C1 and C2 are never "unavailable"
     if any(c.state == "fail" for c in first_two):
-        return "not_supported"
+        return "not_supported", None
     if any(c.state == "pending" for c in first_two):
-        return "provisional"
+        return "provisional", None
     rest = checks[2:]
-    if any(c.state == "fail" for c in rest):
-        return "weak"
-    if any(c.state in ("pending", "unavailable") for c in rest):
-        return "provisional"
-    return "supported"
+    if any(c.state in ("pending", "unavailable") for c in rest) and not any(c.state == "fail" for c in rest):
+        return "provisional", None
+    level: Level = "weak" if any(c.state == "fail" for c in rest) else "supported"
+    if not verified:
+        return "provisional", _unverified_note()
+    return level, None
 
 
 def verdict(
@@ -235,7 +254,11 @@ def verdict(
     stability: StabilityEvidence,
     clonal: ClonalEvidence,
     thresholds: Thresholds,
+    verified: bool | None = None,
 ) -> Verdict:
+    """``verified`` defaults to the recorded verification; the verification itself passes True."""
+    if verified is None:
+        verified = VERDICT_VERIFIED
     t = thresholds
     checks = (
         _c1(coverage, t),
@@ -244,5 +267,6 @@ def verdict(
         _stability("C4", CHECK_NAMES["C4"], stability.pseudotime, t.tau_pt, stability),
         _c5(clonal, t),
     )
-    reasons = tuple(c.reason for c in checks if c.reason is not None)
-    return Verdict(_level(checks), checks, reasons)
+    level, note = _level(checks, verified)
+    reasons = tuple(c.reason for c in checks if c.reason is not None) + ((note,) if note else ())
+    return Verdict(level, checks, reasons)
