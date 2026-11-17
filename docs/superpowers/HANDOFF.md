@@ -231,10 +231,11 @@ on that clean tree, 2026-11-17, 6.2 min, once: `benchmarks/results/verdict-verif
   (`VERDICT_VERIFIED = False`); wherever the verdict is served or documented, the failed verification is
   stated plainly. Nothing is re-run or tuned to rescue it.
 - **Follow-up, a pre-declared redesign of C1/C2 (not in phase 2).** Task 8 and this run show C1 (coverage)
-  passes on every control and C2 (PAGA tree-likeness) does not separate loops, forests and single clusters
-  from trees; C3 reads 1.0 on many controls, mostly because a run with one lineage matches itself
-  trivially (11 of 31 control runs in Task 8, 13 in Task 9), not because of the Jaccard >= 0.6 cut
-  (multi-lineage blob runs score 0-0.2; see "Phase 2 final review"). A redesign must be
+  passes on every control except two_groups paga_dpt (0.48-0.51), and C2 (PAGA tree-likeness) does not
+  separate loops and forests from trees; C3 reads 1.0 on many controls, mostly because a run with one
+  lineage matches itself trivially (11 of 31 control runs in Task 8, 13 in Task 9), not because of the
+  Jaccard >= 0.6 cut (multi-lineage blob runs score 0-0.2), and stable non-trees with two or more
+  lineages (sheet, two_groups palantir) also reach 1.0 (see "Phase 2 final review"). A redesign must be
   declared in `thresholds.toml` with reasons and a date before any run that measures it, calibrated on a
   fresh seed range (not 0-5), and verified on another; until then the served verdict stays provisional.
 - Test fix round (after review): survivor tests for a weak control, the factor-1.0 tree-likeness, n_failed,
