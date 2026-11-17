@@ -34,14 +34,70 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   stays recorded as failed, and `clonal-calibration-2026-11-13.json` is never edited. Phase 2 adds
   a pre-declared amendment to N2: its definition, reasons and date go into
   `benchmarks/thresholds.toml` in a commit that lands before any run that measures it, and it is
-  calibrated on a fresh seed range, never 100-299. Where and how it fits is ruled in the phase 2
-  pre-flight and recorded under "Phase 2 pre-flight rulings" once the pre-flight has run.
+  calibrated on a fresh seed range, never 100-299. Where and how it fits is ruled in "Phase 2 pre-flight rulings" (task N2a).
 - **F10 accepted: reordering cells is within Monte Carlo error, not exact.** Reordering cells
   leaves the deterministic fields exactly unchanged and the null-based fields (null mean and sd,
   eta, p, eta_base, delta_eta, p_delta, coupling) within Monte Carlo error, as
   `test_reordering_cells_keeps_deterministic_fields_and_null_fields_within_monte_carlo_error`
   bounds. Spec §4.5's "unchanged" is read that way for those fields. The shuffle is not reworked.
   Closed.
+
+## Phase 2 pre-flight rulings (controller, 2026-11-17)
+
+One Sonnet scan checked the plan against `main`; its full table is in the ledger folder
+(`preflight.md`, findings F1-F22). Every consumed interface exists. Rulings that change a task:
+- **N2a, the N2 amendment (its own task and PR, Opus, after Task 5).** A branch-point split, chosen
+  over finer bins because it targets the diagnosed mechanism (lineage composition steps inside a
+  decile), where finer bins only shrink the step and cost power on every run.
+  - Definition: for each lineage, its onset is the smallest pseudotime among the scored cells whose
+    whole weight is on that lineage. A lineage with no such cell adds no cut. N2's strata become donor
+    x decile x segment, where segment counts the onsets at or below a cell's pseudotime. Cells
+    without pseudotime keep their own stratum. Near-equal onsets are not merged. The strata use
+    only lineage weights and pseudotime, never clone labels, so the shuffle stays a valid null.
+  - It is the same rule in own-cells and oracle-cells modes, built from the weights and pseudotime
+    each call already passes to `score_clonal`. N2 is redefined in place, so N3's RNG stream and the
+    API's null names do not move.
+  - Order inside the PR: (1) a commit that declares the definition, its reasons and the date in
+    `thresholds.toml`, plus a new `[clonal.calibration_n2_amended]` table with seeds 300-499. That
+    table keeps the phase 1 checks, alpha, bound rule and NaN rule. `[clonal.calibration]` and
+    `clonal-calibration-2026-11-13.json` stay untouched. (2) The implementation, behind the pinned
+    definition. (3) The 200-seed run in the background, about 40 min, recorded as a new file.
+  - Adoption is decided now, before the run. If every check passes, the amended N2 becomes the
+    runtime N2 and `CLONAL_METRIC_VERSION` goes from 1 to 2. That changes `trust_hash`, so every
+    stored clonal agreement is re-scored on its next GET. If any check fails, it is recorded as
+    failed, and the runtime stays on metric version 1.
+  - Cost: an Opus implementer, a 40-minute run, and one `make bench-synth` to confirm nothing
+    regresses.
+- **F14, verification failure is planned for now.** If Task 9 fails, the verdict machinery still
+  ships (Tasks 10-12 go ahead), but every served verdict is capped at `provisional`, with a note
+  that the thresholds failed verification on fresh seeds. Task 1 declares this as
+  `[tree_support.verification] on_failure = "provisional"`; Task 9 records the outcome as a constant
+  (`VERDICT_VERIFIED`), mirrored from the TOML. No rule, seed or control is changed to rescue a
+  failed verification.
+- **F2, Tasks 1 and 8.** Task 1 writes its test as planned. Task 8 updates that test: it replaces
+  `"calibrated" not in ...` with checks on the calibrated table.
+- **F12, C5 (Task 7), the spec wins.** C5 is `not_applicable` only when clones are not configured or
+  L < 2. With L >= 2 and every scored clone in one lineage (`single_lineage`), C5 fails.
+- **F3, F4 and F5, Tasks 10 and 11.** `result.json` records the requested `terminals` (as sent) and
+  the run's `clonal_columns`. The stability payload takes both from the run, never from the current
+  settings, and the server reads the settings through `view.clonal_snapshot()`.
+- **F1, Task 11.** Stability is queued for every finished run whether or not clones are
+  configured. Task 11 updates
+  `tests/api/test_clonal_trust.py::test_submit_trust_jobs_queues_clonal_only_with_settings` and any
+  API test that now sees a stability job.
+- **F6 and F7, Task 6.** `restrict()` slices `genes_detected`, `embeddings` and `obs`, and maps
+  `uns_root` into the subset (dropped when the subset lacks it). `STAGE_BY_NAME` goes in `stages.py`.
+  The Jaccard matrix and the Hungarian pairing are pulled out of `compare.py` into named functions.
+- **F13.** Replicate prep stays in memory (plan), not in the job's temporary directory (spec §5.2).
+  Neither touches the stage cache.
+- **F16, Task 10.** The cancel test uses 3000 cells, so it does not hinge on timing.
+- **F17, Task 12.** `runtime_seconds` stops before stability runs.
+- **F8, Task 3, accepted.** The `cell_cycle` key covers only its two params, so a later edit to the
+  list or seed leaves a stale, report-only hint until `PIPELINE_VERSION` moves.
+- **F22.** After Task 3 every existing prep cache lacks `cell_cycle`, so the first server start
+  re-runs that one cheap stage. That is not a regression.
+- **Execution order:** 1, 5, N2a, 6, 7, then 2-4 (once the downloads are approved), 8 with 10
+  alongside, 9, 11, 12, 13.
 
 ## Controller handoff (2026-11-13, after Task 4)
 
