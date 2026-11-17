@@ -87,6 +87,40 @@ def test_the_store_records_who_named_the_terminals(tmp_path: Path, result: Traje
     assert store.graph("named")["terminals_source"] == "user"
 
 
+def test_result_json_records_the_requested_terminals(tmp_path: Path, result: TrajectoryResult) -> None:
+    store = RunStore(tmp_path)
+    store.save("auto", result)
+    store.save("named", result, terminals=["3", "5"], clonal_columns=["donor", "clone_id"])
+    assert store.graph("auto")["terminals"] is None
+    assert store.graph("named")["terminals"] == ["3", "5"]
+    assert store.graph("auto")["clonal_columns"] == []
+    assert store.graph("named")["clonal_columns"] == ["clone_id", "donor"]
+
+
+def test_empty_terminals_are_stored_as_none_and_the_order_is_kept(
+    tmp_path: Path, result: TrajectoryResult
+) -> None:
+    store = RunStore(tmp_path)
+    store.save("empty", result, terminals=[])
+    store.save("ordered", result, terminals=["5", "3"])
+    assert store.graph("empty")["terminals"] is None and store.graph("empty")["terminals_source"] == "auto"
+    assert store.graph("ordered")["terminals"] == ["5", "3"]
+    assert store.graph("ordered")["terminals_source"] == "user"
+
+
+def test_result_json_records_the_label_key_and_loads_it_back(
+    tmp_path: Path, result: TrajectoryResult
+) -> None:
+    store = RunStore(tmp_path)
+    result.label_key = None
+    store.save("none", result)
+    result.label_key = "cell_type"
+    store.save("named", result)
+    assert store.graph("none")["label_key"] is None
+    assert store.graph("named")["label_key"] == "cell_type"
+    assert store.load("named").label_key == "cell_type"
+
+
 def test_listing_skips_runs_it_cannot_read(tmp_path: Path, result: TrajectoryResult) -> None:
     store = RunStore(tmp_path)
     for rid in ("good", "damaged", "other_version"):

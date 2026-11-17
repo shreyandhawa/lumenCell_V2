@@ -99,6 +99,7 @@ def _graph_json(
     created_at: str,
     terminals: list[str] | None,
     prep_key: str | None,
+    clonal_columns: Sequence[str],
 ) -> dict[str, Any]:
     root = asdict(result.root)
     return {
@@ -107,6 +108,11 @@ def _graph_json(
         "created_at": created_at,
         # Provenance: whether the terminals were named by the user or found by the method.
         "terminals_source": "user" if terminals else "auto",
+        # Provenance: the terminals exactly as the run was asked for them (None when not asked),
+        # and the scoring-only columns it ran with. Stability replays both from here.
+        "terminals": terminals or None,
+        "label_key": result.label_key,
+        "clonal_columns": sorted(clonal_columns),
         # Provenance: the prep the run was computed on, how clone columns were kept out of
         # inference, and which obs columns steered it.
         "prep_key": prep_key,
@@ -156,16 +162,18 @@ class RunStore:
         result: TrajectoryResult,
         terminals: list[str] | None = None,
         prep_key: str | None = None,
+        clonal_columns: Sequence[str] = (),
     ) -> None:
         """Save a run. ``terminals`` are the terminal labels the run was asked for, if any;
-        ``prep_key`` is the prep cache key the run was computed on."""
+        ``prep_key`` is the prep cache key the run was computed on;
+        ``clonal_columns`` are the scoring-only columns it ran with."""
         self.dir.mkdir(parents=True, exist_ok=True)
         final = self.path(rid)
         tmp = Path(tempfile.mkdtemp(prefix=f".{rid}-", dir=self.dir))
         try:
             created = datetime.now(UTC).isoformat(timespec="seconds")
             (tmp / "result.json").write_text(
-                json.dumps(_graph_json(result, rid, created, terminals, prep_key), indent=2),
+                json.dumps(_graph_json(result, rid, created, terminals, prep_key, clonal_columns), indent=2),
                 encoding="utf-8",
             )
             (tmp / "cells.lcb").write_bytes(cells_payload(result))
@@ -288,6 +296,7 @@ class RunStore:
             ),
             curve_paths=g.get("curve_paths"),
             obs_keys=list(g["obs_keys"]),
+            label_key=g.get("label_key"),
         )
 
     def list(self) -> list[dict[str, Any]]:
