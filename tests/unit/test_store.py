@@ -378,3 +378,16 @@ def test_trust_paths_refuse_a_run_id_that_is_not_a_plain_name(tmp_path: Path, ri
         store.write_trust(rid, TRUST, {})
     with pytest.raises(ValueError):
         store.read_trust(rid, TRUST)
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_a_trust_file_with_a_non_json_number_is_unreadable(
+    tmp_path: Path, result: TrajectoryResult, constant: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Security review S6: Python's json accepts NaN; trust files are strict JSON when read too."""
+    store = RunStore(tmp_path)
+    store.save("abc", result)
+    store.write_trust("abc", TRUST, {"v": 1})
+    store.trust_path("abc", TRUST).write_text(f'{{"v": {constant}}}', encoding="utf-8")
+    assert store.read_trust("abc", TRUST) is None
+    assert "unreadable trust file" in capsys.readouterr().err

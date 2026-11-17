@@ -126,3 +126,19 @@ def _store(tmp_path: Path) -> RunStore:
     (store.path("r")).mkdir(parents=True)
     (store.path("r") / ".complete").write_text("x")
     return store
+
+
+def test_a_replicate_error_is_one_escaped_line_of_bounded_length() -> None:
+    """Security review S5: an exception message can carry an obs or column name from the user's file."""
+    evil = "KeyError: 'a\nb\x1b[31mred'" + "x" * 5000
+    reseeds = summarise("reseed", 1.0, [_row("reseed", 0, evil), _row("reseed", 1)])
+    subsamples = summarise("subsample", 0.8, [_row("subsample", i) for i in range(3)])
+    r = StabilityResult(10, 2, 0.6, reseeds, subsamples, 1, 0.5, 0.5)
+    (note,) = to_api_stability(r).notes[1:]
+    assert "\n" not in note and "\x1b" not in note and len(note) < 400
+    assert "\\n" in note and "\\x1b" in note
+
+
+def test_a_not_measured_note_is_escaped_and_bounded() -> None:
+    note = not_measured("failed", "boom\r\n\x1b[2J" + "y" * 5000).notes[0]
+    assert note.isprintable() and len(note) < 400
