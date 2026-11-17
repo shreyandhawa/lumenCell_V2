@@ -103,10 +103,11 @@ One Sonnet scan checked the plan against `main`; its full table is in the ledger
 
 ## Phase 2 N2a decisions and result
 
-Three commits, in the declared order: 7c92b84 declares the amendment, its reasons, the adoption rule
+Three commits, in the declared order: b0e235a declares the amendment, its reasons, the adoption rule
 and `[clonal.calibration_n2_amended]` (seeds 300-499) before any measurement; 2b15c77 implements it
 (`n2_split` on `score_clonal`, `_onset_segments`, `run_calibration(table=, n2_split=)`) and the slow
-entry point `tests/clonal/test_calibration_n2_amended.py`; the third records the run and adopts it.
+entry point `tests/clonal/test_calibration_n2_amended.py`; 7adf711 records the run and adopts it, then
+`origin/main` (#26 and #27, squash-merged) is merged in.
 - **Run:** 2026-11-17 at 2b15c77 (clean tree), 200 seeds, 30.4 min, run once. Record:
   `benchmarks/results/clonal-calibration-n2-amended-2026-11-17.json`. Bound 18, no NaN p, no
   method error. Every null p, so every headline p, used the amended N2.
