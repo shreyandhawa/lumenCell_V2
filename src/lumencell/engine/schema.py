@@ -125,6 +125,8 @@ class TrajectoryResult:
     runtime_seconds: float = 0.0
     # The obs columns that steered the run (root, cluster and label columns), sorted.
     obs_keys: list[str] = field(default_factory=list)
+    # The label column lineages were named in (None when the run named none). Stability replays it.
+    label_key: str | None = None
 
     @property
     def n_obs(self) -> int:

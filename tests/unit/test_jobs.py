@@ -622,7 +622,7 @@ def test_settings_that_do_not_fit_the_file_write_a_failed_agreement(
 
 
 def _stability_payload(base: dict[str, object], rid: str) -> dict[str, object]:
-    return {**base, "run_id": rid, "trust_name": stability_name(), "label_key": "true_label"}
+    return {**base, "run_id": rid, "trust_name": stability_name()}
 
 
 def _prepared_job_run(
@@ -683,15 +683,15 @@ def test_stability_has_its_own_time_limit(monkeypatch: pytest.MonkeyPatch) -> No
     assert JobManager().time_limit("stability") == 21600
 
 
-def test_a_stale_run_is_reported_not_measured(prepared_run: tuple[dict[str, object], RunStore]) -> None:
+def test_a_stale_prep_raises_and_writes_nothing(prepared_run: tuple[dict[str, object], RunStore]) -> None:
     base, store = prepared_run
     graph = store.graph("r4")
     store.update_graph("r4", {**graph, "prep_key": "0" * 16})
-    payload = _stability_payload(base, "r4")
-    assert HANDLERS["stability"](payload, lambda *_: None) == "r4"
-    trust = store.read_trust("r4", stability_name())
-    assert trust is not None and trust["status"] == "failed"
-    assert "prepared with other settings" in trust["notes"][0]
+    with pytest.raises(
+        RuntimeError, match=r"^the run was prepared with other settings; stability not measured$"
+    ):
+        HANDLERS["stability"](_stability_payload(base, "r4"), lambda *_: None)
+    assert not (store.path("r4") / "trust").exists()
 
 
 @pytest.mark.parametrize(
@@ -700,6 +700,7 @@ def test_a_stale_run_is_reported_not_measured(prepared_run: tuple[dict[str, obje
         ({"store_version": 1}, "made before inference isolation"),
         ({"terminals_source": "user"}, "terminals this run was asked for were not recorded"),
         ({"clonal_columns": None}, "clone columns this run used were not recorded"),
+        ({"label_key": None}, "label column this run used was not recorded"),
     ],
 )
 def test_a_run_missing_what_stability_needs_is_not_available(
@@ -738,5 +739,75 @@ def test_stability_replays_the_runs_own_clone_columns(
 def test_an_incomplete_stability_payload_names_every_missing_key() -> None:
     with pytest.raises(ValueError) as e:
         HANDLERS["stability"]({}, lambda *_: None)
-    for key in ("path", "prep_params", "run_id", "trust_name", "label_key"):
+    for key in ("path", "prep_params", "run_id", "trust_name"):
         assert repr(key) in str(e.value)
+
+
+def test_stability_replays_the_runs_own_label_key(
+    prepared_run: tuple[dict[str, object], RunStore], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lumencell.engine import stability as engine_stability
+
+    base, store = prepared_run
+    store.update_graph("r4", {**store.graph("r4"), "label_key": "cell_type"})
+    seen: list[object] = []
+    real = engine_stability.run_stability
+
+    def spy(*args: object, **kw: object) -> object:
+        seen.append(args[4])
+        return real(*args, **kw)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(engine_stability, "run_stability", spy)
+    HANDLERS["stability"](_stability_payload(base, "r4"), lambda *_: None)
+    assert seen and seen[0].label_key == "cell_type"  # type: ignore[attr-defined]
+
+
+def test_a_wrong_trust_name_raises_and_writes_nothing(
+    prepared_run: tuple[dict[str, object], RunStore],
+) -> None:
+    base, store = prepared_run
+    payload = {**_stability_payload(base, "r4"), "trust_name": "stability-0000000000000000"}
+    with pytest.raises(ValueError, match="nothing was written"):
+        HANDLERS["stability"](payload, lambda *_: None)
+    assert not (store.path("r4") / "trust").exists()
+
+
+def test_an_incomplete_run_is_not_measured(prepared_run: tuple[dict[str, object], RunStore]) -> None:
+    base, store = prepared_run
+    (store.path("r4") / ".complete").unlink()
+    with pytest.raises(RuntimeError, match="replaced or is incomplete"):
+        HANDLERS["stability"](_stability_payload(base, "r4"), lambda *_: None)
+    assert not (store.path("r4") / "trust").exists()
+
+
+def test_user_terminals_are_replayed_in_order(
+    prepared_run: tuple[dict[str, object], RunStore], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lumencell.engine import stability as engine_stability
+
+    base, store = prepared_run
+    store.update_graph("r4", {**store.graph("r4"), "terminals": ["5", "3"], "terminals_source": "user"})
+    seen: list[object] = []
+    monkeypatch.setattr(engine_stability, "run_stability", lambda *a, **k: seen.append(a[4]) or 1 / 0)
+    with pytest.raises(ZeroDivisionError):
+        HANDLERS["stability"](_stability_payload(base, "r4"), lambda *_: None)
+    assert seen[0].terminals == ["5", "3"]  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [{"store_version": 1}, {"terminals_source": "user"}, {"clonal_columns": None}, {"label_key": None}],
+)
+def test_run_stability_is_not_called_for_a_run_that_is_not_available(
+    prepared_run: tuple[dict[str, object], RunStore], monkeypatch: pytest.MonkeyPatch, edit: dict[str, object]
+) -> None:
+    from lumencell.engine import stability as engine_stability
+
+    base, store = prepared_run
+    graph = store.graph("r4")
+    graph.pop("terminals", None)
+    store.update_graph("r4", {k: v for k, v in {**graph, **edit}.items() if v is not None})
+    calls: list[object] = []
+    monkeypatch.setattr(engine_stability, "run_stability", lambda *a, **k: calls.append(a))
+    HANDLERS["stability"](_stability_payload(base, "r4"), lambda *_: None)
+    assert not calls

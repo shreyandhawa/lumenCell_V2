@@ -55,6 +55,24 @@ def test_the_name_is_a_valid_trust_name_and_follows_the_parameters(monkeypatch: 
     assert stability_name() != name
 
 
+@pytest.mark.parametrize(
+    ("constant", "value"),
+    [
+        ("N_RESEEDS", 7),
+        ("N_SUBSAMPLES", 9),
+        ("SUBSAMPLE_FRACTION", 0.5),
+        ("STABILITY_SEED", 11),
+        ("MATCH_JACCARD", 0.7),
+    ],
+)
+def test_every_stability_parameter_changes_the_name(
+    monkeypatch: pytest.MonkeyPatch, constant: str, value: float
+) -> None:
+    name = stability_name()
+    monkeypatch.setattr(trust_stability, constant, value)
+    assert stability_name() != name
+
+
 def test_the_name_follows_the_metric_version(monkeypatch: pytest.MonkeyPatch) -> None:
     name = stability_name()
     monkeypatch.setattr(trust_stability, "STABILITY_METRIC_VERSION", 99)

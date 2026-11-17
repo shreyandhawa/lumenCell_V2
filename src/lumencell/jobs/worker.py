@@ -176,15 +176,15 @@ def handle_score_clonal(payload: dict[str, Any], emit: Emit) -> str | None:
     return rid
 
 
-STABILITY_KEYS = ("path", "prep_params", "run_id", "trust_name", "label_key")
+STABILITY_KEYS = ("path", "prep_params", "run_id", "trust_name")
 
 
 def handle_stability(payload: dict[str, Any], emit: Emit) -> str | None:
     """Rerun a finished run on reseeded and subsampled prep and store the agreement as its trust file.
 
-    The terminals and the scoring-only columns come from the run's own record (``result.json``),
-    never from the session's current settings. A run made before they were recorded is reported
-    ``not_available`` rather than replayed with a guess. Replicate prep stays in memory.
+    The terminals, the label column and the scoring-only columns come from the run's own record
+    (``result.json``), never from the session's current settings. A run made before they were
+    recorded is reported ``not_available`` rather than replayed with a guess. Replicate prep stays in memory.
     """
     from lumencell.engine.stability import RunSpec, StabilityError, run_stability
     from lumencell.engine.store import STORE_VERSION, RunStore
@@ -214,7 +214,9 @@ def handle_stability(payload: dict[str, Any], emit: Emit) -> str | None:
     if graph.get("store_version") != STORE_VERSION:
         stability = not_measured("not_available", "made before inference isolation; run it again")
     elif graph.get("prep_key") != prep_key(ds, params):
-        stability = not_measured("failed", "the run was prepared with other settings")
+        # Not a saved verdict, as in score_clonal: a stored "failed" file would block measuring
+        # once the session reopens with the matching prep.
+        raise RuntimeError("the run was prepared with other settings; stability not measured")
     elif graph.get("terminals_source") == "user" and "terminals" not in graph:
         stability = not_measured(
             "not_available", "the terminals this run was asked for were not recorded; run it again"
@@ -223,6 +225,10 @@ def handle_stability(payload: dict[str, Any], emit: Emit) -> str | None:
         # Replaying with () could let clone labels reach inference, so an unrecorded set is refused.
         stability = not_measured(
             "not_available", "the clone columns this run used were not recorded; run it again"
+        )
+    elif "label_key" not in graph:
+        stability = not_measured(
+            "not_available", "the label column this run used was not recorded; run it again"
         )
     else:
         try:
@@ -234,7 +240,7 @@ def handle_stability(payload: dict[str, Any], emit: Emit) -> str | None:
             graph["method"],
             graph["params"],
             graph.get("terminals"),
-            payload["label_key"],
+            graph["label_key"],
             tuple(graph["clonal_columns"]),
         )
         try:

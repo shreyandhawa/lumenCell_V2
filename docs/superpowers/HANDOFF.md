@@ -186,6 +186,16 @@ entry point `tests/clonal/test_calibration_n2_amended.py`; 7adf711 records the r
   `trust/constants.py`. A run's stored `failed` for other prep settings is permanent per name, as the plan wrote.
 - A run that is gone or incomplete (at read or at `write_trust`) fails the job, as in `score_clonal`.
 - The cancel test uses 3000 cells (F16).
+- **Fix round 1.** `label_key` is recorded in `result.json` (the `used_label_key` from `run_method`,
+  carried on `TrajectoryResult.label_key`, may be `null`; read with `.get`, so run ids and `STORE_VERSION`
+  are unchanged). `handle_stability` replays it from the run and no longer takes it in the payload; a run
+  with no `label_key` key is `not_available` ("the label column this run used was not recorded").
+  `api/runs.py` is not changed: its `label_key` is the *infer* job's payload (on main), which the infer worker still reads.
+- **Fix round 1.** `terminals` is stored as `terminals or None`, so `[]` reads as auto.
+- **Fix round 1.** A stale prep key now RAISES and writes nothing, like `score_clonal` (a stored `failed`
+  would block measuring once the session reopens with the matching prep). This replaces the stored `failed` above.
+- **Fix round 1.** Tests close survivors: every `[stability]` parameter changes the name, a wrong
+  `trust_name`, an incomplete run, user terminals replayed in order, and `run_stability` never called on a `not_available` run.
 
 ## Phase 2 Task 6 decisions
 

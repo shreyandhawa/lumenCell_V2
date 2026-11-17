@@ -110,7 +110,8 @@ def _graph_json(
         "terminals_source": "user" if terminals else "auto",
         # Provenance: the terminals exactly as the run was asked for them (None when not asked),
         # and the scoring-only columns it ran with. Stability replays both from here.
-        "terminals": terminals,
+        "terminals": terminals or None,
+        "label_key": result.label_key,
         "clonal_columns": sorted(clonal_columns),
         # Provenance: the prep the run was computed on, how clone columns were kept out of
         # inference, and which obs columns steered it.
@@ -295,6 +296,7 @@ class RunStore:
             ),
             curve_paths=g.get("curve_paths"),
             obs_keys=list(g["obs_keys"]),
+            label_key=g.get("label_key"),
         )
 
     def list(self) -> list[dict[str, Any]]:
