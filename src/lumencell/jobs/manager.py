@@ -54,6 +54,7 @@ DEFAULT_TIME_LIMITS: dict[str, float] = {
     "prepare": 3 * 3600,
     "infer": 3 * 3600,
     "score_clonal": 3600,
+    "stability": 6 * 3600,
     "sleep": 600,
 }
 FALLBACK_TIME_LIMIT = 3 * 3600.0

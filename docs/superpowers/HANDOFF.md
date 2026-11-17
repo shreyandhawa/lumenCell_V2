@@ -22,10 +22,10 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - **Next:** phase 2. Merged to `main`: Task 1 (#26), Task 5 (#27), Task 6 (#28), Task 7 (#29).
   N2a (#30) passed its calibration on seeds 300-499 and was adopted: the runtime N2 uses the
   lineage-onset split and the clonal metric_version is 2 (see "Phase 2 N2a decisions and result").
-  Task 8 (verdict calibration, `pivot/27-verdict-calibration`) is recorded: C2, C3 and C4 are all
-  non-discriminating, so no tau is set (see "Phase 2 Task 8 decisions and result"). Next: Task 9,
-  which is expected to fail and trigger the declared `on_failure = "provisional"` cap; Task 10
-  alongside; Tasks 2-4 wait for the download approval.
+  Task 8 (verdict calibration, #32) is recorded: C2, C3 and C4 are all non-discriminating, so no
+  tau is set (see "Phase 2 Task 8 decisions and result"). Task 10 (the `stability` worker job,
+  #31) is merged. Next: Task 9, which is expected to fail and trigger the declared
+  `on_failure = "provisional"` cap, then 11 and 12; Tasks 2-4 wait for the download approval.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -249,6 +249,37 @@ on that clean tree, 2026-11-17, 6.2 min, once: `benchmarks/results/verdict-verif
   no edge between them, and the PAGA stage raises (igraph builds an empty adjacency). At 3000 x 2000 all
   four kinds pass full `run_pipeline` for seeds 0 and 1. Tasks 8 and 9 run at that size; if a control
   ever fails prep there, that is an engine finding, not a control to change.
+
+## Phase 2 Task 10 decisions
+
+- **Both inputs come from the run.** `result.json` now records `terminals` (as sent, `null` for
+  auto) and `clonal_columns` (sorted; `[]` when none), written by `RunStore.save(..., clonal_columns=)`
+  and passed by `handle_infer`. `handle_stability` reads them from the run, never from the payload:
+  a `clonal_columns` key in the payload is ignored, so Task 11 need not send it. The payload needs
+  `path`, `prep_params`, `run_id`, `trust_name` and `label_key` (may be `None`); a missing key fails
+  the job naming it. A `trust_name` that is not `stability_name()` fails it and writes nothing.
+- **Old runs** (no `clonal_columns` key, made before this PR) are written as `not_available`
+  ("the clone columns this run used were not recorded; run it again"), not replayed with `()`:
+  an empty set could let clone labels into a replicate. Plan cases kept: store version other than 2
+  is `not_available`; another prep key is `failed` (stored, unlike `score_clonal`'s raise, as the
+  plan says); `terminals_source == "user"` without `terminals` is `not_available`; `StabilityError` is `failed`.
+- **Models.** `Stability` gains `n_failed: int` (controller ruling). `StabilitySummary` float fields
+  are `float | None`, not `float` as the plan lists them: an empty kind has NaN medians, and Review
+  Focus 2 needs them null. `make contract` shows no diff.
+- **Trust hash** covers `STABILITY_METRIC_VERSION` and the five `[stability]` params, imported from
+  `trust/constants.py`. A run's stored `failed` for other prep settings is permanent per name, as the plan wrote.
+- A run that is gone or incomplete (at read or at `write_trust`) fails the job, as in `score_clonal`.
+- The cancel test uses 3000 cells (F16).
+- **Fix round 1.** `label_key` is recorded in `result.json` (the `used_label_key` from `run_method`,
+  carried on `TrajectoryResult.label_key`, may be `null`; read with `.get`, so run ids and `STORE_VERSION`
+  are unchanged). `handle_stability` replays it from the run and no longer takes it in the payload; a run
+  with no `label_key` key is `not_available` ("the label column this run used was not recorded").
+  `api/runs.py` is not changed: its `label_key` is the *infer* job's payload (on main), which the infer worker still reads.
+- **Fix round 1.** `terminals` is stored as `terminals or None`, so `[]` reads as auto.
+- **Fix round 1.** A stale prep key now RAISES and writes nothing, like `score_clonal` (a stored `failed`
+  would block measuring once the session reopens with the matching prep). This replaces the stored `failed` above.
+- **Fix round 1.** Tests close survivors: every `[stability]` parameter changes the name, a wrong
+  `trust_name`, an incomplete run, user terminals replayed in order, and `run_stability` never called on a `not_available` run.
 
 ## Phase 2 Task 6 decisions
 
@@ -804,7 +835,8 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/25-stability-engine` | #28 | merged (squash, 4387948), phase 2 Task 6 |
 | `pivot/26-tree-support` | #29 | merged (squash, 14b8979), phase 2 Task 7 (with the PAGA no-edge fix) |
 | `pivot/24-n2-amendment` | #30 | phase 2 N2a; merged with a merge commit so the recorded commit 2b15c77 stays on `main` |
-| `pivot/27-verdict-calibration` | open | phase 2 Task 8; merge with a merge commit so the recorded commit 0a584d5 stays on `main` |
+| `pivot/28-stability-job` | #31 | merged (squash), phase 2 Task 10 |
+| `pivot/27-verdict-calibration` | #32 | merged (merge commit, 67361c8, keeps the recorded commit 0a584d5), phase 2 Task 8 |
 
 ## Verify the current state
 

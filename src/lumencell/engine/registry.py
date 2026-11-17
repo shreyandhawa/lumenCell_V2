@@ -64,6 +64,7 @@ def run_method(
     if interior:
         result.warnings.append(interior)
     result.runtime_seconds = time.perf_counter() - start
+    result.label_key = used_label_key
     result.obs_keys = sorted({k for k in (resolved.cluster_key, cluster_key, used_label_key) if k})
     result.validate()
     return result
