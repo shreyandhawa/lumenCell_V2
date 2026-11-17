@@ -24,8 +24,10 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   lineage-onset split and the clonal metric_version is 2 (see "Phase 2 N2a decisions and result").
   Task 8 (verdict calibration, #32) is recorded: C2, C3 and C4 are all non-discriminating, so no
   tau is set (see "Phase 2 Task 8 decisions and result"). Task 10 (the `stability` worker job,
-  #31) is merged. Next: Task 9, which is expected to fail and trigger the declared
-  `on_failure = "provisional"` cap, then 11 and 12; Tasks 2-4 wait for the download approval.
+  #31) is merged. Task 9 (#33) verified the verdict on fresh seeds 3-5 and FAILED (28 of 31
+  control runs supported, max 0), so every served verdict is capped at provisional; Shreyan chose
+  to accept a provisional-only verdict (see "Phase 2 Task 9 decisions and result"). Shreyan approved
+  the Task 2 downloads on 2026-11-17. Next: Tasks 2, 3, 4, then 11, 12 and 13.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -837,6 +839,7 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/24-n2-amendment` | #30 | phase 2 N2a; merged with a merge commit so the recorded commit 2b15c77 stays on `main` |
 | `pivot/28-stability-job` | #31 | merged (squash), phase 2 Task 10 |
 | `pivot/27-verdict-calibration` | #32 | merged (merge commit, 67361c8, keeps the recorded commit 0a584d5), phase 2 Task 8 |
+| `pivot/29-verdict-verification` | #33 | merged (merge commit, keeps the recorded commit 37197c8), phase 2 Task 9 (FAILED, verdict capped) |
 
 ## Verify the current state
 

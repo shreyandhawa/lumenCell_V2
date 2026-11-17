@@ -362,7 +362,11 @@ def test_the_matrix_share_ignores_controls_and_is_zero_without_matrix_runs() -> 
 
 
 def test_a_failed_verification_payload_says_so_by_kind() -> None:
-    recs = [_rec("matrix", "m/seed3"), _rec("control", "loop/seed3"), _cov(_rec("control", "blob/seed3"), 0.5)]
+    recs = [
+        _rec("matrix", "m/seed3"),
+        _rec("control", "loop/seed3"),
+        _cov(_rec("control", "blob/seed3"), 0.5),
+    ]
     ver = verify(recs, LOOSE, 0)
     payload = verification_payload(recs, ver, LOOSE, CFG, "abc")
     assert payload["passed"] is False
