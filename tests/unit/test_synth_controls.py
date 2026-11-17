@@ -78,7 +78,7 @@ def test_two_groups_are_unconnected(tmp_path: Path) -> None:
     a = _make("two_groups")
     row, col = _knn_edges(a, tmp_path)
     g = a.obs["control_group"].to_numpy()
-    assert 0.2 < g.mean() < 0.8
+    assert abs(g.mean() - 0.5) < 0.06
     assert (g[row] != g[col]).mean() < 0.001
 
 
@@ -120,6 +120,56 @@ def test_root_cells_sit_where_declared(kind: ControlKind) -> None:
         x, y = a.obs["control_x"].to_numpy(), a.obs["control_y"].to_numpy()
         r = x * x + y * y
         assert r[i] == r.min()
+
+
+# (sum, nnz, root cell) for seed 0 at N_CELLS x N_GENES, pinned on the code that first shipped these.
+GOLDEN: dict[ControlKind, tuple[int, int, str]] = {
+    "blob": (5130280, 370931, "cell000000"),
+    "two_groups": (5136252, 341194, "cell000000"),
+    "loop": (5117511, 364432, "cell000030"),
+    "sheet": (5166262, 375791, "cell000343"),
+}
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_golden_values_at_fixed_size(kind: ControlKind) -> None:
+    a = _make(kind)
+    total, nnz, root = GOLDEN[kind]
+    assert int(a.X.sum()) == total
+    assert a.X.nnz == nnz
+    assert control_root_cell(a) == root
+
+
+def test_sheet_gene_sets_are_disjoint_and_sized_right() -> None:
+    a = _make("sheet")
+    # The module does not expose its gene sets, so replay its stream: the gamma base draw, then x,
+    # then y, then one uniform per gene that both sets are cut from.
+    rng = np.random.default_rng([CONTROL_STREAM, KINDS.index("sheet"), 0])
+    rng.gamma(shape=0.6, scale=1 / 0.3, size=N_GENES)
+    rng.random(N_CELLS)
+    rng.random(N_CELLS)
+    draw = rng.random(N_GENES)
+    x_genes = draw < PROGRAMME_SHARE
+    y_genes = (draw >= PROGRAMME_SHARE) & (draw < 2 * PROGRAMME_SHARE)
+    assert not (x_genes & y_genes).any()
+    total = int((x_genes | y_genes).sum())
+    assert total == a.uns["lumencell_control"]["programme_genes"]
+    assert abs(total - 2 * PROGRAMME_SHARE * N_GENES) < 30
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_seed_is_recorded(kind: ControlKind) -> None:
+    a = generate_control(kind, n_cells=N_CELLS, n_genes=N_GENES, seed=3)
+    assert a.uns["lumencell_control"]["seed"] == 3
+
+
+def test_a_named_preset_is_recorded_and_changes_counts() -> None:
+    for kind in KINDS:
+        default = _make(kind)
+        easy = generate_control(kind, n_cells=N_CELLS, n_genes=N_GENES, seed=0, preset="easy")
+        assert default.uns["lumencell_control"]["preset"] == "realistic"
+        assert easy.uns["lumencell_control"]["preset"] == "easy"
+        assert (default.X != easy.X).nnz > 0
 
 
 def test_constants_equal_the_thresholds_file() -> None:
