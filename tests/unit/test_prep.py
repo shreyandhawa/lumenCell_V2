@@ -282,3 +282,19 @@ def test_a_dataset_made_only_of_receptor_genes_is_refused(tmp_path: Path) -> Non
     adata.write_h5ad(path)
     with pytest.raises(DatasetError, match="all 8 genes"):
         run_pipeline(load(path), PrepParams(n_top_genes=200))
+
+
+def test_paga_with_no_edge_between_clusters_is_an_all_zero_graph(tmp_path: Path) -> None:
+    from lumencell.bench.synth_controls import generate_control
+
+    path = tmp_path / "two.h5ad"
+    generate_control("two_groups", n_cells=1000, n_genes=500, seed=0).write_h5ad(path)
+    art = run_pipeline(load(path)).artifacts
+    k = int(np.asarray(art["leiden"]).max()) + 1
+    assert k >= 2
+    assert art["paga_connectivities"].shape == (k, k)
+    assert art["paga_connectivities"].nnz == 0
+    assert art["paga_tree"].shape == (k, k)
+    assert art["paga_tree"].nnz == 0
+    assert art["paga_pos"].shape == (k, 2)
+    assert np.isfinite(art["paga_pos"]).all()
