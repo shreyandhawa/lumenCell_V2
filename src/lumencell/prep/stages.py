@@ -328,6 +328,8 @@ STAGES: tuple[Stage, ...] = (
     ),
 )
 
+STAGE_BY_NAME: dict[str, Stage] = {s.name: s for s in STAGES}
+
 
 @dataclass(frozen=True)
 class StageRecord:

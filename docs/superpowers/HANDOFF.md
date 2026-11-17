@@ -21,7 +21,9 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
 - **Next:** phase 2, Task 1 (declare the robustness definitions) is done on
   `pivot/22-robustness-definitions` (PR #26), and Task 5 (negative controls) on
-  `pivot/23-synth-controls` (stacked on #26); both await review. Then N2a, 6, 7, then 2-4.
+  `pivot/23-synth-controls` (stacked on #26); both await review. Task 6 (stability replicates
+  and their comparison) is done on `pivot/25-stability-engine`, stacked on
+  `pivot/23-synth-controls`, and awaits review. Then N2a (if not yet run), 7, then 2-4.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -122,6 +124,48 @@ One Sonnet scan checked the plan against `main`; its full table is in the ledger
   no edge between them, and the PAGA stage raises (igraph builds an empty adjacency). At 3000 x 2000 all
   four kinds pass full `run_pipeline` for seeds 0 and 1. Tasks 8 and 9 run at that size; if a control
   ever fails prep there, that is an engine finding, not a control to change.
+
+## Phase 2 Task 6 decisions
+
+- **A method's default seed is reseeded.** `replicate_plan` reads `"seed"` from the params it is
+  given (its test: `{}` gives `None`). `run_stability` hands it the run's params with the method's
+  defaults filled in (`Params.model_validate(...).model_dump()`), so a Palantir run that left its
+  seed at the default 20 still gets 21 and 22, as `[stability]` asks ("when the method has a seed
+  parameter"). `paga_dpt` has none, so its reseeds vary only Leiden and PAGA (F11). The method is
+  called with the run's own params plus `seed`, never with the filled-in defaults.
+- **Every Leiden terminal dropped fails the replicate.** When the run named Leiden terminals and
+  none has cells left, passing `[]` would let the method pick its own leaves, a different question.
+  The replicate is recorded with a `StabilityError` and counts as 0, like any failure. Terminals
+  in a user column pass unchanged; a label with no cells left makes the method raise, which is
+  the same recorded failure (Review Focus 3).
+- **A root name absent from the file** is refused with `StabilityError` too, next to the
+  repeated-name refusal the plan names.
+- **`restrict()` fingerprint** is `subset-<sha256 of the full fingerprint and the cell indices>`.
+  `uns_root` maps to its position in the subset, or `None` when the subset lacks it (F6).
+- **Subsample prep reuses** `hvg`, `pca_variance_ratio` and `pca[cells]` only; `hvg_info`, `lognorm`
+  and `umap` are left out (nothing downstream of PCA reads them). Reseed prep keeps every artifact
+  except `leiden` and the three PAGA ones, which are rerun.
+- **Padding.** Cells outside a subsample get NaN pseudotime, progress, fate and extras, no
+  membership, segment -1 and empty milestone-weight and curve-node rows; `pad_result` calls
+  `validate()` before returning.
+- **`jaccard_matrix` keeps the old double loop**, so `compare(a, b)` gives bit-identical values;
+  `test_without_a_mask_compare_is_unchanged` checks it against a frozen copy of the old code.
+- **Identical-run Spearman is 1 to rounding.** `spearmanr` of a vector with itself gives
+  0.9999999999999999 here, so `test_a_replicate_identical_to_the_reference_scores_one` compares
+  Spearman with `approx(1, abs=1e-12)` and the other four fields exactly.
+- **Empty kinds** (`n_reseeds=0`, say) summarise to NaN medians and minimums and `n_lineages_min` 0.
+- **Fix round 1:**
+  - `StabilityResult.n_failed` counts replicates that raised (each still counts as 0); the recorded
+    error is `"<ExceptionType>: <message>"`. Tested for one failure and for all five.
+  - The Leiden-terminal test reads the method's default `cluster_key` from its Params model
+    (`_terminal_key_default`), not a hard-coded `LEIDEN_KEY`.
+  - `_method_params` carries a comment: a bad param aborts the whole job, as the reference run would have.
+  - New tests close surviving mutants: subsample draw seed `seed + 1 + j`, `share_matched` over the
+    reference lineage count (2 vs 3 lineages gives 0.5, `n_lineages` 3), Jaccard equal to the
+    threshold is matched, `pad_result` leaves progress/fate/extras NaN, membership False, segment -1
+    outside, and `compare()` counts cells finite in both (it already did: no bug found).
+- On the 600-cell bifurcation, `paga_dpt` scores lineage stability 1.0 and pseudotime stability
+  0.99 (one subsample finds 2 of 3 lineages). Not a measurement for any τ.
 
 ## Controller handoff (2026-11-13, after Task 4)
 
@@ -600,7 +644,8 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/20-done-when-on-main` | #24 | merged (merge commit, 2217f76), phase 1 Done When re-run on `main` |
 | `pivot/21-phase2-start` | #25 | merged (squash, e1c63d4), phase 2 start: current state, Shreyan's two rulings |
 | `pivot/22-robustness-definitions` | #26 | open, phase 2 Task 1 |
-| `pivot/23-synth-controls` | (this PR) | open, stacked on #26, phase 2 Task 5 |
+| `pivot/23-synth-controls` | #27 | open, stacked on #26, phase 2 Task 5 |
+| `pivot/25-stability-engine` | (this PR) | open, stacked on `pivot/23-synth-controls`, phase 2 Task 6 |
 
 ## Verify the current state
 
