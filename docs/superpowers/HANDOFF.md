@@ -27,7 +27,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   #31) is merged. Task 9 (#33) verified the verdict on fresh seeds 3-5 and FAILED (28 of 31
   control runs supported, max 0), so every served verdict is capped at provisional; Shreyan chose
   to accept a provisional-only verdict (see "Phase 2 Task 9 decisions and result"). Shreyan approved
-  the Task 2 downloads on 2026-11-17. Next: Tasks 2, 3, 4, then 11, 12 and 13.
+  the Task 2 downloads on 2026-11-17. Next: Tasks 2, 3, 4, then 11, 12 and 13. Task 12 (`pivot/31-bench-real-stability`) reports stability and the provisional verdict on the three real datasets; every gated metric is identical to phase 1.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -229,6 +229,39 @@ on that clean tree, 2026-11-17, 6.2 min, once: `benchmarks/results/verdict-verif
 - Test fix round (after review): survivor tests for a weak control, the factor-1.0 tree-likeness, n_failed,
   the matrix share, a failed payload by kind, `complete`, and no cap note on a pending C2. The recorded
   run and the measured commit 37197c8 are unchanged.
+
+## Phase 2 Task 12 decisions and result
+
+`bench real` (default `--stability`) now runs `stability_row` after each method; the run is
+`benchmarks/results/real-2026-11-17.json` (commit b2f2a5f plus this task's code, `make bench-real` exit 0,
+2 min 9 s, 9 of 9 rows, stability `ok` on all, none failed).
+
+- **Identity check: PASS.** Every gated metric and `n_clusters` is identical to `real-2026-11-13.json` for
+  all 9 dataset/method rows (NaN equals NaN). `runtime_seconds` stops before stability (F17).
+- **Verdict is provisional (F14, ruling (a)).** `verdict(...)` is called without `verified=` and with
+  `calibrated_thresholds()` (all taus None), so supported/weak are capped at provisional: the verification
+  failed on fresh seeds (2026-11-17) and C2-C4 are non-discriminating. The changelog and README say so.
+  C3/C4 are still numbers. C2 is `tree_likeness` of the prep's PAGA at the default resolution; C5 is
+  `ClonalEvidence("not_configured", n_lineages)`.
+- **`stability_row`** turns any exception into `StabilityRow("failed", reason=...)` plus one stderr line.
+  `row()` also carries `stability_reason`, so a NaN always has its reason beside it.
+- **Report** cells gain `, verdict <level>`, and a sentence says the verdict is provisional.
+
+| dataset | method | C3 | C4 | tree-likeness | level |
+|---|---|---|---|---|---|
+| bonemarrow | paga_dpt | 0.200 | 0.998 | 0.703 | not_supported (coverage 0.914) |
+| bonemarrow | palantir | 0.200 | 0.996 | 0.703 | provisional |
+| bonemarrow | scfates_ppt | 0.857 | 0.952 | 0.703 | provisional |
+| gastrulation_erythroid | paga_dpt | 0.333 | 0.999 | 0.625 | provisional |
+| gastrulation_erythroid | palantir | 0.667 | 0.996 | 0.625 | provisional |
+| gastrulation_erythroid | scfates_ppt | 1.000 | 0.998 | 0.625 | provisional |
+| pancreas | paga_dpt | 0.200 | 0.997 | 0.666 | provisional |
+| pancreas | palantir | 0.400 | 0.999 | 0.666 | provisional |
+| pancreas | scfates_ppt | 0.800 | 0.988 | 0.666 | provisional |
+
+C4 sits at 0.95-1.00 everywhere, as Task 8 found. C3 is low (0.2-0.4) for PAGA+DPT and Palantir on
+bonemarrow and pancreas: their lineages rarely match at Jaccard 0.6 across replicates. Real gate failures
+are unchanged from phase 1 and no gate changed.
 
 ## Phase 2 Task 1 decisions
 
@@ -840,6 +873,7 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/28-stability-job` | #31 | merged (squash), phase 2 Task 10 |
 | `pivot/27-verdict-calibration` | #32 | merged (merge commit, 67361c8, keeps the recorded commit 0a584d5), phase 2 Task 8 |
 | `pivot/29-verdict-verification` | #33 | merged (merge commit, keeps the recorded commit 37197c8), phase 2 Task 9 (FAILED, verdict capped) |
+| `pivot/31-bench-real-stability` | | phase 2 Task 12, open |
 
 ## Verify the current state
 
