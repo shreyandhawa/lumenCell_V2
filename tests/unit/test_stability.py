@@ -242,7 +242,8 @@ def test_a_failing_replicate_counts_as_no_agreement(bif: Bif, monkeypatch: pytes
     monkeypatch.setattr(stability, "run_method", Spy(fail_on={2}))
     res = run_stability(bif.ds, bif.prep, bif.params, bif.reference, _spec())
     bad = res.reseeds.rows[1]
-    assert bad.error is not None and bad.error.startswith("RuntimeError")
+    assert bad.error == "RuntimeError: boom"
+    assert res.n_failed == 1
     assert math.isnan(bad.share_matched) and math.isnan(bad.spearman) and bad.n_lineages == 0
     assert res.reseeds.share_matched_min == 0.0
     assert res.reseeds.n_lineages_min == 0
@@ -321,3 +322,98 @@ def test_paga_dpt_reseeds_vary_only_prep(bif: Bif, monkeypatch: pytest.MonkeyPat
     assert all("seed" not in (c["params"] or {}) for c in spy.calls)
     assert [r.method_seed for r in res.reseeds.rows] == [None, None]
     assert [c["ctx"].prep_params.seed for c in spy.calls] == [1, 2]
+
+
+def test_a_run_where_every_replicate_fails_counts_them_all(bif: Bif, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(stability, "run_method", Spy(fail_on={1, 2, 3, 4, 5}))
+    res = run_stability(bif.ds, bif.prep, bif.params, bif.reference, _spec())
+    assert res.n_failed == 5
+    assert res.lineage_stability == 0.0 and res.pseudotime_stability == 0.0
+    assert all(r.error is not None for r in (*res.reseeds.rows, *res.subsamples.rows))
+
+
+def test_the_leiden_terminal_test_reads_the_methods_default_cluster_key(
+    bif: Bif, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lumencell.engine.context import LEIDEN_KEY
+
+    for m in ("paga_dpt", "palantir", "scfates_ppt"):
+        assert stability._terminal_key_default(m) == LEIDEN_KEY
+    monkeypatch.setattr(stability, "_terminal_key_default", lambda _m: "true_label")
+    spy = Spy()
+    monkeypatch.setattr(stability, "run_method", spy)
+    run_stability(bif.ds, bif.prep, bif.params, bif.reference, _spec(terminals=["A_late"]))
+    assert [c["terminals"] for c in spy.calls] == [["A_late"]] * 5  # not mapped as Leiden labels
+
+
+def test_subsample_cells_use_seed_plus_one_plus_j() -> None:
+    # root 2 of 10, half kept; default_rng(4) and default_rng(5) give these draws
+    assert subsample_cells(10, 2, 0.5, 4).tolist() == [2, 5, 7, 8, 9]
+    assert subsample_cells(10, 2, 0.5, 5).tolist() == [0, 2, 5, 6, 8]
+
+
+def test_each_subsample_replicate_draws_with_seed_plus_one_plus_j(
+    bif: Bif, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[np.ndarray] = []
+    real = stability.subsample_prep
+
+    def spy(ds: Dataset, prep: PrepResult, params: PrepParams, cells: np.ndarray) -> Any:
+        seen.append(cells)
+        return real(ds, prep, params, cells)
+
+    monkeypatch.setattr(stability, "subsample_prep", spy)
+    config = StabilityConfig(n_reseeds=0, n_subsamples=2, seed=3)
+    run_stability(bif.ds, bif.prep, bif.params, bif.reference, _spec(), config)
+    root = bif.reference.root.cell_index
+    others = np.delete(np.arange(bif.ds.n_obs), root)
+    for j, cells in enumerate(seen):
+        drawn = np.random.default_rng(3 + 1 + j).choice(
+            others, size=round(0.8 * bif.ds.n_obs) - 1, replace=False
+        )
+        assert cells.tolist() == sorted([*drawn.tolist(), root])
+    assert len(seen) == 2
+
+
+class _R:
+    def __init__(self, n_lineages: int) -> None:
+        self.lineages = list(range(n_lineages))
+
+
+def _fake_compare(jaccards: list[float]) -> Any:
+    from lumencell.engine.compare import LineagePair, RunComparison
+
+    pairs = [LineagePair(i, i, j) for i, j in enumerate(jaccards)]
+    return lambda a, b, shared: RunComparison(10, 0.5, pairs, np.zeros(1, dtype=np.float32))
+
+
+def test_share_matched_divides_by_the_reference_lineage_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(stability, "compare", _fake_compare([0.9, 0.1]))
+    got = score_replicate(_R(2), _R(3), np.ones(10, dtype=bool), 0.6)  # type: ignore[arg-type]
+    assert got.share_matched == 0.5 and got.n_lineages == 3
+
+
+def test_a_jaccard_equal_to_the_threshold_is_matched(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(stability, "compare", _fake_compare([0.6, 0.5]))
+    got = score_replicate(_R(2), _R(2), np.ones(10, dtype=bool), 0.6)  # type: ignore[arg-type]
+    assert got.share_matched == 0.5
+
+
+def test_pad_result_leaves_every_outside_array_unassigned(bif: Bif) -> None:
+    cells = subsample_cells(bif.ds.n_obs, bif.reference.root.cell_index, 0.8, 1)
+    sub_ds, sub_prep = subsample_prep(bif.ds, bif.prep, bif.params, cells)
+    rep = run_method(
+        InferenceContext.from_prep(sub_ds, sub_prep, bif.params),
+        "paga_dpt",
+        CellRoot(bif.reference.root.obs_name),
+    )
+    padded = pad_result(rep, cells, bif.ds.n_obs)
+    outside = np.setdiff1d(np.arange(bif.ds.n_obs), cells)
+    assert outside.size
+    assert np.all(np.isnan(padded.progress[..., outside]))
+    assert not padded.membership[:, outside].any()
+    assert np.all(padded.segment[outside] == -1)
+    if padded.fate is not None:
+        assert np.all(np.isnan(padded.fate[..., outside]))
+    for v in padded.extras.values():
+        assert np.all(np.isnan(v[..., outside]))

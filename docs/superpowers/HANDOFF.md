@@ -154,6 +154,16 @@ One Sonnet scan checked the plan against `main`; its full table is in the ledger
   0.9999999999999999 here, so `test_a_replicate_identical_to_the_reference_scores_one` compares
   Spearman with `approx(1, abs=1e-12)` and the other four fields exactly.
 - **Empty kinds** (`n_reseeds=0`, say) summarise to NaN medians and minimums and `n_lineages_min` 0.
+- **Fix round 1:**
+  - `StabilityResult.n_failed` counts replicates that raised (each still counts as 0); the recorded
+    error is `"<ExceptionType>: <message>"`. Tested for one failure and for all five.
+  - The Leiden-terminal test reads the method's default `cluster_key` from its Params model
+    (`_terminal_key_default`), not a hard-coded `LEIDEN_KEY`.
+  - `_method_params` carries a comment: a bad param aborts the whole job, as the reference run would have.
+  - New tests close surviving mutants: subsample draw seed `seed + 1 + j`, `share_matched` over the
+    reference lineage count (2 vs 3 lineages gives 0.5, `n_lineages` 3), Jaccard equal to the
+    threshold is matched, `pad_result` leaves progress/fate/extras NaN, membership False, segment -1
+    outside, and `compare()` counts cells finite in both (it already did: no bug found).
 - On the 600-cell bifurcation, `paga_dpt` scores lineage stability 1.0 and pseudotime stability
   0.99 (one subsample finds 2 of 3 lineages). Not a measurement for any τ.
 

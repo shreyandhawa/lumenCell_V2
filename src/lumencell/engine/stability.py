@@ -314,6 +314,7 @@ class StabilityResult:
     match_jaccard: float
     reseeds: KindSummary
     subsamples: KindSummary
+    n_failed: int  # replicates that raised; each counts as 0 in every median and minimum
     lineage_stability: float  # C3: median share_matched over all R replicates, NaN counted as 0
     pseudotime_stability: float  # C4: median spearman over all R replicates, NaN counted as 0
 
@@ -333,9 +334,15 @@ def _root_index(ds: Dataset, name: str) -> int:
 
 
 def _method_params(spec: RunSpec) -> dict[str, Any]:
+    # A bad param raises here and aborts the whole job: the reference run would have failed too.
     """The run's params with the method's defaults filled in, so a default seed is reseeded too."""
     resolved = get_method(spec.method).Params.model_validate(spec.params).model_dump()
     return {**resolved, **spec.params}
+
+
+def _terminal_key_default(method: str) -> str | None:
+    field = get_method(method).Params.model_fields.get("cluster_key")
+    return None if field is None else field.default
 
 
 def _replicate(
@@ -359,7 +366,9 @@ def _replicate(
         else:
             (rep_ds, rep_prep), rep_params = subsample_prep(ds, prep, params, cells), params
         ctx = InferenceContext.from_prep(rep_ds, rep_prep, rep_params, clonal_columns=spec.clonal_columns)
-        if spec.terminals and spec.params.get("cluster_key", LEIDEN_KEY) == LEIDEN_KEY:
+        if spec.terminals and (
+            spec.params.get("cluster_key", _terminal_key_default(spec.method)) == LEIDEN_KEY
+        ):
             terminals = map_leiden_terminals(
                 spec.terminals, np.asarray(prep.artifacts["leiden"]), ctx.leiden, cells
             )
@@ -435,6 +444,7 @@ def run_stability(
         n_obs=ds.n_obs,
         reference_lineages=len(reference.lineages),
         match_jaccard=config.match_jaccard,
+        n_failed=sum(r.error is not None for r in rows),
         reseeds=summarise("reseed", 1.0, reseeds),
         subsamples=summarise("subsample", config.fraction, subsamples),
         lineage_stability=_median([r.share_matched for r in rows]),

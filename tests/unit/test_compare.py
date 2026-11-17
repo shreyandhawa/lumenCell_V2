@@ -67,3 +67,17 @@ def test_without_a_mask_compare_is_unchanged(bifurcation: Prepared, other_root: 
     assert c.spearman == rho
     assert [(p.a, p.b, p.jaccard) for p in c.pairs] == pairs
     np.testing.assert_array_equal(c.rank_difference, diff)
+
+
+def test_compare_counts_only_cells_finite_in_both(bifurcation: Prepared) -> None:
+    from dataclasses import replace
+
+    a = run_method(bifurcation.ctx, "paga_dpt", ClusterRoot("true_label", "trunk_early"))
+    pa, pb = a.pseudotime.copy(), a.pseudotime[::-1].copy()
+    pa[:5] = np.nan
+    pb[3:8] = np.nan
+    ra, rb = replace(a, pseudotime=pa), replace(a, pseudotime=pb)
+    both = np.isfinite(pa) & np.isfinite(pb)
+    c = compare(ra, rb)
+    assert c.n_common == int(both.sum()) < int(np.isfinite(pa).sum())
+    assert c.spearman == pytest.approx(float(spearmanr(pa[both], pb[both]).statistic))
