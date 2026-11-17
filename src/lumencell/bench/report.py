@@ -103,11 +103,16 @@ def render() -> str:
                     f"terminal {_fmt(r['terminal_share'])} ({mark}){shown}"
                 )
             out.append(f"| {LABELS.get(method, method)} | " + " | ".join(cells) + " |")
-        if any("tree_support" in r for cases in data["methods"].values() for r in cases.values()):
+        if any(
+            r.get("tree_support", "not_measured") != "not_measured"
+            for cases in data["methods"].values()
+            for r in cases.values()
+        ):
             out.append(
-                "\nThe verdict is provisional: its verification failed on fresh seeds (2026-11-17), and "
-                "the tree-likeness and stability checks do not separate trees from loops, sheets or blobs. "
-                "It is reported, not gated, and is not evidence of a tree."
+                "\nA supported or weak verdict is capped at provisional, because the verdict's verification "
+                "failed on fresh seeds (2026-11-17): the tree-likeness and stability checks do not "
+                "separate trees from loops, sheets or blobs. A not_supported verdict is a real failure "
+                "and is not capped. The verdict is reported, not gated, and is not evidence of a tree."
             )
     return "\n".join(out) + "\n"
 

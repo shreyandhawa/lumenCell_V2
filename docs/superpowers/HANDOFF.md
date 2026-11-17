@@ -238,14 +238,16 @@ on that clean tree, 2026-11-17, 6.2 min, once: `benchmarks/results/verdict-verif
 
 - **Identity check: PASS.** Every gated metric and `n_clusters` is identical to `real-2026-11-13.json` for
   all 9 dataset/method rows (NaN equals NaN). `runtime_seconds` stops before stability (F17).
-- **Verdict is provisional (F14, ruling (a)).** `verdict(...)` is called without `verified=` and with
-  `calibrated_thresholds()` (all taus None), so supported/weak are capped at provisional: the verification
-  failed on fresh seeds (2026-11-17) and C2-C4 are non-discriminating. The changelog and README say so.
+- **Verdict cap (F14, ruling (a)).** `verdict(...)` is called without `verified=` and with
+  `calibrated_thresholds()` (all taus None), so a supported or weak verdict is capped at provisional
+  because the verification failed on fresh seeds (2026-11-17), and C2-C4 are non-discriminating. A
+  not_supported row is a real failure (bonemarrow paga_dpt: coverage 0.914 < 0.95) and is not capped.
+  The changelog and README say so.
   C3/C4 are still numbers. C2 is `tree_likeness` of the prep's PAGA at the default resolution; C5 is
   `ClonalEvidence("not_configured", n_lineages)`.
 - **`stability_row`** turns any exception into `StabilityRow("failed", reason=...)` plus one stderr line.
   `row()` also carries `stability_reason`, so a NaN always has its reason beside it.
-- **Report** cells gain `, verdict <level>`, and a sentence says the verdict is provisional.
+- **Report** cells gain `, verdict <level>`, and a footnote (only when some verdict was measured) says which verdicts are capped.
 
 | dataset | method | C3 | C4 | tree-likeness | level |
 |---|---|---|---|---|---|
