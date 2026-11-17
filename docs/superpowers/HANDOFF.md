@@ -20,7 +20,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
     N2 amendment (see "Phase 2 rulings")
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
 - **Next:** phase 2, Task 1 (declare the robustness definitions) is done on
-  `pivot/22-robustness-definitions` (PR open, stacked on #25), awaiting review. Then Tasks 2-4, 5, 6, 7.
+  `pivot/22-robustness-definitions` (PR #26), and Task 5 (negative controls) on
+  `pivot/23-synth-controls` (stacked on #26); both await review. Then N2a, 6, 7, then 2-4.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -107,6 +108,20 @@ One Sonnet scan checked the plan against `main`; its full table is in the ledger
 - **`test_every_scalar_clonal_key_is_mirrored` narrowed.** It took every two-part `MIRRORED` path as a
   clonal key; it now counts only paths starting with `clonal`, since phase 2 adds `cell_cycle`,
   `stability` and `tree_support` paths.
+
+## Phase 2 Task 5 decisions
+
+- **Rename only.** `bench/synth.py`'s `_sample_counts` is now `sample_counts`; the phase 1 digest test passes unchanged.
+- **RNG.** One generator per (kind, seed): `default_rng([CONTROL_STREAM, KINDS.index(kind), seed])`.
+- **Gene sets.** Programme genes are Bernoulli draws per gene (as the tree generator's `de_prob`), so the
+  count varies with the seed. `sheet` draws one uniform per gene: below the share is an x gene, the next
+  band of the same width is a y gene, so the sets are disjoint. Fold changes are signed log-normal with
+  sigma 0.5 around the scale. `loop` magnitudes are `|lfc|`, the sign carried by the phase.
+- **`two_groups` root** is the first cell (lowest index) of group 0.
+- **Tests stop prep at the kNN graph.** At 1000 x 500, `two_groups` gives exactly two Leiden clusters with
+  no edge between them, and the PAGA stage raises (igraph builds an empty adjacency). At 3000 x 2000 all
+  four kinds pass full `run_pipeline` for seeds 0 and 1. Tasks 8 and 9 run at that size; if a control
+  ever fails prep there, that is an engine finding, not a control to change.
 
 ## Controller handoff (2026-11-13, after Task 4)
 
@@ -583,8 +598,9 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/18-handoff-corrections` | #22 | merged (merge commit, dd6fc6a), phase 1 Task 16 |
 | `pivot/19-phase1-security` | #23 | merged (merge commit, aac08ed), phase 1 Task 17 |
 | `pivot/20-done-when-on-main` | #24 | merged (merge commit, 2217f76), phase 1 Done When re-run on `main` |
-| `pivot/21-phase2-start` | #25 | open, phase 2 start: current state, Shreyan's two rulings |
-| `pivot/22-robustness-definitions` | (this PR) | open, stacked on #25, phase 2 Task 1 |
+| `pivot/21-phase2-start` | #25 | merged (squash, e1c63d4), phase 2 start: current state, Shreyan's two rulings |
+| `pivot/22-robustness-definitions` | #26 | open, phase 2 Task 1 |
+| `pivot/23-synth-controls` | (this PR) | open, stacked on #26, phase 2 Task 5 |
 
 ## Verify the current state
 

@@ -203,7 +203,7 @@ def _log_means(
     return out
 
 
-def _sample_counts(
+def sample_counts(
     log_mu: npt.NDArray[np.float64], params: SynthParams, rng: np.random.Generator
 ) -> npt.NDArray[np.float32]:
     rel = np.exp(log_mu - log_mu.max(axis=1, keepdims=True))
@@ -252,7 +252,7 @@ def generate(
     blocks = []
     for sl in _chunks(n_cells):
         log_mu = _log_means(segs, program, seg_idx[sl], u[sl], t[sl])
-        blocks.append(sparse.csr_matrix(_sample_counts(log_mu, params, rng)))
+        blocks.append(sparse.csr_matrix(sample_counts(log_mu, params, rng)))
     X = sparse.vstack(blocks, format="csr", dtype=np.float32)
 
     names = [s.name for s in segs]
