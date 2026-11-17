@@ -362,3 +362,21 @@ max_drop = 0.03
 #             36 of 36 matrix runs supported (share 1.0, reported, not gated). Rule, taus and
 #             seeds unchanged. Per [tree_support.verification] on_failure, [tree_support.verified]
 #             passed = false and the served verdict is capped at provisional (VERDICT_VERIFIED).
+#
+# 2026-11-17  Stability and the tree verdict reported on the real benchmarks (not gated),
+#             benchmarks/results/real-2026-11-17.json (bench real, 9 of 9 rows, stability ok on all).
+#             Every gated metric and n_clusters is identical to real-2026-11-13.json. C2 is the
+#             default-resolution PAGA tree-likeness. A supported or weak verdict is capped
+#             at provisional because its verification failed on fresh seeds (2026-11-17); a
+#             not_supported row is a real failure and is not capped. C2-C4 are non-discriminating,
+#             so these levels are not evidence of a tree. C3 / C4 / tree-likeness / level:
+#             bonemarrow paga_dpt 0.200 / 0.998 / 0.703 / not_supported (coverage 0.914);
+#             bonemarrow palantir 0.200 / 0.996 / 0.703 / provisional;
+#             bonemarrow scfates_ppt 0.857 / 0.952 / 0.703 / provisional;
+#             gastrulation_erythroid paga_dpt 0.333 / 0.999 / 0.625 / provisional;
+#             gastrulation_erythroid palantir 0.667 / 0.996 / 0.625 / provisional;
+#             gastrulation_erythroid scfates_ppt 1.000 / 0.998 / 0.625 / provisional;
+#             pancreas paga_dpt 0.200 / 0.997 / 0.666 / provisional;
+#             pancreas palantir 0.400 / 0.999 / 0.666 / provisional;
+#             pancreas scfates_ppt 0.800 / 0.988 / 0.666 / provisional.
+#             No gate changed.
