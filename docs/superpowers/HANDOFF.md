@@ -4,50 +4,100 @@ A new session starts with: "Read docs/superpowers/HANDOFF.md and continue."
 This file is updated inside every task's PR. `docs/HANDOFF.md` is the milestone 1 note; its
 stale lines are corrected once, by phase 1's handoff-corrections task.
 
-## Current state (2026-11-13)
+## Current state (2026-11-17)
 
-- **Phase:** phase 1 has started. Both approval gates are passed: Shreyan approved the spec
-  (PR #5) and the plans (PR #6, merged as 153a7f0) on 2026-11-12. Task 1 (clonal definitions,
-  gates and runtime constants) merged as 6ff4676 (PR #7). Task 2 (the `clonal/` package: clone
-  codes, scores, nulls, baseline, coupling) merged as f0715b6 (PR #8). Task 3 (synthetic clone
-  layer and its two controls) merged as 744a0a8 (PR #9). Task 4 (receptor genes out of HVG
-  selection) merged as 7b6254b (PR #10). Task 5 (clone and receptor columns scoring-only,
-  store version 2) merged as 3f7e93d (PR #11). Task 6 (clonal scoring in the synthetic
-  benchmark) merged as 857d03d (PR #12). Task 7 (re-measured baseline) merged as bfb2539
-  (PR #13). Task 8 (calibration of the nulls) is on branch `pivot/10-clonal-calibration`; one
-  check failed (see Open questions), so it stops for Shreyan after the PR is opened.
-  Task 9 (real benchmarks re-run after the TR-gene exclusion) is on branch `pivot/11-bench-real-rerun`, stacked on `pivot/10-clonal-calibration`.
-  Task 10 (clonal settings for a dataset, `PUT`/`DELETE /api/v1/dataset/clonal`) is on branch
-  `pivot/12-clonal-settings`, stacked on `pivot/11-bench-real-rerun`.
-  Task 11 (per-run `trust/` folder, atomic JSON results) is on branch `pivot/13-run-trust-store`,
-  stacked on `pivot/12-clonal-settings`.
-  Task 12 (two job priorities, done-callbacks) is on branch `pivot/14-job-priorities`,
-  stacked on `pivot/13-run-trust-store`.
-  Task 13 (the `score_clonal` worker job and the clonal agreement models) is on branch
-  `pivot/15-score-clonal-job`, stacked on `pivot/14-job-priorities`.
-  Task 14 (clonal agreement on every run's GET, scored in the background and healed on GET) is on
-  branch `pivot/16-run-trust-api`, stacked on `pivot/15-score-clonal-job`.
-  Task 15 (clonal options on `lumencell run`, `--fate-bias` on `lumencell synth`) is on branch
-  `pivot/17-cli-clonal` (PR #21), stacked on `pivot/16-run-trust-api`.
-  Task 16 (handoff corrections) is `pivot/18-handoff-corrections` (PR #22). Task 17 (security
-  review, Done When, final-review fixes) is `pivot/19-phase1-security` (PR #23).
-  Tasks 5 to 17 are done; PRs #14 to #23 are open as a stack.
+- **Phase:** phase 1 is complete on `main` (2217f76). Tasks 1-7 merged as squash commits
+  (PRs #7-#13); Tasks 8-17 merged as merge commits (PRs #14-#23), and the Done When commands
+  were re-run on `main` (PR #24, see "Done When (phase 1)"). Phase 2 has started: this PR
+  (`pivot/21-phase2-start`) brings this file up to date and records Shreyan's two rulings of
+  2026-11-17 (see "Phase 2 rulings").
 - **Spec:** approved and merged in PR #5 (142a788):
-  [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md).
-  Branch `pivot/02-phase-plans` amends it in two places (see Decisions).
+  [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
+  with the two plan-time amendments under Decisions.
 - **Plans**, merged in PR #6:
-  - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks
-  - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks
+  - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks, done
+  - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks, plus the
+    N2 amendment (see "Phase 2 rulings")
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** merge the stack #14 to #23 in order (needs Shreyan's go-ahead, and his call on the
-  `depth_only/N2` failure, see Open questions), then re-run the Done When commands on `main`.
-  - Execute phase 1 with `superpowers:subagent-driven-development`, which Shreyan chose:
-    - one task per subagent, on the model the task names
-    - TDD throughout
-    - a fresh reviewer per task, plus the pr-review-toolkit agents on each PR
-    - a squash-merge once CI is green
-    - branches `pivot/NN-<slug>`, numbered from 03 in execution order
+- **Next:** phase 2, Task 1 (declare the robustness definitions) on `pivot/22-robustness-definitions`.
+  - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
+    Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
+    a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
+  - Branches `pivot/NN-<slug>`, numbered from 21 in execution order.
+  - Ledger (git-ignored, this machine only): `.superpowers/sdd/2026-11-17-phase-2-robustness/progress.md`.
+    The phase 1 ledger folder no longer exists on this machine; this file and `git log` are the record.
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
+
+## Phase 2 rulings (Shreyan, 2026-11-17: "approve both")
+
+- **N2 amendment approved for phase 2.** The phase 1 `depth_only/N2` failure (57/200, bound 18)
+  stays recorded as failed, and `clonal-calibration-2026-11-13.json` is never edited. Phase 2 adds
+  a pre-declared amendment to N2: its definition, reasons and date go into
+  `benchmarks/thresholds.toml` in a commit that lands before any run that measures it, and it is
+  calibrated on a fresh seed range, never 100-299. Where and how it fits is ruled in "Phase 2 pre-flight rulings" (task N2a).
+- **F10 accepted: reordering cells is within Monte Carlo error, not exact.** Reordering cells
+  leaves the deterministic fields exactly unchanged and the null-based fields (null mean and sd,
+  eta, p, eta_base, delta_eta, p_delta, coupling) within Monte Carlo error, as
+  `test_reordering_cells_keeps_deterministic_fields_and_null_fields_within_monte_carlo_error`
+  bounds. Spec §4.5's "unchanged" is read that way for those fields. The shuffle is not reworked.
+  Closed.
+
+## Phase 2 pre-flight rulings (controller, 2026-11-17)
+
+One Sonnet scan checked the plan against `main`; its full table is in the ledger folder
+(`preflight.md`, findings F1-F22). Every consumed interface exists. Rulings that change a task:
+- **N2a, the N2 amendment (its own task and PR, Opus, after Task 5).** A branch-point split, chosen
+  over finer bins because it targets the diagnosed mechanism (lineage composition steps inside a
+  decile), where finer bins only shrink the step and cost power on every run.
+  - Definition: for each lineage, its onset is the smallest pseudotime among the scored cells whose
+    whole weight is on that lineage. A lineage with no such cell adds no cut. N2's strata become donor
+    x decile x segment, where segment counts the onsets at or below a cell's pseudotime. Cells
+    without pseudotime keep their own stratum. Near-equal onsets are not merged. The strata use
+    only lineage weights and pseudotime, never clone labels, so the shuffle stays a valid null.
+  - It is the same rule in own-cells and oracle-cells modes, built from the weights and pseudotime
+    each call already passes to `score_clonal`. N2 is redefined in place, so N3's RNG stream and the
+    API's null names do not move.
+  - Order inside the PR: (1) a commit that declares the definition, its reasons and the date in
+    `thresholds.toml`, plus a new `[clonal.calibration_n2_amended]` table with seeds 300-499. That
+    table keeps the phase 1 checks, alpha, bound rule and NaN rule. `[clonal.calibration]` and
+    `clonal-calibration-2026-11-13.json` stay untouched. (2) The implementation, behind the pinned
+    definition. (3) The 200-seed run in the background, about 40 min, recorded as a new file.
+  - Adoption is decided now, before the run. If every check passes, the amended N2 becomes the
+    runtime N2 and `CLONAL_METRIC_VERSION` goes from 1 to 2. That changes `trust_hash`, so every
+    stored clonal agreement is re-scored on its next GET. If any check fails, it is recorded as
+    failed, and the runtime stays on metric version 1.
+  - Cost: an Opus implementer, a 40-minute run, and one `make bench-synth` to confirm nothing
+    regresses.
+- **F14, verification failure is planned for now.** If Task 9 fails, the verdict machinery still
+  ships (Tasks 10-12 go ahead), but every served verdict is capped at `provisional`, with a note
+  that the thresholds failed verification on fresh seeds. Task 1 declares this as
+  `[tree_support.verification] on_failure = "provisional"`; Task 9 records the outcome as a constant
+  (`VERDICT_VERIFIED`), mirrored from the TOML. No rule, seed or control is changed to rescue a
+  failed verification.
+- **F2, Tasks 1 and 8.** Task 1 writes its test as planned. Task 8 updates that test: it replaces
+  `"calibrated" not in ...` with checks on the calibrated table.
+- **F12, C5 (Task 7), the spec wins.** C5 is `not_applicable` only when clones are not configured or
+  L < 2. With L >= 2 and every scored clone in one lineage (`single_lineage`), C5 fails.
+- **F3, F4 and F5, Tasks 10 and 11.** `result.json` records the requested `terminals` (as sent) and
+  the run's `clonal_columns`. The stability payload takes both from the run, never from the current
+  settings, and the server reads the settings through `view.clonal_snapshot()`.
+- **F1, Task 11.** Stability is queued for every finished run whether or not clones are
+  configured. Task 11 updates
+  `tests/api/test_clonal_trust.py::test_submit_trust_jobs_queues_clonal_only_with_settings` and any
+  API test that now sees a stability job.
+- **F6 and F7, Task 6.** `restrict()` slices `genes_detected`, `embeddings` and `obs`, and maps
+  `uns_root` into the subset (dropped when the subset lacks it). `STAGE_BY_NAME` goes in `stages.py`.
+  The Jaccard matrix and the Hungarian pairing are pulled out of `compare.py` into named functions.
+- **F13.** Replicate prep stays in memory (plan), not in the job's temporary directory (spec §5.2).
+  Neither touches the stage cache.
+- **F16, Task 10.** The cancel test uses 3000 cells, so it does not hinge on timing.
+- **F17, Task 12.** `runtime_seconds` stops before stability runs.
+- **F8, Task 3, accepted.** The `cell_cycle` key covers only its two params, so a later edit to the
+  list or seed leaves a stale, report-only hint until `PIPELINE_VERSION` moves.
+- **F22.** After Task 3 every existing prep cache lacks `cell_cycle`, so the first server start
+  re-runs that one cheap stage. That is not a regression.
+- **Execution order:** 1, 5, N2a, 6, 7, then 2-4 (once the downloads are approved), 8 with 10
+  alongside, 9, 11, 12, 13.
 
 ## Controller handoff (2026-11-13, after Task 4)
 
@@ -455,26 +505,10 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 
 ## Open questions for Shreyan
 
-- **depth_only/N2 is a failed calibration check (Task 8, ruled by the controller).** 57 of 200
-  seeds reject at 0.05 (bound 18); N2 does not protect against depth confounding across a branch
-  point that falls inside a decile. It is recorded as failed. No N2 definition, seed or threshold
-  was changed. The slow test `test_depth_only_is_calibrated_under_n2` stays red.
-  Phase-2 candidate (2026-11-13), for your sign-off: a pre-declared N2 amendment, either finer
-  bins or a branch-point split, defined in thresholds.toml before a run and calibrated on a fresh
-  seed range, never on 100-299. The reviewer's exploratory 40-seed numbers (3 of 40 for 40 bins, 1
-  of 40 for the branch-point split) are exploratory, not a result.
-- **Reordering cells: exact or within Monte Carlo error?** Spec §4.5 says η, P and the p-values
-  are "unchanged" when cells are reordered. Task 2 keeps the plan's shuffle: each null draws one
-  random key per scored cell, in the cells' original order. That makes relabelling clones or
-  lineages and adding single-cell clones leave every field exactly unchanged, but reordering
-  cells moves the keys between cells. Reordering then leaves the deterministic fields (cells,
-  clones, effective clones, P, H, both purity diagnostics) exactly unchanged and the null-based
-  fields (null mean and sd, η, p, η_base, Δη, p_delta, coupling) within Monte Carlo error;
-  `test_reordering_cells_keeps_deterministic_fields_and_null_fields_within_monte_carlo_error`
-  bounds each null's p and η. Exact invariance to both relabelling and reordering can't hold together with this
-  shuffle. Needs your sign-off. If you want exact reordering invariance, the cost is reworking
-  the shuffle to draw keys in a canonical cell order (for example by cell barcode, which callers
-  would then pass in), then re-checking the relabelling and singleton properties.
+- **depth_only/N2 (closed 2026-11-17).** The failed check stays recorded as failed; Shreyan
+  approved a pre-declared N2 amendment for phase 2 (see "Phase 2 rulings").
+- **Reordering cells (closed 2026-11-17).** Within Monte Carlo error accepted (see "Phase 2
+  rulings").
 - Commit 33c281d and PR #5 were created at 07:57 under your account, not by the orchestrating
   session. Was that you, or a tool?
 
@@ -482,8 +516,9 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 
 Reviewed by hand along the brief's untrusted-input paths (the `security-review` skill reviews a
 pending diff and phase 1 is already committed, so the diff `142a788..HEAD` was read directly).
-Phase 1 is not merged into `main` (stacked PRs #14 to #23, merge pending an owner permission), so
-the diff is `142a788..HEAD` and the Done When commands ran on `pivot/19-phase1-security`, not `main`.
+At review time phase 1 was not yet merged into `main` (PRs #14 to #23 were a stack), so the diff
+was `142a788..HEAD` on `pivot/19-phase1-security`. The stack has since merged, and the Done When
+commands were re-run on `main` (PR #24).
 
 | # | Severity | Where | Finding | Outcome |
 |---|---|---|---|---|
@@ -528,16 +563,18 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/07-inference-isolation` | #11 | merged (squash, 3f7e93d) |
 | `pivot/08-bench-clonal` | #12 | merged (squash, 857d03d) |
 | `pivot/09-bench-remeasure` | #13 | merged (squash, bfb2539) |
-| `pivot/10-clonal-calibration` | #14 | phase 1 Task 8: one check failed, awaiting Shreyan |
-| `pivot/11-bench-real-rerun` | #15 | phase 1 Task 9: real re-run, stacked on #14 |
-| `pivot/12-clonal-settings` | #16 | phase 1 Task 10: clonal settings, stacked on #15 |
-| `pivot/13-run-trust-store` | #17 | phase 1 Task 11: run trust store, stacked on #16 |
-| `pivot/14-job-priorities` | #18 | phase 1 Task 12: job priorities and done-callbacks, stacked on #17 |
-| `pivot/15-score-clonal-job` | #19 | phase 1 Task 13: score_clonal job, stacked on #18 |
-| `pivot/16-run-trust-api` | #20 | phase 1 Task 14: clonal agreement on every run, stacked on #19 |
-| `pivot/17-cli-clonal` | #21 | phase 1 Task 15: clonal options in the CLI, stacked on #20 |
-| `pivot/18-handoff-corrections` | #22 | phase 1 Task 16: handoff corrections, stacked on #21 |
-| `pivot/19-phase1-security` | #23 | phase 1 Task 17: security review, Done When, final fixes, stacked on #22 |
+| `pivot/10-clonal-calibration` | #14 | merged (merge commit, 4d044c4), phase 1 Task 8 |
+| `pivot/11-bench-real-rerun` | #15 | merged (merge commit, 37ec0d1), phase 1 Task 9 |
+| `pivot/12-clonal-settings` | #16 | merged (merge commit, 1cf292a), phase 1 Task 10 |
+| `pivot/13-run-trust-store` | #17 | merged (merge commit, 3c97dbe), phase 1 Task 11 |
+| `pivot/14-job-priorities` | #18 | merged (merge commit, 0b04559), phase 1 Task 12 |
+| `pivot/15-score-clonal-job` | #19 | merged (merge commit, 61687b2), phase 1 Task 13 |
+| `pivot/16-run-trust-api` | #20 | merged (merge commit, 24183d7), phase 1 Task 14 |
+| `pivot/17-cli-clonal` | #21 | merged (merge commit, 077f196), phase 1 Task 15 |
+| `pivot/18-handoff-corrections` | #22 | merged (merge commit, dd6fc6a), phase 1 Task 16 |
+| `pivot/19-phase1-security` | #23 | merged (merge commit, aac08ed), phase 1 Task 17 |
+| `pivot/20-done-when-on-main` | #24 | merged (merge commit, 2217f76), phase 1 Done When re-run on `main` |
+| `pivot/21-phase2-start` | (this PR) | phase 2 start: current state, Shreyan's two rulings |
 
 ## Verify the current state
 
