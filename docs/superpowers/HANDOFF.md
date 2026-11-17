@@ -27,9 +27,11 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   #31) is merged. Task 9 (#33) verified the verdict on fresh seeds 3-5 and FAILED (28 of 31
   control runs supported, max 0), so every served verdict is capped at provisional; Shreyan chose
   to accept a provisional-only verdict (see "Phase 2 Task 9 decisions and result"). Shreyan approved
-  the Task 2 downloads on 2026-11-17. Task 11 (serving stability and the capped verdict, without
-  the cell-cycle check) is open as PR `pivot/30-robustness-api` (see "Phase 2 Task 11 decisions").
-  Next: Tasks 2, 3, 4 (Task 4 adds the cell-cycle fields Task 11 left out), then 12 and 13.
+  the Task 2 downloads on 2026-11-17. Task 12 (#35) reported stability and the capped verdict on the
+  three real datasets; every gated metric is identical to phase 1. Task 11 (serving stability and the
+  capped verdict, without the cell-cycle check) is #34 (see "Phase 2 Task 11 decisions"). Next: Tasks
+  2, 3, 4 (Task 4 adds the cell-cycle fields Task 11 left out; Task 2 waits for Shreyan's manual
+  download of the Tirosh 2016 supplement), then 13.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -282,6 +284,42 @@ Fix round 1 (PR #34 review):
 - **Tests.** Pinned the served mappings that mutation found unpinned: `stability_evidence` (done, counts,
   values, NaN, failed note), `clonal_evidence` (failed and ok), a NaN check value served as null, the
   no-edges GET's null C2 value and dataset tree-likeness, and submit skipping an existing stability file.
+
+## Phase 2 Task 12 decisions and result
+
+`bench real` (default `--stability`) now runs `stability_row` after each method; the run is
+`benchmarks/results/real-2026-11-17.json` (measured on commit 99c3786, a clean tree, re-run for provenance; `make bench-real` exit 0,
+2 min, 9 of 9 rows, stability `ok` on all, none failed).
+
+- **Identity check: PASS.** Every gated metric and `n_clusters` is identical to `real-2026-11-13.json` for
+  all 9 dataset/method rows (NaN equals NaN). `runtime_seconds` stops before stability (F17) and differs from 2026-11-13 because of a warm cache and
+  machine load (not gated). C3, C4, tree-likeness and levels are unchanged from the first run.
+- **Verdict cap (F14, ruling (a)).** `verdict(...)` is called without `verified=` and with
+  `calibrated_thresholds()` (all taus None), so a supported or weak verdict is capped at provisional
+  because the verification failed on fresh seeds (2026-11-17), and C2-C4 are non-discriminating. A
+  not_supported row is a real failure (bonemarrow paga_dpt: coverage 0.914 < 0.95) and is not capped.
+  The changelog and README say so.
+  C3/C4 are still numbers. C2 is `tree_likeness` of the prep's PAGA at the default resolution; C5 is
+  `ClonalEvidence("not_configured", n_lineages)`.
+- **`stability_row`** turns any exception into `StabilityRow("failed", reason=...)` plus one stderr line.
+  `row()` also carries `stability_reason`, so a NaN always has its reason beside it.
+- **Report** cells gain `, verdict <level>`, and a footnote (only when some verdict was measured) says which verdicts are capped.
+
+| dataset | method | C3 | C4 | tree-likeness | level |
+|---|---|---|---|---|---|
+| bonemarrow | paga_dpt | 0.200 | 0.998 | 0.703 | not_supported (coverage 0.914) |
+| bonemarrow | palantir | 0.200 | 0.996 | 0.703 | provisional |
+| bonemarrow | scfates_ppt | 0.857 | 0.952 | 0.703 | provisional |
+| gastrulation_erythroid | paga_dpt | 0.333 | 0.999 | 0.625 | provisional |
+| gastrulation_erythroid | palantir | 0.667 | 0.996 | 0.625 | provisional |
+| gastrulation_erythroid | scfates_ppt | 1.000 | 0.998 | 0.625 | provisional |
+| pancreas | paga_dpt | 0.200 | 0.997 | 0.666 | provisional |
+| pancreas | palantir | 0.400 | 0.999 | 0.666 | provisional |
+| pancreas | scfates_ppt | 0.800 | 0.988 | 0.666 | provisional |
+
+C4 sits at 0.95-1.00 everywhere, as Task 8 found. C3 is low (0.2-0.4) for PAGA+DPT and Palantir on
+bonemarrow and pancreas: their lineages rarely match at Jaccard 0.6 across replicates. Real gate failures
+are unchanged from phase 1 and no gate changed.
 
 ## Phase 2 Task 1 decisions
 
@@ -893,7 +931,8 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/28-stability-job` | #31 | merged (squash), phase 2 Task 10 |
 | `pivot/27-verdict-calibration` | #32 | merged (merge commit, 67361c8, keeps the recorded commit 0a584d5), phase 2 Task 8 |
 | `pivot/29-verdict-verification` | #33 | merged (merge commit, keeps the recorded commit 37197c8), phase 2 Task 9 (FAILED, verdict capped) |
-| `pivot/30-robustness-api` | open | phase 2 Task 11 (stability and the capped verdict served; cell cycle deferred to Task 4) |
+| `pivot/30-robustness-api` | #34 | merged (squash), phase 2 Task 11 (stability and the capped verdict served; cell cycle deferred to Task 4) |
+| `pivot/31-bench-real-stability` | #35 | merged (merge commit, 4961426, keeps the measured commit 99c3786), phase 2 Task 12 |
 
 ## Verify the current state
 

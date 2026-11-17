@@ -518,6 +518,9 @@ def bench_real(
     out: Annotated[
         Path | None, typer.Option(help="Results JSON (default benchmarks/results/real-<date>.json).")
     ] = None,
+    stability: Annotated[
+        bool, typer.Option("--stability/--no-stability", help="Also run stability and the tree verdict.")
+    ] = True,
 ) -> None:
     """Run methods on the downloaded real datasets and check the release gates."""
     import json
@@ -541,7 +544,7 @@ def bench_real(
             if not METHODS[method].available().ok:
                 typer.echo(f"{d:24s} {method:12s} skipped (not installed)")
                 continue
-            row = run_real_case(d, method).row()
+            row = run_real_case(d, method, stability=stability).row()
             rows.setdefault(method, {})[d] = row
             failed = check_gates(row, cfg[d]["gates"])
             failures += [(method, f) for f in failed]
@@ -550,7 +553,7 @@ def bench_real(
                 f"{d:24s} {method:12s} sp={row['pt_spearman_global']:.3f} "
                 f"sp_lin={row['pt_spearman_lineage']:.3f} branch={row['branch_accuracy']:.3f} "
                 f"recall={row['lineage_recall']:.2f} terminal={row['terminal_share']:.3f} "
-                f"{verdict} ({row['runtime_seconds']}s)"
+                f"verdict={row['tree_support']} {verdict} ({row['runtime_seconds']}s)"
             )
     for method, f in failures:
         typer.echo(f"gate     {method}: {f}")

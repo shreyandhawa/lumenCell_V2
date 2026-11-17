@@ -16,12 +16,21 @@ from lumencell.bench.synth_clones import DEFAULT_LAYER, ClonalLayer, add_clones,
 from lumencell.bench.truth import Truth
 from lumencell.clonal.labels import encode_clones
 from lumencell.clonal.scores import ClonalResult, score_with_baseline
-from lumencell.data.loader import load
+from lumencell.data.loader import Dataset, load
 from lumencell.engine.context import InferenceContext
 from lumencell.engine.registry import run_method
 from lumencell.engine.roots import ClusterRoot
 from lumencell.engine.schema import TrajectoryResult
-from lumencell.prep.pipeline import run_pipeline
+from lumencell.engine.stability import RunSpec, run_stability
+from lumencell.engine.tree_support import (
+    ClonalEvidence,
+    StabilityEvidence,
+    calibrated_thresholds,
+    coverage,
+    tree_likeness,
+    verdict,
+)
+from lumencell.prep.pipeline import PrepResult, run_pipeline
 from lumencell.prep.stages import PrepParams
 from lumencell.trust.constants import (
     MIN_CLONE_SIZE,
@@ -34,7 +43,21 @@ ClonalRowStatus = Literal[
     "ok", "single_lineage", "too_few_clones", "not_assessable", "failed", "not_applicable", "not_measured"
 ]
 
+StabilityRowStatus = Literal["ok", "failed", "not_measured"]
+
 _NAN = math.nan
+
+
+@dataclass(frozen=True)
+class StabilityRow:
+    """Stability and the tree verdict of one run; the verdict is provisional until it is verified."""
+
+    status: StabilityRowStatus
+    lineage: float = _NAN
+    pseudotime: float = _NAN
+    tree_likeness: float = _NAN
+    verdict: str = "not_measured"
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -64,9 +87,10 @@ class CaseResult:
     runtime_seconds: float
     warnings: list[str] = field(default_factory=list)
     clonal: ClonalRow = ClonalRow("not_measured")
+    stability: StabilityRow = StabilityRow("not_measured")
 
     def row(self) -> dict[str, Any]:
-        s, c = self.scores, self.clonal
+        s, c, st = self.scores, self.clonal, self.stability
         return {
             "case": self.case,
             "method": self.method,
@@ -94,6 +118,12 @@ class CaseResult:
             "clonal_n_clones": int(c.n_clones),
             "clonal_n_cells": int(c.n_cells),
             "clonal_reason": c.reason,
+            "stability_status": st.status,
+            "stability_lineage": round(st.lineage, 4),
+            "stability_pt": round(st.pseudotime, 4),
+            "tree_likeness": round(st.tree_likeness, 4),
+            "tree_support": st.verdict,
+            "stability_reason": st.reason,
         }
 
 
@@ -215,8 +245,45 @@ def clonal_row(
         return ClonalRow("failed", reason=reason)
 
 
+def stability_row(
+    data: Dataset,
+    prep: PrepResult,
+    params: PrepParams,
+    result: TrajectoryResult,
+    label_key: str | None,
+    clonal_columns: tuple[str, ...] = (),
+) -> StabilityRow:
+    """Stability replicates and the tree verdict of a finished run. Never raises: an error is ``failed``.
+
+    C2 reads the prep's PAGA at the default resolution; C5 is not configured (no clones here).
+    """
+    try:
+        spec = RunSpec(result.method, result.params, None, label_key, clonal_columns)
+        stab = run_stability(data, prep, params, result, spec)
+        tree = tree_likeness(prep.artifacts["paga_connectivities"], prep.artifacts["paga_tree"])
+        n = len(stab.reseeds.rows) + len(stab.subsamples.rows)
+        v = verdict(
+            coverage(result.pseudotime.astype(np.float64)),
+            tree,
+            StabilityEvidence(
+                "done",
+                stab.lineage_stability,
+                stab.pseudotime_stability,
+                n_replicates=n,
+                n_failed=stab.n_failed,
+            ),
+            ClonalEvidence("not_configured", len(result.lineages)),
+            calibrated_thresholds(),
+        )
+        return StabilityRow("ok", stab.lineage_stability, stab.pseudotime_stability, tree, v.level)
+    except Exception as exc:
+        reason = f"{type(exc).__name__}: {exc}"
+        print(f"stability failed: {reason}", file=sys.stderr)
+        return StabilityRow("failed", reason=reason)
+
+
 def run_real_case(
-    dataset_id: str, method: str = "paga_dpt", params: dict[str, Any] | None = None
+    dataset_id: str, method: str = "paga_dpt", params: dict[str, Any] | None = None, stability: bool = False
 ) -> CaseResult:
     """Run a method on a downloaded real dataset (prep is cached) and score it."""
     from lumencell.bench.datasets import DATASETS, is_cached, local_path, truth_for
@@ -232,7 +299,8 @@ def run_real_case(
     prep = PrepCache(data).run(pp)
     ctx = InferenceContext.from_prep(data, prep, pp)
     result = run_method(ctx, method, parse_root(ds.root_spec), params=params, label_key=ds.label_key)
-    elapsed = time.perf_counter() - start
+    elapsed = time.perf_counter() - start  # stops before stability, so runtime stays comparable
+    stab = stability_row(data, prep, pp, result, ds.label_key) if stability else StabilityRow("not_measured")
     return CaseResult(
         case=dataset_id,
         method=method,
@@ -241,4 +309,5 @@ def run_real_case(
         runtime_seconds=elapsed,
         warnings=[w.code for w in result.warnings],
         clonal=ClonalRow("not_applicable"),
+        stability=stab,
     )
