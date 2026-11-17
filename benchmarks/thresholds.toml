@@ -65,7 +65,8 @@ terminal_share = { min = 0.80 }       # Erythroid3 cells on one inferred lineage
 # eta = 1 - H_obs / E_null[H], reported against each null; headline eta is against N1.
 # Nulls shuffle clone identities among the scored cells, B times, seeded, within:
 #   N1 donor; N2 donor x decile of pseudotime (the run's own; the truth's order for the oracle;
-#   cells without pseudotime form their own stratum); N3 donor x strata_keys, when declared.
+#   cells without pseudotime form their own stratum), and from metric_version 2 x lineage-onset
+#   segment (the N2a amendment below); N3 donor x strata_keys, when declared.
 # N2 deciles are taken over the scored cells' finite pseudotime by average rank:
 #   decile = min(bins - 1, floor(bins * (average rank - 1) / n_finite)); cells with NaN
 #   pseudotime form a bin of their own.
@@ -89,7 +90,7 @@ terminal_share = { min = 0.80 }       # Erythroid3 cells on one inferred lineage
 #   Schattgen et al., Nat Biotechnol 40:54-63, 2022, doi:10.1038/s41587-021-00989-2, both checked
 #   2026-11-12 (clones are transcriptionally coherent, hence the lineage-free baseline).
 [clonal]
-metric_version = 1
+metric_version = 2           # 2 since 2026-11-17: N2 with the lineage-onset split (N2a, adopted)
 min_clone_size = 2          # primary m; single-cell clones never contribute
 sensitivity_clone_size = 3  # always reported alongside
 min_clones = 20             # fewer scored clones: too_few_clones, values reported, never a pass
@@ -114,6 +115,8 @@ p_max = 0.01                # the clonal_p gate, and phase 2's C5
 #   bin and cost power on every run.
 #   Calibration: [clonal.calibration_n2_amended], fresh seeds 300-499, the phase 1 check set,
 #   alpha, bound rule and NaN rule, recorded in a new results file.
+#   Result (2026-11-17, at 2b15c77): every check passed, so the amendment is adopted and
+#   metric_version is 2 (see the changelog).
 #   Adoption rule, fixed now: if every check passes (report passed), the amended N2 becomes the
 #   runtime N2 and metric_version goes from 1 to 2 (trust_hash changes, stored clonal scores are
 #   re-scored). If any check fails, it is recorded as failed and the runtime stays on version 1.
@@ -318,3 +321,12 @@ max_drop = 0.03
 #             table [clonal.calibration_n2_amended], seeds 300-499. [clonal.calibration] and
 #             clonal-calibration-2026-11-13.json are unchanged; runtime N2 stays version 1 until
 #             the recorded run passes.
+#
+# 2026-11-17  N2a calibration run, results in
+#             benchmarks/results/clonal-calibration-n2-amended-2026-11-17.json (seeds 300-499, run
+#             at 2b15c77, bound 18, no NaN p-values, no method error): null/paga_dpt 4,
+#             null/palantir 3, null/scfates_ppt 3, donor_confound/N1 15, depth_only/N2 8
+#             rejections, calibrated; donor_confound/N1_donors_ignored 200 and depth_only/N1 200,
+#             not calibrated as they must be; the 9 monotonic cases pass. By the pre-declared rule
+#             the amended N2 is the runtime N2 and metric_version goes 1 -> 2. Nothing was re-run
+#             and no seed, bound or definition changed.

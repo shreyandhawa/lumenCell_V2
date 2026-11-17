@@ -261,3 +261,23 @@ def test_run_calibration_reads_its_table_and_passes_the_split_to_every_score(
 
 class _FakeResult:
     nulls = (type("N", (), {"p": 0.5})(), type("N", (), {"p": 0.5})())
+
+
+def test_the_recorded_n2_amendment_run_matches_its_declaration_and_the_adoption_rule() -> None:
+    from lumencell.clonal.scores import RUNTIME_N2_SPLIT
+    from lumencell.trust.constants import CLONAL_METRIC_VERSION
+
+    cfg = load_thresholds()["clonal"]["calibration_n2_amended"]
+    path = REPO / "benchmarks" / "results" / "clonal-calibration-n2-amended-2026-11-17.json"
+    doc = json.loads(path.read_text())
+    assert doc["config"]["calibration"] == cfg
+    assert (doc["config"]["table"], doc["config"]["n2_split"]) == ("calibration_n2_amended", "lineage_onset")
+    assert doc["config"]["errors"] == [] and not doc["commit"].endswith("-dirty")
+    for c in doc["checks"]:
+        scored = [p for p in c["p_values"] if p is not None]
+        assert c["n"] == len(c["p_values"]) == cfg["n_seeds"]
+        assert c["rejections"] == sum(p <= cfg["alpha"] for p in scored)
+        assert c["bound"] == int(binom.ppf(cfg["binomial_quantile"], len(scored), cfg["alpha"]))
+    # The pre-declared adoption rule: version 2 and the split at run time if and only if it passed.
+    assert doc["passed"] is all(c["passed"] for c in doc["checks"]) is True
+    assert (CLONAL_METRIC_VERSION, RUNTIME_N2_SPLIT) == (2, "lineage_onset")

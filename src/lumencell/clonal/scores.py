@@ -48,9 +48,11 @@ Mode = Literal["own_cells", "oracle_cells"]
 # donor x decile x segment, segment = the number of lineage onsets at or below a cell's pseudotime.
 N2Split = Literal["none", "lineage_onset"]
 N2_SPLITS: tuple[N2Split, ...] = ("none", "lineage_onset")
-# The runtime N2. It moves to "lineage_onset" only with CLONAL_METRIC_VERSION 2, by the adoption
-# rule declared under [clonal] in benchmarks/thresholds.toml.
-RUNTIME_N2_SPLIT: N2Split = "none"
+# The runtime N2: "lineage_onset" since CLONAL_METRIC_VERSION 2, adopted by the rule declared under
+# [clonal] in benchmarks/thresholds.toml after its fresh-seed calibration passed
+# (benchmarks/results/clonal-calibration-n2-amended-2026-11-17.json). "none" stays for phase 1's
+# recorded calibration.
+RUNTIME_N2_SPLIT: N2Split = "lineage_onset"
 NullName = Literal["N1", "N2", "N3"]
 ScoreStatus = Literal["ok", "single_lineage", "too_few_clones"]
 
