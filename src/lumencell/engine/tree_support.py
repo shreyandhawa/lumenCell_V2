@@ -132,12 +132,15 @@ def _c1(cov: float, t: Thresholds) -> Check:
 
 def _c2(tree: float | None, t: Thresholds) -> Check:
     if t.tau_tree is None:
+        missing = (
+            " Its evidence is also missing: it is waiting for the dataset's prep." if tree is None else ""
+        )
         return _check(
             "C2",
             "excluded",
             math.nan if tree is None else tree,
             None,
-            "Tree-likeness was left out: it did not separate trees from the negative controls.",
+            "Tree-likeness was left out: it did not separate trees from the negative controls." + missing,
         )
     if tree is None:
         return _check(
@@ -164,21 +167,29 @@ def _c2(tree: float | None, t: Thresholds) -> Check:
 
 
 def _stability(cid: CheckId, name: str, value: float, tau: float | None, s: StabilityEvidence) -> Check:
+    all_failed = s.n_replicates > 0 and s.n_failed >= s.n_replicates
+    unavailable = s.state == "unavailable" or all_failed
+    why = s.note or (
+        "Every stability replicate failed." if all_failed else "Stability could not be measured."
+    )
     if tau is None:
+        # Left out, and still say when the evidence is missing, so the reasons name stability.
+        missing = ""
+        if s.state == "pending":
+            missing = " Its evidence is also missing: it is waiting for the stability run."
+        elif unavailable:
+            missing = f" Its evidence is also missing: stability could not be measured: {why}"
         return _check(
             cid,
             "excluded",
             math.nan,
             None,
-            f"{name.capitalize()} was left out: it did not separate trees from the negative controls.",
+            f"{name.capitalize()} was left out: it did not separate trees from the negative controls."
+            + missing,
         )
     if s.state == "pending":
         return _check(cid, "pending", math.nan, tau, f"{name.capitalize()} is waiting for the stability run.")
-    all_failed = s.n_replicates > 0 and s.n_failed >= s.n_replicates
-    if s.state == "unavailable" or all_failed:
-        why = s.note or (
-            "Every stability replicate failed." if all_failed else "Stability could not be measured."
-        )
+    if unavailable:
         return _check(cid, "unavailable", math.nan, tau, f"{name.capitalize()} could not be measured: {why}")
     if value >= tau:
         return _check(cid, "pass", value, tau)

@@ -356,16 +356,19 @@ def test_an_infer_job_for_another_file_queues_nothing(
     assert job.key == f"score_clonal:r1:{trust_hash(ClonalSettings(**A))}"
 
 
-def test_submit_trust_jobs_queues_clonal_only_with_settings(
+def test_submit_trust_jobs_queues_clonal_only_with_settings_and_stability_always(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
     _save_run(session, "r1")
-    assert session.runs.submit_trust_jobs("r1") == []
+    (stability,) = session.runs.submit_trust_jobs("r1")  # every run gets stability (F1)
+    assert stability.kind == "stability"
     assert _scoring(session) == []
     session.set_clonal(ClonalSettings(**A))
     (queued,) = _scoring(session)
-    assert session.runs.submit_trust_jobs("r1") == [queued]  # the queued job, not a second one
+    # The queued jobs, not second ones; clonal scoring first.
+    assert session.runs.submit_trust_jobs("r1") == [queued, stability]
+    assert len(jobs.of_kind("stability")) == 1
     assert queued.key == f"score_clonal:r1:{trust_hash(ClonalSettings(**A))}"
     assert len(_scoring(session)) == 1
 

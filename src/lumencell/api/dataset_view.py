@@ -23,6 +23,7 @@ from lumencell.api.errors import ApiError
 from lumencell.clonal.isolation import column_names
 from lumencell.data.loader import Dataset
 from lumencell.engine.context import LEIDEN_KEY, InferenceContext, detect_label_key, inference_obs
+from lumencell.engine.tree_support import tree_likeness
 from lumencell.prep.cache import CacheMiss, PrepCache, prep_key
 from lumencell.prep.pipeline import PrepResult
 from lumencell.prep.stages import PrepParams
@@ -75,6 +76,8 @@ class DatasetView:
         self._lock = threading.RLock()
         self._ready = False
         self._prep: PrepResult | None = None
+        # tree_likeness of the prep it was computed from; a different or dropped prep invalidates it.
+        self._tree: tuple[PrepResult, float] | None = None
         self._ctx: InferenceContext | None = None
 
     # ---- prep --------------------------------------------------------------------------
@@ -109,6 +112,21 @@ class DatasetView:
                     self._ready = False
                     self._cache_missed(exc)
             return self._prep
+
+    def tree_likeness(self) -> float | None:
+        """C2 at the default resolution: None while prep is not loaded, NaN when PAGA has no edges.
+
+        NaN is kept so the verdict fails C2 rather than reading it as pending; only the dataset
+        route turns it into null.
+        """
+        prep = self.loaded_prep()
+        if prep is None:
+            return None
+        with self._lock:
+            if self._tree is None or self._tree[0] is not prep:
+                value = tree_likeness(prep.artifacts["paga_connectivities"], prep.artifacts["paga_tree"])
+                self._tree = (prep, value)
+            return self._tree[1]
 
     @staticmethod
     def _by_gene(prep: PrepResult) -> PrepResult:

@@ -102,8 +102,8 @@ def to_api_stability(r: StabilityResult) -> models.Stability:
     )
 
 
-def not_measured(status: Literal["failed", "not_available"], note: str) -> models.Stability:
-    """Stability that was not computed, with the reason."""
+def not_measured(status: Literal["pending", "failed", "not_available"], note: str) -> models.Stability:
+    """Stability that was not computed (or not yet), with the reason."""
     return models.Stability(
         status=status,
         match_jaccard=MATCH_JACCARD,

@@ -6,6 +6,7 @@ inference) goes to the job worker. The session ties together the parts that do
 the work: the dataset view, the runs, and the user's saved choices.
 """
 
+import math
 import sys
 import threading
 from http import HTTPStatus
@@ -146,6 +147,7 @@ class Session:
     # ---- dataset -------------------------------------------------------------------------
 
     def dataset_info(self) -> models.DatasetInfo:
+        tree = self.view.tree_likeness()
         return models.DatasetInfo(
             schema_version=models.SCHEMA_VERSION,
             name=self.ds.name,
@@ -163,6 +165,7 @@ class Session:
             versions={"lumencell": __version__},
             clonal=self._clonal,
             clonal_candidates=clonal_candidates(self.ds.obs.columns),
+            tree_likeness=None if tree is None or math.isnan(tree) else tree,
         )
 
     # ---- clonal settings -----------------------------------------------------------------

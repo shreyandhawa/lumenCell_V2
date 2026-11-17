@@ -35,6 +35,7 @@ export function dataset(prep: T.PrepStatus["state"], root: T.ResolvedRoot | null
     versions: { lumencell: "0.1.0" },
     clonal: null,
     clonal_candidates: [],
+    tree_likeness: null,
   };
 }
 

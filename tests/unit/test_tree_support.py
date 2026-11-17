@@ -315,3 +315,16 @@ def test_a_pending_c2_gets_no_cap_note(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _check(v, "C2").state == "pending"
     assert v.level == "provisional"
     assert not any("failed its verification" in r for r in v.reasons)
+
+
+def test_a_left_out_check_names_its_missing_evidence() -> None:
+    thr = Thresholds(None, None, None)
+    pending = _v(tree=None, stab=StabilityEvidence("pending"), thresholds=thr)
+    assert "prep" in (_check(pending, "C2").reason or "")
+    assert all("waiting for the stability run" in (_check(pending, c).reason or "") for c in ("C3", "C4"))
+    gone = _v(stab=StabilityEvidence("unavailable", note="cancelled"), thresholds=thr)
+    for cid in ("C3", "C4"):
+        c = _check(gone, cid)
+        assert c.state == "excluded" and "cancelled" in (c.reason or "")
+    assert _v(thresholds=thr).level == "supported"
+    assert "also missing" not in (_check(_v(thresholds=thr), "C3").reason or "")
