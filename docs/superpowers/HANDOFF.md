@@ -19,9 +19,10 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks, plus the
     N2 amendment (see "Phase 2 rulings")
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 2. Task 1 (PR #26) and Task 5 (PR #27) are merged to `main`. N2a is done on
-  `pivot/24-n2-amendment`: calibration passed on seeds 300-499, adopted, clonal metric_version 2
-  (see "Phase 2 N2a decisions and result"). Then 6, 7, then 2-4.
+- **Next:** phase 2. Merged to `main`: Task 1 (#26), Task 5 (#27), Task 6 (#28), Task 7 (#29).
+  N2a (#30) passed its calibration on seeds 300-499 and was adopted: the runtime N2 uses the
+  lineage-onset split and the clonal metric_version is 2 (see "Phase 2 N2a decisions and result").
+  Next: Task 8 (verdict calibration), Task 10 alongside; Tasks 2-4 wait for the download approval.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -163,6 +164,75 @@ entry point `tests/clonal/test_calibration_n2_amended.py`; 7adf711 records the r
   no edge between them, and the PAGA stage raises (igraph builds an empty adjacency). At 3000 x 2000 all
   four kinds pass full `run_pipeline` for seeds 0 and 1. Tasks 8 and 9 run at that size; if a control
   ever fails prep there, that is an engine finding, not a control to change.
+
+## Phase 2 Task 6 decisions
+
+- **A method's default seed is reseeded.** `replicate_plan` reads `"seed"` from the params it is
+  given (its test: `{}` gives `None`). `run_stability` hands it the run's params with the method's
+  defaults filled in (`Params.model_validate(...).model_dump()`), so a Palantir run that left its
+  seed at the default 20 still gets 21 and 22, as `[stability]` asks ("when the method has a seed
+  parameter"). `paga_dpt` has none, so its reseeds vary only Leiden and PAGA (F11). The method is
+  called with the run's own params plus `seed`, never with the filled-in defaults.
+- **Every Leiden terminal dropped fails the replicate.** When the run named Leiden terminals and
+  none has cells left, passing `[]` would let the method pick its own leaves, a different question.
+  The replicate is recorded with a `StabilityError` and counts as 0, like any failure. Terminals
+  in a user column pass unchanged; a label with no cells left makes the method raise, which is
+  the same recorded failure (Review Focus 3).
+- **A root name absent from the file** is refused with `StabilityError` too, next to the
+  repeated-name refusal the plan names.
+- **`restrict()` fingerprint** is `subset-<sha256 of the full fingerprint and the cell indices>`.
+  `uns_root` maps to its position in the subset, or `None` when the subset lacks it (F6).
+- **Subsample prep reuses** `hvg`, `pca_variance_ratio` and `pca[cells]` only; `hvg_info`, `lognorm`
+  and `umap` are left out (nothing downstream of PCA reads them). Reseed prep keeps every artifact
+  except `leiden` and the three PAGA ones, which are rerun.
+- **Padding.** Cells outside a subsample get NaN pseudotime, progress, fate and extras, no
+  membership, segment -1 and empty milestone-weight and curve-node rows; `pad_result` calls
+  `validate()` before returning.
+- **`jaccard_matrix` keeps the old double loop**, so `compare(a, b)` gives bit-identical values;
+  `test_without_a_mask_compare_is_unchanged` checks it against a frozen copy of the old code.
+- **Identical-run Spearman is 1 to rounding.** `spearmanr` of a vector with itself gives
+  0.9999999999999999 here, so `test_a_replicate_identical_to_the_reference_scores_one` compares
+  Spearman with `approx(1, abs=1e-12)` and the other four fields exactly.
+- **Empty kinds** (`n_reseeds=0`, say) summarise to NaN medians and minimums and `n_lineages_min` 0.
+- **Fix round 1:**
+  - `StabilityResult.n_failed` counts replicates that raised (each still counts as 0); the recorded
+    error is `"<ExceptionType>: <message>"`. Tested for one failure and for all five.
+  - The Leiden-terminal test reads the method's default `cluster_key` from its Params model
+    (`_terminal_key_default`), not a hard-coded `LEIDEN_KEY`.
+  - `_method_params` carries a comment: a bad param aborts the whole job, as the reference run would have.
+  - New tests close surviving mutants: subsample draw seed `seed + 1 + j`, `share_matched` over the
+    reference lineage count (2 vs 3 lineages gives 0.5, `n_lineages` 3), Jaccard equal to the
+    threshold is matched, `pad_result` leaves progress/fate/extras NaN, membership False, segment -1
+    outside, and `compare()` counts cells finite in both (it already did: no bug found).
+- On the 600-cell bifurcation, `paga_dpt` scores lineage stability 1.0 and pseudotime stability
+  0.99 (one subsample finds 2 of 3 lineages). Not a measurement for any τ.
+
+## Phase 2 Task 7 decisions
+
+- **C5 and `single_lineage` (F12, spec wins).** `not_applicable` only when clones are not configured.
+  A scored `single_lineage` fails C5 with the status in its reason; the plan's step 1 text that makes it
+  not applicable is superseded. Test: `test_a_single_lineage_clonal_score_fails_c5`. L < 2 reaches the
+  verdict as `not_configured` (the caller decides), since a scored result always has L >= 2 or `single_lineage`.
+- **R2, PAGA with no edges.** `prep/stages.py::_paga` returns an all-zero (k, k) connectivity and tree and
+  circle positions when no kNN edge joins two Leiden clusters; scanpy raised there. A single cluster did
+  the same before and now takes this path too. Graphs with edges are untouched. `engine/topology.py`
+  `_paga` (non-Leiden grouping) still calls scanpy and is not changed.
+- **One place decides the level:** `_level` in `engine/tree_support.py`, so Task 9's cap on a failed
+  verification goes there. It is not implemented.
+- **All replicates failed.** `StabilityEvidence` takes `n_replicates` and `n_failed` (default 0); with
+  `n_failed >= n_replicates > 0`, C3 and C4 are `unavailable` and the level is `provisional`. Partial
+  failures stay in the medians as zero. To be fed from `StabilityResult.n_failed` once the Task 6 fix lands.
+- **Level order.** C1/C2 fail beats everything; C1/C2 unknown (C2 `None`) gives `provisional`; then a C3-C5
+  fail gives `weak` even while others are pending; then pending/unavailable gives `provisional`.
+  An `excluded` or `not_applicable` check never changes the level. A NaN C3/C4/C5 value fails.
+  C2 `excluded` (tau_tree `None`) wins over pending.
+- **Fix round 1.** (1) F12: `ClonalEvidence.n_lineages` is required (no default), set by `from_result`;
+  `_c5` is `not_applicable` with a reason when scored with `n_lineages < 2` (pending is checked first, so a
+  pending caller passes any value); L >= 2 `single_lineage` still fails.
+- **Fix round 1.** (2) Survivor tests: exact-threshold passes (C2-C4), max-symmetrisation of PAGA
+  connectivity (upper-only, lower-only tree), excluded C2 with `None`, and not_supported over other fails.
+- **Fix round 1.** (3) Removed the dead `unavailable` branch from the C1/C2 level handling.
+- **Fix round 1.** (4) Comment in `engine/topology.py::_paga`: non-Leiden branch still raises on an edgeless graph.
 
 ## Controller handoff (2026-11-13, after Task 4)
 
@@ -640,9 +710,11 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/19-phase1-security` | #23 | merged (merge commit, aac08ed), phase 1 Task 17 |
 | `pivot/20-done-when-on-main` | #24 | merged (merge commit, 2217f76), phase 1 Done When re-run on `main` |
 | `pivot/21-phase2-start` | #25 | merged (squash, e1c63d4), phase 2 start: current state, Shreyan's two rulings |
-| `pivot/22-robustness-definitions` | #26 | merged (c8a50d9), phase 2 Task 1 |
-| `pivot/23-synth-controls` | #27 | merged (7257f5e), phase 2 Task 5 |
-| `pivot/24-n2-amendment` | (this PR) | open, phase 2 N2a |
+| `pivot/22-robustness-definitions` | #26 | merged (squash, c8a50d9), phase 2 Task 1 |
+| `pivot/23-synth-controls` | #27 | merged (squash, 7257f5e), phase 2 Task 5 |
+| `pivot/25-stability-engine` | #28 | merged (squash, 4387948), phase 2 Task 6 |
+| `pivot/26-tree-support` | #29 | merged (squash, 14b8979), phase 2 Task 7 (with the PAGA no-edge fix) |
+| `pivot/24-n2-amendment` | #30 | phase 2 N2a; merged with a merge commit so the recorded commit 2b15c77 stays on `main` |
 
 ## Verify the current state
 

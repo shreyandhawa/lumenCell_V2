@@ -30,10 +30,42 @@ class RunComparison:
     rank_difference: npt.NDArray[np.float32]  # per cell |rank_a - rank_b| / n_common, NaN if not in both
 
 
-def compare(a: TrajectoryResult, b: TrajectoryResult) -> RunComparison:
+BoolArray = npt.NDArray[np.bool_]
+
+
+def jaccard_matrix(ma: BoolArray, mb: BoolArray, shared: BoolArray | None = None) -> npt.NDArray[np.float64]:
+    """Jaccard overlap of every lineage of ``ma`` with every lineage of ``mb`` (rows are lineages).
+
+    With ``shared``, only the cells (columns) it marks count; a pair with no cells in its union is 0.
+    """
+    if shared is not None:
+        ma, mb = ma[:, shared], mb[:, shared]
+    jac = np.zeros((ma.shape[0], mb.shape[0]))
+    for i in range(ma.shape[0]):
+        for j in range(mb.shape[0]):
+            union = np.count_nonzero(ma[i] | mb[j])
+            jac[i, j] = np.count_nonzero(ma[i] & mb[j]) / union if union else 0.0
+    return jac
+
+
+def match_lineages(ma: BoolArray, mb: BoolArray, shared: BoolArray | None = None) -> list[LineagePair]:
+    """Pair lineages one to one by the Hungarian algorithm on :func:`jaccard_matrix`."""
+    jac = jaccard_matrix(ma, mb, shared)
+    if not jac.size:
+        return []
+    rows, cols = linear_sum_assignment(-jac)
+    return [LineagePair(int(r), int(c), float(jac[r, c])) for r, c in zip(rows, cols, strict=True)]
+
+
+def compare(a: TrajectoryResult, b: TrajectoryResult, shared: BoolArray | None = None) -> RunComparison:
+    """Agreement of two runs on one dataset; with ``shared``, only on the cells it marks."""
     if a.n_obs != b.n_obs:
         raise ValueError("the runs are on different datasets")
+    if shared is not None and shared.shape != (a.n_obs,):
+        raise ValueError(f"the shared-cell mask must have one value per cell ({a.n_obs})")
     both = np.isfinite(a.pseudotime) & np.isfinite(b.pseudotime)
+    if shared is not None:
+        both &= shared
     n = int(both.sum())
     rho = float(spearmanr(a.pseudotime[both], b.pseudotime[both]).statistic) if n >= 3 else None
     diff = np.full(a.n_obs, np.nan, dtype=np.float32)
@@ -41,15 +73,4 @@ def compare(a: TrajectoryResult, b: TrajectoryResult) -> RunComparison:
         ra = rankdata(a.pseudotime[both])
         rb = rankdata(b.pseudotime[both])
         diff[both] = (np.abs(ra - rb) / n).astype(np.float32)
-
-    ma, mb = a.membership, b.membership
-    jac = np.zeros((ma.shape[0], mb.shape[0]))
-    for i in range(ma.shape[0]):
-        for j in range(mb.shape[0]):
-            union = np.count_nonzero(ma[i] | mb[j])
-            jac[i, j] = np.count_nonzero(ma[i] & mb[j]) / union if union else 0.0
-    pairs: list[LineagePair] = []
-    if jac.size:
-        rows, cols = linear_sum_assignment(-jac)
-        pairs = [LineagePair(int(r), int(c), float(jac[r, c])) for r, c in zip(rows, cols, strict=True)]
-    return RunComparison(n, rho, pairs, diff)
+    return RunComparison(n, rho, match_lineages(a.membership, b.membership, shared), diff)

@@ -67,6 +67,7 @@ def _paga(
             sparse.csr_matrix(ctx.artifacts["paga_connectivities"]),
             sparse.csr_matrix(ctx.artifacts["paga_tree"]),
         )
+    # Non-Leiden branch still raises on an edgeless graph (scanpy); it is not used for C2.
     cats = sorted(set(labels.tolist()))
     view = neighbors_view(ctx.n_obs, ctx.artifacts, ctx.prep_params)
     view.obs["groups"] = pd.Categorical(labels, categories=cats)
