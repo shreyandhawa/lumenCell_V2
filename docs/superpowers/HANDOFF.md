@@ -167,6 +167,33 @@ One Sonnet scan checked the plan against `main`; its full table is in the ledger
 - On the 600-cell bifurcation, `paga_dpt` scores lineage stability 1.0 and pseudotime stability
   0.99 (one subsample finds 2 of 3 lineages). Not a measurement for any τ.
 
+## Phase 2 Task 7 decisions
+
+- **C5 and `single_lineage` (F12, spec wins).** `not_applicable` only when clones are not configured.
+  A scored `single_lineage` fails C5 with the status in its reason; the plan's step 1 text that makes it
+  not applicable is superseded. Test: `test_a_single_lineage_clonal_score_fails_c5`. L < 2 reaches the
+  verdict as `not_configured` (the caller decides), since a scored result always has L >= 2 or `single_lineage`.
+- **R2, PAGA with no edges.** `prep/stages.py::_paga` returns an all-zero (k, k) connectivity and tree and
+  circle positions when no kNN edge joins two Leiden clusters; scanpy raised there. A single cluster did
+  the same before and now takes this path too. Graphs with edges are untouched. `engine/topology.py`
+  `_paga` (non-Leiden grouping) still calls scanpy and is not changed.
+- **One place decides the level:** `_level` in `engine/tree_support.py`, so Task 9's cap on a failed
+  verification goes there. It is not implemented.
+- **All replicates failed.** `StabilityEvidence` takes `n_replicates` and `n_failed` (default 0); with
+  `n_failed >= n_replicates > 0`, C3 and C4 are `unavailable` and the level is `provisional`. Partial
+  failures stay in the medians as zero. To be fed from `StabilityResult.n_failed` once the Task 6 fix lands.
+- **Level order.** C1/C2 fail beats everything; C1/C2 unknown (C2 `None`) gives `provisional`; then a C3-C5
+  fail gives `weak` even while others are pending; then pending/unavailable gives `provisional`.
+  An `excluded` or `not_applicable` check never changes the level. A NaN C3/C4/C5 value fails.
+  C2 `excluded` (tau_tree `None`) wins over pending.
+- **Fix round 1.** (1) F12: `ClonalEvidence.n_lineages` is required (no default), set by `from_result`;
+  `_c5` is `not_applicable` with a reason when scored with `n_lineages < 2` (pending is checked first, so a
+  pending caller passes any value); L >= 2 `single_lineage` still fails.
+- **Fix round 1.** (2) Survivor tests: exact-threshold passes (C2-C4), max-symmetrisation of PAGA
+  connectivity (upper-only, lower-only tree), excluded C2 with `None`, and not_supported over other fails.
+- **Fix round 1.** (3) Removed the dead `unavailable` branch from the C1/C2 level handling.
+- **Fix round 1.** (4) Comment in `engine/topology.py::_paga`: non-Leiden branch still raises on an edgeless graph.
+
 ## Controller handoff (2026-11-13, after Task 4)
 
 The orchestrating session reached 33% of its context after Task 4 and handed off here.
@@ -645,7 +672,8 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/21-phase2-start` | #25 | merged (squash, e1c63d4), phase 2 start: current state, Shreyan's two rulings |
 | `pivot/22-robustness-definitions` | #26 | open, phase 2 Task 1 |
 | `pivot/23-synth-controls` | #27 | open, stacked on #26, phase 2 Task 5 |
-| `pivot/25-stability-engine` | (this PR) | open, stacked on `pivot/23-synth-controls`, phase 2 Task 6 |
+| `pivot/25-stability-engine` | #28 | open, stacked on `pivot/23-synth-controls`, phase 2 Task 6 |
+| `pivot/26-tree-support` | (this PR) | open, stacked on `pivot/25-stability-engine`, phase 2 Task 7 (with the PAGA no-edge fix) |
 
 ## Verify the current state
 

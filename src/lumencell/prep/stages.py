@@ -255,12 +255,27 @@ def _diffmap(ds: Dataset, art: Artifacts, p: PrepParams) -> dict[str, Any]:
     }
 
 
+def _clusters_touch(connectivities: Any, labels: npt.NDArray[Any]) -> bool:
+    coo = sparse.coo_matrix(connectivities)
+    return bool(np.any(labels[coo.row] != labels[coo.col]))
+
+
 def _paga(ds: Dataset, art: Artifacts, p: PrepParams) -> dict[str, Any]:
     view = neighbors_view(ds.n_obs, art, p)
     labels = np.asarray(art["leiden"])
     view.obs["leiden"] = pd.Categorical(
         labels.astype(str), categories=[str(i) for i in range(labels.max() + 1)]
     )
+    if not _clusters_touch(art["connectivities"], labels):
+        # No kNN edge crosses two clusters: scanpy's igraph step raises on the empty graph, so a graph
+        # without edges is built here. The positions are a fixed circle (only used to seed the UMAP).
+        k = int(labels.max()) + 1
+        angle = 2 * np.pi * np.arange(k) / k
+        return {
+            "paga_connectivities": sparse.csr_matrix((k, k), dtype=np.float32),
+            "paga_tree": sparse.csr_matrix((k, k), dtype=np.float32),
+            "paga_pos": np.stack([np.cos(angle), np.sin(angle)], axis=1).astype(np.float32),
+        }
     sc.tl.paga(view, groups="leiden")
     sc.pl.paga(view, plot=False, random_state=p.seed)
     return {
