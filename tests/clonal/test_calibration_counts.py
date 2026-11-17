@@ -181,3 +181,17 @@ def test_the_recorded_run_matches_the_declared_configuration() -> None:
 def test_the_declared_bound_is_18() -> None:
     cfg = load_thresholds()["clonal"]["calibration"]
     assert rejection_bound(cfg["n_seeds"], cfg["alpha"], cfg["binomial_quantile"]) == 18
+
+
+def test_the_n2_amendment_calibration_is_declared_on_fresh_seeds() -> None:
+    clonal = load_thresholds()["clonal"]
+    phase1, amended = clonal["calibration"], clonal["calibration_n2_amended"]
+    assert (amended["seed_start"], amended["n_seeds"]) == (300, 200)
+    # Everything but the seed range is the phase 1 configuration.
+    same = {k: v for k, v in amended.items() if k not in ("seed_start", "n_seeds")}
+    assert same == {k: v for k, v in phase1.items() if k not in ("seed_start", "n_seeds")}
+    assert set(amended) == set(phase1)
+    fresh = range(amended["seed_start"], amended["seed_start"] + amended["n_seeds"])
+    used = set(range(phase1["seed_start"], phase1["seed_start"] + phase1["n_seeds"])) | set(range(6))
+    assert not used & set(fresh)
+    assert rejection_bound(amended["n_seeds"], amended["alpha"], amended["binomial_quantile"]) == 18

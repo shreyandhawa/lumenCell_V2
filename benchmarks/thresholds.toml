@@ -97,6 +97,27 @@ n_permutations = 1000       # B per null
 seed = 0
 pseudotime_bins = 10
 p_max = 0.01                # the clonal_p gate, and phase 2's C5
+# 2026-11-17  N2 amendment (N2a), declared before any run that measures it. Adopted only by the
+#   rule below; until then the runtime N2 is the decile definition above (metric_version 1).
+#   Definition: for each lineage, its onset is the smallest finite pseudotime among the scored
+#   cells whose whole weight (1) is on that lineage; a lineage with no such cell adds no cut.
+#   N2's strata become donor x decile x segment, where segment = the number of onsets <= the
+#   cell's pseudotime. Deciles are unchanged. Cells without a finite pseudotime keep their own
+#   stratum (per donor). Near-equal onsets are not merged. The strata use only lineage weights
+#   and pseudotime, never clone labels, so the shuffle stays a valid null. The same rule in
+#   own-cells and oracle-cells modes, from the membership and pseudotime each call already
+#   passes. N2 is redefined in place: N3's RNG stream and the null names do not move.
+#   Reasons: phase 1's depth_only/N2 failed (57/200, bound 18). Diagnosis (Task 8): binary2's
+#   lineage mix steps at t = 0.65 inside one decile, so the within-decile shuffle mixes pure-B
+#   clones with mixed-region cells and the null entropy is too high. A cut at each lineage's
+#   onset targets that mechanism. Finer bins were rejected: they only shrink the step inside a
+#   bin and cost power on every run.
+#   Calibration: [clonal.calibration_n2_amended], fresh seeds 300-499, the phase 1 check set,
+#   alpha, bound rule and NaN rule, recorded in a new results file.
+#   Adoption rule, fixed now: if every check passes (report passed), the amended N2 becomes the
+#   runtime N2 and metric_version goes from 1 to 2 (trust_hash changes, stored clonal scores are
+#   re-scored). If any check fails, it is recorded as failed and the runtime stays on version 1.
+#   No seed, bound or definition is changed after the run.
 
 [clonal.synthetic]
 fate_bias = 0.7             # every branching matrix case gets this clonal layer
@@ -128,6 +149,20 @@ monotonic_topologies = ["bifurcation", "trifurcation", "binary2"]
 #   that must fail, fails) by comparing its rejections, p <= alpha, to that bound. A seed whose
 #   method raises is a NaN p as well, and its error is listed in the report. No seed, definition
 #   or threshold is changed after the run; a failed check is recorded as a failure.
+
+[clonal.calibration_n2_amended]
+# 2026-11-17  The N2 amendment's calibration (see [clonal] above): the same checks, alpha, bound
+#   rule and NaN rule as [clonal.calibration], on fresh seeds clear of 0-5 and 100-299. Seed s
+#   uses topologies[(s - seed_start) % 3]. Every null p, and so the headline p, uses the amended N2.
+seed_start = 300
+n_seeds = 200
+topologies = ["bifurcation", "trifurcation", "binary2"]
+depth_only_topology = "binary2"
+alpha = 0.05
+binomial_quantile = 0.99          # 18 rejections at most when all 200 seeds score
+monotonic_fate_bias = [0.0, 0.35, 0.7, 1.0]
+monotonic_seeds = [0, 1, 2]
+monotonic_topologies = ["bifurcation", "trifurcation", "binary2"]
 
 # ---- T-cell robustness (spec docs/superpowers/specs/2026-11-12-tcell-clonotypes-design.md §5)
 # Defined before any cell-cycle score, stability replicate or verdict value was computed.
@@ -277,3 +312,9 @@ max_drop = 0.03
 #             matrix. All are set before any of them was measured. Nothing existing changed.
 #             Also declared: [tree_support.verification] on_failure = "provisional", so a failed
 #             verification caps every served verdict at provisional, with a note naming it.
+#
+# 2026-11-17  N2 amendment declared (N2a), before any measurement: a lineage-onset split of N2's
+#             strata (definition, reasons and adoption rule under [clonal]) and its calibration
+#             table [clonal.calibration_n2_amended], seeds 300-499. [clonal.calibration] and
+#             clonal-calibration-2026-11-13.json are unchanged; runtime N2 stays version 1 until
+#             the recorded run passes.
