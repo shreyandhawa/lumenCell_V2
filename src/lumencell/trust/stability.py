@@ -47,6 +47,18 @@ def stability_name() -> str:
     return f"stability-{stability_hash()}"
 
 
+NOTE_LIMIT = 300
+
+
+def safe_text(text: str) -> str:
+    """One printable line of at most ``NOTE_LIMIT`` characters: control characters are escaped.
+
+    Exception messages can carry a name from the user's file, and they reach the served notes.
+    """
+    one = "".join(c if c.isprintable() else c.encode("unicode_escape").decode() for c in text)
+    return one if len(one) <= NOTE_LIMIT else one[: NOTE_LIMIT - 1] + "\u2026"
+
+
 def _num(x: float) -> float | None:
     """A finite value as a float; NaN and infinity become ``None``."""
     return float(x) if math.isfinite(x) else None
@@ -98,7 +110,10 @@ def to_api_stability(r: StabilityResult) -> models.Stability:
         subsamples=_summary(r.subsamples),
         lineage_stability=_num(r.lineage_stability),
         pseudotime_stability=_num(r.pseudotime_stability),
-        notes=[STABILITY_NOTE, *(f"{row.kind} {row.index + 1} failed: {row.error}" for row in failed)],
+        notes=[
+            STABILITY_NOTE,
+            *(f"{row.kind} {row.index + 1} failed: {safe_text(row.error or '')}" for row in failed),
+        ],
     )
 
 
@@ -113,5 +128,5 @@ def not_measured(status: Literal["pending", "failed", "not_available"], note: st
         subsamples=None,
         lineage_stability=None,
         pseudotime_stability=None,
-        notes=[note],
+        notes=[safe_text(note)],
     )

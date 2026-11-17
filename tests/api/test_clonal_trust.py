@@ -243,6 +243,28 @@ def test_a_failed_score_is_reported_and_not_resubmitted_on_every_get(
     assert len(_scoring(session)) == 1
 
 
+def test_a_failed_score_note_is_escaped_and_bounded(
+    prepared: tuple[Path, Path],
+    cache_root: Path,
+    jobs: JobManager,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Security review S9: a job error can carry text from the user's file; the note is one bounded line."""
+    from lumencell.api.runs import TrustLookup
+
+    session = _session(prepared, cache_root, jobs, tmp_path)
+    session.set_clonal(ClonalSettings(**A))
+    _save_run(session, "r1")
+    failed = Job(
+        "j1", "score_clonal", "k", {}, state="failed", error="RuntimeError: bad \x1b[2J\nname" + "y" * 5000
+    )
+    monkeypatch.setattr(session.runs, "_trust_lookup", lambda *a, **k: TrustLookup(None, failed))
+    (note,) = _clonal(_client(session), "r1")["notes"]
+    assert note.isprintable() and len(note) == 300
+    assert note.startswith("RuntimeError: bad \\x1b[2J\\nname")
+
+
 def test_a_cancelled_score_is_reported_as_failed(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:

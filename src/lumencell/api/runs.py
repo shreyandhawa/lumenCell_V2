@@ -28,7 +28,7 @@ from lumencell.engine.store import STORE_VERSION, RunStore, run_id
 from lumencell.engine.trends import gene_trends, temporal_heatmap
 from lumencell.jobs.manager import ACTIVE, Job, JobManager
 from lumencell.trust.clonal import not_scored, trust_hash, trust_name
-from lumencell.trust.stability import not_measured, stability_hash, stability_name
+from lumencell.trust.stability import not_measured, safe_text, stability_hash, stability_name
 from lumencell.trust.verdict import tree_support_for_run
 
 # Run ids name folders in the run store, so anything that is not a plain name is not a run.
@@ -340,7 +340,7 @@ class Runs:
         assert found.job is not None
         if found.job.state in ACTIVE:
             return not_scored("pending", settings, PENDING_NOTE)
-        return not_scored("failed", settings, found.job.error or "cancelled")
+        return not_scored("failed", settings, safe_text(found.job.error or "cancelled"))
 
     def submit_clonal(self, rid: str, settings: models.ClonalSettings) -> Job | None:
         """Queue scoring of one run under these settings; None when its file already exists.

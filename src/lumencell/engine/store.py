@@ -53,6 +53,10 @@ TRUST_NAME = re.compile(r"[a-z][a-z_]{0,31}-[0-9a-f]{16}")
 RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
+def _refuse_constant(name: str) -> None:
+    raise ValueError(f"{name} is not JSON")
+
+
 def run_id(
     method: str,
     params: dict[str, Any],
@@ -235,7 +239,7 @@ class RunStore:
         """A trust result, or None when missing, unreadable or not a JSON object."""
         path = self.trust_path(rid, name)
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"), parse_constant=_refuse_constant)
         except FileNotFoundError:
             return None
         except (OSError, ValueError) as e:

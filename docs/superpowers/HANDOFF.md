@@ -19,19 +19,22 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks, plus the
     N2 amendment (see "Phase 2 rulings")
   - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 2. Merged to `main`: Task 1 (#26), Task 5 (#27), Task 6 (#28), Task 7 (#29).
-  N2a (#30) passed its calibration on seeds 300-499 and was adopted: the runtime N2 uses the
-  lineage-onset split and the clonal metric_version is 2 (see "Phase 2 N2a decisions and result").
-  Task 8 (verdict calibration, #32) is recorded: C2, C3 and C4 are all non-discriminating, so no
-  tau is set (see "Phase 2 Task 8 decisions and result"). Task 10 (the `stability` worker job,
-  #31) is merged. Task 9 (#33) verified the verdict on fresh seeds 3-5 and FAILED (28 of 31
-  control runs supported, max 0), so every served verdict is capped at provisional; Shreyan chose
-  to accept a provisional-only verdict (see "Phase 2 Task 9 decisions and result"). Shreyan approved
-  the Task 2 downloads on 2026-11-17. Task 12 (#35) reported stability and the capped verdict on the
-  three real datasets; every gated metric is identical to phase 1. Task 11 (serving stability and the
-  capped verdict, without the cell-cycle check) is #34 (see "Phase 2 Task 11 decisions"). Next: Tasks
-  2, 3, 4 (Task 4 adds the cell-cycle fields Task 11 left out; Task 2 waits for Shreyan's manual
-  download of the Tirosh 2016 supplement), then 13.
+- **Next:** phase 2. Merged to `main`: Tasks 1 (#26), 5 (#27), 6 (#28), 7 (#29), 8 (#32), 9 (#33),
+  10 (#31), 11 (#34), 12 (#35) and N2a (#30). N2a passed its calibration on seeds 300-499 and was
+  adopted: the runtime N2 uses the lineage-onset split and the clonal metric_version is 2 (see
+  "Phase 2 N2a decisions and result"). Task 8 found C2, C3 and C4 non-discriminating, so no tau is
+  set. Task 9 verified the verdict on fresh seeds 3-5 and FAILED (28 of 31 control runs supported,
+  max 0), so every served verdict is capped at provisional; Shreyan chose to accept a
+  provisional-only verdict. Task 11 serves stability and the capped verdict without the cell-cycle
+  check; Task 12 reported both on the three real datasets (every gated metric identical to phase 1).
+  - Task 13 (security review of phase 2, `pivot/32-phase2-security`) is this PR: two Low findings
+    fixed, two recorded; see "Security review (phase 2)" and "Done When (phase 2)".
+  - **Blocked: Tasks 2, 3, 4** (Tirosh lists, cell-cycle stage, cell-cycle check). They wait on the
+    Tirosh 2016 supplement, which Shreyan must download by hand: PMC and science.org are behind a
+    CAPTCHA. Task 4 adds the cell-cycle fields Task 11 left out. Their security items are pending
+    in the phase 2 review.
+  - **Final review:** after Tasks 2-4 merge, re-run the Done When commands on `main` and review the
+    whole phase once.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -898,6 +901,54 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `git diff 142a788 -- docs/HANDOFF.md` | hunks cover lines 3, 32, 49, 71-73, 89-90, 159-160 and 185: PASS |
 | this section | present: PASS |
 
+## Security review (phase 2)
+
+Reviewed by hand along the brief's untrusted-input paths, on the diff `2217f76..HEAD` (phase 1's last
+merge to `main`, c2b3e97 as the head). Tasks 2-4 (Tirosh lists, cell-cycle stage, cell-cycle check) are not
+merged, so their inputs are listed as pending below.
+
+| # | Severity | Where | Finding | Outcome |
+|---|---|---|---|---|
+| S5 | Low | `trust/stability.py` `to_api_stability`, `not_measured` | A replicate's `error` (`ExcType: message`) and a failed job's error reach the served `notes` and the verdict reasons verbatim. An exception message can carry a name from the user's file, with control characters, and has no length bound. | Fixed: `safe_text` escapes non-printable characters and caps a note at 300 characters. Tests: `test_a_replicate_error_is_one_escaped_line_of_bounded_length`, `test_a_not_measured_note_is_escaped_and_bounded`. |
+| S6 | Low | `engine/store.py` `read_trust` | Trust files are written strict (`allow_nan=False`) but were read with Python's lenient `json.loads`, which accepts `NaN` and `Infinity`. A hand-edited or damaged file would validate and then be served. | Fixed: `parse_constant` refuses them, so the file reads as unreadable and is healed like any other. Test: `test_a_trust_file_with_a_non_json_number_is_unreadable`. |
+| S7 | Info | `api/runs.py` `_trust_lookup` | A GET resubmits a job that is `done` while its file is missing or invalid, with no count. If a bug made a job write an invalid file every time, each GET after the job finished would queue another hours-long stability run. Failed and cancelled jobs are not resubmitted, so only a deterministic "done but invalid" output reaches this. | Recorded, no change: it needs a code bug, not input, and the missing-file case (a user clearing the cache) is the reason for the rule. A retry counter would be new state in the job manager. |
+| S9 | Low | `api/runs.py` `Runs.clonal_agreement` | Found by the review seat. A failed clonal job's `job.error` was served raw as the agreement's note, and it reaches the verdict reasons through C5. Same class as S5. | Fixed: wrapped in `safe_text`. Test: `test_a_failed_score_note_is_escaped_and_bounded`; `test_safe_text_pins_the_cap_the_marker_and_every_control_character` pins the 300 cap, the marker and DEL, C1 and U+2028. |
+| S10 | Info | `api/runs.py`, `api/session.py` (job and run status) | The raw `job.error` is also served in job and run status (phase 1 surface). JSON escapes control characters on the wire and only the local user's own file can put text there. | Recorded, no change: it is the job's own diagnostic, not a note composed for the verdict; capping it would hide the traceback summary the user needs. |
+| S8 | Info | `tests/unit/test_verdict_calibration.py` | `LUMENCELL_VERDICT_CALIBRATION_OUT` and `LUMENCELL_VERDICT_VERIFICATION_OUT` (and the `..._N2_OUT` one) are written as given, as `LUMENCELL_CALIBRATION_OUT` is (S3). They are set by whoever runs the slow test. | Recorded, no change, as S3. |
+
+Checked and found sound, no change:
+- Obs names in replicate roots: the root is `cell:<obs_name>` and is found by exact match on the string index (`_root_index`); a repeated name and an absent name are both refused with `StabilityError`, and the message uses `!r`, so control characters print escaped. Existing tests in `tests/unit/test_stability.py` pin both refusals. The name is never a path, a job key or a regex.
+- Lineage names: no lineage name reaches the verdict reasons or the stability notes (the reasons are fixed sentences with numbers). The clonal and stability notes that carry an exception or a job error go through `safe_text` (S5, S9); job and run status carry the raw error (S10).
+- Trust file names and job keys: the stability file is `stability-<16 hex>` from `stability_hash()`; `TRUST_NAME` and `RUN_ID` use `fullmatch` in `trust_path`; the job key is `stability:<run id>:<hash>`, where the run id passed `_RUN_ID` at the route. The worker refuses a payload `trust_name` that is not `stability_name()`.
+- The stability cancel path: the handler writes nothing until the end and `write_trust` renames a temp file, removing it on any exception; `test_a_cancelled_stability_job_leaves_nothing` (a terminated worker) and `test_trust_refuses_nan_and_leaves_nothing` pin it. A terminated worker's stray temp is swept by housekeeping (phase 1, S4).
+- The GET-healing path: a failed or cancelled job is never resubmitted by a GET (`test_a_cancelled_stability_keeps_the_verdict_provisional_and_is_not_resubmitted`, `test_a_failed_stability_job_is_reported_with_its_error_and_not_resubmitted`), and the job manager keys jobs, so concurrent GETs share one job. The one open edge is S7.
+- Strict JSON: writes use `allow_nan=False`; undefined stability values become `null` (`_num`); reads are now strict (S6).
+
+Pending: Tasks 2-4 not merged; reviewed in their PRs:
+- Gene symbols in cell-cycle matching (case, whitespace, the `var` symbol column).
+- The package-data TSV parsing of the Tirosh lists.
+- The downloaded sources are never committed and are parsed with `python -I`. The downloads so far are in `$TMPDIR`, outside the repo (checked: `git status` is clean of them).
+
+## Done When (phase 2)
+
+Run from the worktree root of `pivot/32-phase2-security` (branch from `main` c2b3e97, plus this PR's fixes), 2026-11-17,
+exactly as the plan writes them. Tasks 2-4 are not merged (blocked on the Tirosh 2016 supplement, which Shreyan
+must download by hand), so two commands fail for that reason; the verification command fails because the verification
+itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them pass.
+
+| Command | Actual result |
+|---|---|
+| `make ci; echo $?` | `0` (run after the S5 and S6 fixes): PASS. A first run printed `2` from two ruff E501 lines in this PR's own new code; they were wrapped and the rerun printed `0`. |
+| `make bench-synth > "$TMPDIR/synth.log" 2>&1; echo $?` (background) | `0`: PASS |
+| `grep -c '^REGRESSION' "$TMPDIR/synth.log"` | `0`: PASS |
+| `uv run pytest tests/unit/test_prep.py tests/unit/test_prep_cache.py tests/unit/test_cell_cycle_genes.py tests/api/test_cache_healing.py -q; echo $?` | `ERROR: file or directory not found: tests/unit/test_cell_cycle_genes.py`, `no tests ran`, exit `4`: **FAILED**. Task 3 creates that file and is not merged. It passes once Tasks 2-4 merge (Task 3 also adds the pinned `prep_key` test). |
+| `uv run pytest tests/api/test_robustness_trust.py -q; echo $?` | `15 passed`, exit `0`: PASS |
+| the calibration/verification `python -c` command | `benchmarks/results/verdict-calibration-2026-11-17.json True benchmarks/results/verdict-verification-2026-11-17.json False`: **FAILED** on the second `True`. The verification of the verdict on fresh seeds 3-5 failed (28 of 31 control runs supported, max 0; Task 9, ruling F14/(a)). Shreyan accepted a provisional-only verdict, so every served level is capped. It would pass only with a rule that passes verification on seeds not used before; none is planned. |
+| `grep -c '^\[tree_support.calibrated\]' benchmarks/thresholds.toml` | `1`: PASS |
+| `uv run pytest tests/unit/test_trust_constants.py tests/unit/test_verdict_calibration.py -q` | `1 failed, 35 passed in 756.66s`, exit `1`: **FAILED**. The one failure is `test_verification_on_fresh_seeds`, which asserts `ver.passed` and re-measures the verification (12 minutes); it fails for the same reason as the line above. `test_the_recorded_verification_follows_from_its_records` passes (the recorded `passed=False` matches its records). Passes only with the same verified rule. |
+| `git merge-base --is-ancestor $(git log --format=%h -1 --grep='Declare the T-cell robustness') $(git log --format=%h --reverse -- 'benchmarks/results/verdict-*.json' | head -1); echo $?` | `0` (c8a50d9 is an ancestor of 0d0608a): PASS |
+| this file has "Security review (phase 2)" | present, S5 to S8 plus the pending Tasks 2-4 items: PASS |
+
 ## Branches and PRs
 
 | Branch | PR | State |
@@ -933,6 +984,7 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/29-verdict-verification` | #33 | merged (merge commit, keeps the recorded commit 37197c8), phase 2 Task 9 (FAILED, verdict capped) |
 | `pivot/30-robustness-api` | #34 | merged (squash), phase 2 Task 11 (stability and the capped verdict served; cell cycle deferred to Task 4) |
 | `pivot/31-bench-real-stability` | #35 | merged (merge commit, 4961426, keeps the measured commit 99c3786), phase 2 Task 12 |
+| `pivot/32-phase2-security` | #36 | open, phase 2 Task 13 (security review; Done When recorded) |
 
 ## Verify the current state
 
