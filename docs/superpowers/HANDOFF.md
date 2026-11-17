@@ -140,6 +140,7 @@ entry point `tests/clonal/test_calibration_n2_amended.py`; 7adf711 records the r
   near-equal onsets are not merged).
 - **bench-synth** at metric_version 2: exit 0, 0 `REGRESSION` lines. 29 gate lines are reported
   (as before: clonal_excess_ratio and pt_spearman rows); no clonal_p gate row fails.
+- Caveat: each onset is the earliest exclusive scored cell, so one stray early cell moves a cut (as declared; the calibration passed).
 
 ## Phase 2 Task 1 decisions
 

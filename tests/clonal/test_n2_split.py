@@ -157,3 +157,28 @@ def test_an_unknown_split_is_refused() -> None:
     membership, c, pt = step()
     with pytest.raises(ValueError, match="n2_split"):
         score_clonal(membership, c, pt, np.zeros(pt.size, dtype=np.int64), n2_split="quantile")  # type: ignore[arg-type]
+
+
+def test_the_default_split_is_the_runtime_split() -> None:
+    import inspect
+
+    from lumencell.clonal.scores import RUNTIME_N2_SPLIT, score_with_baseline
+
+    assert RUNTIME_N2_SPLIT == "lineage_onset"
+    for fn in (score_clonal, score_with_baseline):
+        assert inspect.signature(fn).parameters["n2_split"].default == RUNTIME_N2_SPLIT
+    membership, c, pt = step()
+    baseline = np.zeros(pt.size, dtype=np.int64)
+    default = score_clonal(membership, c, pt, baseline, n_bins=1, n_permutations=199)
+    explicit = score_clonal(
+        membership, c, pt, baseline, n_bins=1, n_permutations=199, n2_split=RUNTIME_N2_SPLIT
+    )
+    none = score_clonal(membership, c, pt, baseline, n_bins=1, n_permutations=199, n2_split="none")
+    assert default.nulls == explicit.nulls
+    assert default.nulls != none.nulls
+
+
+def test_a_weight_of_three_quarters_sets_no_onset() -> None:
+    weights = np.array([[0.75, 0.25], [0.25, 0.75], [0, 1]], dtype=np.float64)
+    pt = np.array([0.1, 0.2, 0.5])
+    assert _onset_segments(weights, pt).tolist() == [0, 0, 1]

@@ -281,3 +281,60 @@ def test_the_recorded_n2_amendment_run_matches_its_declaration_and_the_adoption_
     # The pre-declared adoption rule: version 2 and the split at run time if and only if it passed.
     assert doc["passed"] is all(c["passed"] for c in doc["checks"]) is True
     assert (CLONAL_METRIC_VERSION, RUNTIME_N2_SPLIT) == (2, "lineage_onset")
+
+
+@pytest.mark.parametrize("split", ["lineage_onset", "none"])
+def test_every_calibration_path_forwards_the_split(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, split: str
+) -> None:
+    from types import SimpleNamespace
+
+    import anndata as ad
+    import numpy as np
+
+    from lumencell.bench import calibration as cal
+    from lumencell.clonal.labels import encode_clones
+
+    seen: list[str] = []
+
+    def fake(*args: object, **kwargs: object) -> SimpleNamespace:
+        seen.append(str(kwargs["n2_split"]))
+        return SimpleNamespace(nulls=[SimpleNamespace(p=0.5)], eta=0.1, p=0.5)
+
+    monkeypatch.setattr(cal, "score_clonal", fake)
+    monkeypatch.setattr(cal, "score_with_baseline", fake)
+    truth = SimpleNamespace(
+        membership=lambda: np.ones((2, 4), dtype=bool),
+        order=np.arange(4.0),
+        n_obs=4,
+        exclusive=lambda: np.zeros(4, dtype=int),
+    )
+    codes = encode_clones(np.array(list("aabb"), dtype=object), np.array(list("xxxx"), dtype=object))
+    monkeypatch.setattr(cal, "_oracle_inputs", lambda *a: (truth, codes))
+
+    cal._score_oracle(truth, codes, split)  # type: ignore[arg-type]
+    cal._donors_ignored_n1(None, None, 0, split)  # type: ignore[arg-type]
+    cal._monotonic_case(None, "t", 0, [0.0, 1.0], lambda **kw: None, split)  # type: ignore[arg-type]
+    assert seen == [split] * 4
+
+    obs = {"clone_id": ["a", "a", "b", "b"], "donor": ["x"] * 4}
+    import pandas as pd
+
+    adata = ad.AnnData(X=np.zeros((4, 2)), obs=pd.DataFrame(obs, index=list("wxyz")))
+    monkeypatch.setattr(cal, "truth_from_adata", lambda b: SimpleNamespace(meta={"root_label": "r"}))
+    monkeypatch.setattr(cal, "add_clones", lambda *a: adata)
+    monkeypatch.setattr(cal, "load", lambda p: None)
+    monkeypatch.setattr(
+        cal, "run_pipeline", lambda ds, pp: SimpleNamespace(artifacts={"pca": np.zeros((4, 2))})
+    )
+    monkeypatch.setattr(cal, "InferenceContext", SimpleNamespace(from_prep=lambda *a, **k: None))
+    monkeypatch.setattr(
+        cal,
+        "run_method",
+        lambda *a: SimpleNamespace(membership=np.ones((2, 4), dtype=bool), pseudotime=np.arange(4.0)),
+    )
+    seen.clear()
+    errors: list[str] = []
+    out = cal._null_p_values(None, None, 0, ["m"], tmp_path, errors, split)  # type: ignore[arg-type]
+    assert errors == [] and out == {"m": 0.5}
+    assert seen == [split]
