@@ -22,6 +22,18 @@ root_pt_excess = { max = 0.10 }
 clonal_excess_ratio = { min = 0.5, nan = "fail", status = "clonal_status" }  # see [clonal]
 clonal_p = { max = 0.01, nan = "fail", status = "clonal_status" }
 
+[synthetic.controls]
+# Negative controls for the tree verdict (spec §5.3), built directly by bench/synth_controls.py,
+# never by the tree generator. Outside the gated matrix: no gate, baseline, regression check or
+# experimental flag reads this table. Counts use the [synthetic] preset's noise model.
+kinds = ["blob", "two_groups", "loop", "sheet"]
+n_cells = 3000
+n_genes = 2000
+programme_share = 0.10       # share of genes driven by each latent coordinate (two_groups, sheet)
+loop_programme_share = 0.20  # loop: genes following the cycle
+lfc_scale = 1.0              # median |log fold change| of a programme gene (as the preset's de_scale)
+group_lfc_scale = 2.0        # two_groups: far enough apart to be unconnected in the kNN graph
+
 # Real datasets: a release gate (make bench-real), never run in CI. Set from the
 # approved M1 plan and written down before the first real run (2026-11-10).
 [real.pancreas.gates]
@@ -117,6 +129,79 @@ monotonic_topologies = ["bifurcation", "trifurcation", "binary2"]
 #   method raises is a NaN p as well, and its error is listed in the report. No seed, definition
 #   or threshold is changed after the run; a failed check is recorded as a failure.
 
+# ---- T-cell robustness (spec docs/superpowers/specs/2026-11-12-tcell-clonotypes-design.md §5)
+# Defined before any cell-cycle score, stability replicate or verdict value was computed.
+# src/lumencell/trust/constants.py mirrors what the worker and server need at run time.
+
+[cell_cycle]
+# Report-only prep stage, left out of prep_key: scanpy score_genes_cell_cycle on the
+# log-normalised matrix with the Tirosh et al. 2016 S and G2M lists (mouse through the shipped
+# human-to-mouse ortholog table). Species "auto" goes by the case of the matching symbols.
+gene_set = "tirosh2016"
+min_genes = 20            # fewer list genes found (S and G2M together), or none in one list: not_scored
+seed = 0                  # score_genes random_state
+# Per-run check, a hint and never a verdict (proliferating effector cells are real biology): a
+# lineage is flagged when the share of its single-lineage cells in S or G2M is at least
+# lineage_ratio_min times the share of all scored cells, and at least lineage_share_min.
+lineage_ratio_min = 2.0
+lineage_share_min = 0.5
+
+[stability]
+metric_version = 1
+n_reseeds = 2             # Leiden, PAGA and the method rerun on all cells with new seeds
+n_subsamples = 3          # subsample_fraction of cells, uniform, the root cell always kept; kNN,
+subsample_fraction = 0.8  #   Leiden, diffusion maps and PAGA recomputed; normalisation, HVG, PCA reused
+seed = 0
+# Reseed i (from 0) uses prep seed + 1 + i for Leiden and PAGA and, when the method has a seed
+# parameter, the method's seed + 1 + i. Subsample j draws its cells with numpy
+# default_rng(seed + 1 + j) and keeps the reference's prep and method seeds. Every replicate is
+# rooted at cell:<obs name> of the reference run's root cell. Terminals named in the Leiden column
+# map to the replicate's Leiden cluster with the largest overlap; other terminals pass unchanged.
+# Per replicate, against the reference, on the cells both contain (subsamples padded to all cells):
+#   spearman of pseudotime over cells finite in both; lineages paired by the Hungarian algorithm
+#   on Jaccard over shared cells; share_matched = pairs with Jaccard >= match_jaccard / reference
+#   lineages; mean_jaccard = mean Jaccard of the pairs; n_lineages of the replicate.
+# A replicate that fails, or whose value is undefined, counts as 0 in every median and minimum.
+match_jaccard = 0.6
+
+[tree_support]
+# C1 connectivity: share of cells with finite pseudotime >= coverage_min.
+# C2 tree-likeness (dataset level): weight of PAGA's maximum spanning tree / total PAGA edge
+#   weight, each edge once (upper triangle) >= tau_tree. No edges: undefined, which fails.
+# C3 lineage stability: median over all R replicates of share_matched >= tau_lin.
+# C4 pseudotime stability: median over all R replicates of spearman >= tau_pt.
+# C5 clonal support (clones configured, L >= 2): status ok, headline p <= clonal.p_max, delta_eta > 0.
+# Level: not_supported if C1 or C2 fails; provisional while C1 or C2 is unknown; weak if an
+#   applicable check among C3-C5 fails (a failed clonal score fails C5); provisional while one of
+#   them is pending or stability could not be measured; supported otherwise. A non-discriminating
+#   check is left out and the verdict says so.
+coverage_min = 0.95
+
+[tree_support.calibration]
+# tau = (quantile(matrix values, matrix_quantile) + quantile(control values, control_quantile)) / 2,
+# numpy.quantile, method "linear". If the matrix quantile is not above the control quantile, the
+# check is non-discriminating and left out of the verdict. C3 and C4 pool every (dataset, method)
+# run; C2 takes one value per dataset (methods do not change it), and an undefined C2 counts as
+# 0. C2 is also measured at Leiden resolution x0.5 and x2 and is kept only if it discriminates at
+# all three; tau_tree is the one at the default resolution. A run whose reference fails is left
+# out and counted. C1's bound and C5's rule are fixed, not calibrated. Matrix: the [synthetic]
+# topologies, preset and size. Controls: every [synthetic.controls] kind.
+matrix_seeds = [0, 1, 2]
+control_seeds = [0, 1, 2]
+methods = ["paga_dpt", "palantir", "scfates_ppt"]
+matrix_quantile = 0.10
+control_quantile = 0.90
+c2_resolution_factors = [0.5, 1.0, 2.0]
+
+[tree_support.verification]
+# Fresh seeds, the calibrated taus, C5 not applicable (no clonal settings). No control run may be
+# verdicted supported. The share of matrix runs verdicted supported is reported, not gated.
+matrix_seeds = [3, 4, 5]
+control_seeds = [3, 4, 5]
+max_controls_supported = 0
+# If verification fails, every served verdict is capped at provisional, with a note naming the failed verification. Declared 2026-11-17, before any verdict was computed.
+on_failure = "provisional"
+
 [regression]
 # CI fails if a synthetic metric falls further than this below benchmarks/baseline.json.
 max_drop = 0.03
@@ -185,3 +270,10 @@ max_drop = 0.03
 #   only 7b6254b changes the expression path. Fragility, stated plainly: swapping 6 (bone marrow) or
 #   3 (gastrulation) of 2000 HVGs flips real-data gates; in bone marrow Leiden goes 12 -> 13 and
 #   one lineage fails to match. No bug found. The failing gates stay failing; thresholds unchanged.
+#
+# 2026-11-17  T-cell robustness definitions: the cell_cycle stage and its per-run hint, the
+#             stability replicates and comparison, the tree-support checks and levels, the tau
+#             calibration and verification rule, and four negative controls outside the gated
+#             matrix. All are set before any of them was measured. Nothing existing changed.
+#             Also declared: [tree_support.verification] on_failure = "provisional", so a failed
+#             verification caps every served verdict at provisional, with a note naming it.

@@ -225,3 +225,46 @@ def test_missing_metric_under_status_ok_fails_as_nan() -> None:
 def test_malformed_gates_raise(gate: dict[str, object], match: str) -> None:
     with pytest.raises(ValueError, match=match):
         check_gates({"case": "c", "m": 1.0, "s": "ok"}, {"m": gate})
+
+
+def test_robustness_definitions_are_declared() -> None:
+    cfg = load_thresholds()
+    assert cfg["cell_cycle"] == {
+        "gene_set": "tirosh2016",
+        "min_genes": 20,
+        "seed": 0,
+        "lineage_ratio_min": 2.0,
+        "lineage_share_min": 0.5,
+    }
+    assert cfg["stability"] == {
+        "metric_version": 1,
+        "n_reseeds": 2,
+        "n_subsamples": 3,
+        "subsample_fraction": 0.8,
+        "seed": 0,
+        "match_jaccard": 0.6,
+    }
+    assert cfg["tree_support"]["coverage_min"] == 0.95
+    assert cfg["tree_support"]["calibration"] == {
+        "matrix_seeds": [0, 1, 2],
+        "control_seeds": [0, 1, 2],
+        "methods": ["paga_dpt", "palantir", "scfates_ppt"],
+        "matrix_quantile": 0.10,
+        "control_quantile": 0.90,
+        "c2_resolution_factors": [0.5, 1.0, 2.0],
+    }
+    assert cfg["tree_support"]["verification"] == {
+        "matrix_seeds": [3, 4, 5],
+        "control_seeds": [3, 4, 5],
+        "max_controls_supported": 0,
+        "on_failure": "provisional",
+    }
+    assert "calibrated" not in cfg["tree_support"]
+
+
+def test_controls_sit_outside_the_gated_matrix() -> None:
+    cfg = load_thresholds()
+    kinds = cfg["synthetic"]["controls"]["kinds"]
+    assert kinds == ["blob", "two_groups", "loop", "sheet"]
+    assert set(kinds).isdisjoint(cfg["synthetic"]["topologies"])
+    assert "controls" not in cfg["synthetic"]["gates"]

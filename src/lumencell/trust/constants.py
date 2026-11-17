@@ -1,4 +1,4 @@
-"""Runtime values of the clonal definitions.
+"""Runtime values of the clonal and robustness definitions.
 
 benchmarks/thresholds.toml is not in the wheel, so the worker reads its values from here.
 tests/unit/test_trust_constants.py keeps the two equal: change the TOML first, with a dated
@@ -15,6 +15,18 @@ PSEUDOTIME_BINS = 10
 CLONAL_P_MAX = 0.01
 ORACLE_ETA_MIN = 0.05
 ORACLE_P_MAX = 0.01
+
+CELL_CYCLE_MIN_GENES = 20
+CELL_CYCLE_SEED = 0
+CELL_CYCLE_RATIO_MIN = 2.0
+CELL_CYCLE_SHARE_MIN = 0.5
+STABILITY_METRIC_VERSION = 1
+N_RESEEDS = 2
+N_SUBSAMPLES = 3
+SUBSAMPLE_FRACTION = 0.8
+STABILITY_SEED = 0
+MATCH_JACCARD = 0.6
+COVERAGE_MIN = 0.95
 
 # A validation limit (spec 4.1), not a threshold: not mirrored in the TOML.
 MAX_DONORS = 1000
