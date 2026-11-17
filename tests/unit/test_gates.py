@@ -264,7 +264,15 @@ def test_robustness_definitions_are_declared() -> None:
 
 def test_controls_sit_outside_the_gated_matrix() -> None:
     cfg = load_thresholds()
+    assert cfg["synthetic"]["controls"] == {
+        "kinds": ["blob", "two_groups", "loop", "sheet"],
+        "n_cells": 3000,
+        "n_genes": 2000,
+        "programme_share": 0.10,
+        "loop_programme_share": 0.20,
+        "lfc_scale": 1.0,
+        "group_lfc_scale": 2.0,
+    }
     kinds = cfg["synthetic"]["controls"]["kinds"]
-    assert kinds == ["blob", "two_groups", "loop", "sheet"]
     assert set(kinds).isdisjoint(cfg["synthetic"]["topologies"])
     assert "controls" not in cfg["synthetic"]["gates"]

@@ -45,6 +45,22 @@ def test_every_scalar_clonal_key_is_mirrored() -> None:
     assert scalars == {path[1] for path in MIRRORED.values() if len(path) == 2 and path[0] == "clonal"}
 
 
+# Robustness scalars the worker or server never reads at run time, so they have no constant.
+NOT_MIRRORED = {("cell_cycle", "gene_set")}
+
+
+def test_every_scalar_robustness_key_is_mirrored() -> None:
+    cfg = load_thresholds()
+    scalars = {
+        (table, k)
+        for table in ("cell_cycle", "stability", "tree_support")
+        for k, v in cfg[table].items()
+        if not isinstance(v, dict)
+    }
+    mirrored = {path for path in MIRRORED.values() if len(path) == 2 and path[0] != "clonal"}
+    assert scalars - NOT_MIRRORED == mirrored
+
+
 def test_the_clonal_p_gate_equals_the_runtime_p_max() -> None:
     gates = load_thresholds()["synthetic"]["gates"]
     assert gates["clonal_p"]["max"] == constants.CLONAL_P_MAX
