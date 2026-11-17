@@ -13,6 +13,9 @@ quantile is non-discriminating and left out of the verdict.
 
 Matrix: the ``[synthetic]`` topologies, preset and size. Controls: every ``[synthetic.controls]``
 kind. No clonal layer is added, so C5 does not apply here.
+
+``verify`` (Task 9) applies the calibrated verdict to fresh-seed records and checks that no control
+run is verdicted supported.
 """
 
 import dataclasses
@@ -35,7 +38,14 @@ from lumencell.engine.context import InferenceContext
 from lumencell.engine.registry import get_method, run_method
 from lumencell.engine.roots import CellRoot, ClusterRoot, RootSpec
 from lumencell.engine.stability import RunSpec, run_stability
-from lumencell.engine.tree_support import coverage, tree_likeness
+from lumencell.engine.tree_support import (
+    ClonalEvidence,
+    StabilityEvidence,
+    Thresholds,
+    coverage,
+    tree_likeness,
+    verdict,
+)
 from lumencell.prep.pipeline import PrepResult, run_pipeline
 from lumencell.prep.stages import STAGE_BY_NAME, PrepParams, run_stage
 
@@ -330,3 +340,100 @@ def records_from_payload(doc: Mapping[str, Any]) -> list[RunRecord]:
         )
         for r in doc["records"]
     ]
+
+
+@dataclass(frozen=True)
+class Verification:
+    """The verdict applied to fresh-seed records. ``verdicts`` holds (dataset, method, level)."""
+
+    verdicts: tuple[tuple[str, str, str], ...]
+    controls_supported: tuple[str, ...]  # "<dataset> <method>" of each control run verdicted supported
+    matrix_supported_share: float  # reported, not gated; 0.0 with no matrix verdict
+    n_failed: int
+    passed: bool
+
+
+def verify(records: Sequence[RunRecord], thresholds: Thresholds, max_controls_supported: int) -> Verification:
+    """Verdict every run that did not fail (factor-1.0 tree-likeness, stability, no clones).
+
+    ``verified=True`` skips the served cap, so the rule itself is what is measured.
+    """
+    verdicts: list[tuple[str, str, str]] = []
+    controls: list[str] = []
+    matrix_levels: list[str] = []
+    for r in records:
+        if r.error is not None:
+            continue
+        v = verdict(
+            r.coverage,
+            dict(r.tree_likeness)[1.0],
+            StabilityEvidence("done", r.lineage_stability, r.pseudotime_stability),
+            ClonalEvidence("not_configured", r.n_lineages),
+            thresholds,
+            verified=True,
+        )
+        verdicts.append((r.dataset, r.method, v.level))
+        if r.group == "control" and v.level == "supported":
+            controls.append(f"{r.dataset} {r.method}")
+        if r.group == "matrix":
+            matrix_levels.append(v.level)
+    share = matrix_levels.count("supported") / len(matrix_levels) if matrix_levels else 0.0
+    n_failed = sum(r.error is not None for r in records)
+    return Verification(
+        tuple(verdicts), tuple(controls), share, n_failed, len(controls) <= max_controls_supported
+    )
+
+
+def expected_verification_runs(cfg: Mapping[str, Any]) -> set[tuple[Group, str, str]]:
+    """Every (group, dataset, method) the declared verification runs."""
+    ver = cfg["tree_support"]["verification"]
+    seeds: dict[Group, Sequence[int]] = {"matrix": ver["matrix_seeds"], "control": ver["control_seeds"]}
+    methods = cfg["tree_support"]["calibration"]["methods"]
+    return {
+        (group, f"{name}/seed{seed}", str(method))
+        for group, name, seed in _datasets(cfg, seeds)
+        for method in methods
+    }
+
+
+def verification_payload(
+    records: Sequence[RunRecord],
+    verification: Verification,
+    thresholds: Thresholds,
+    cfg: dict[str, Any],
+    commit: str,
+) -> dict[str, Any]:
+    present = {(r.group, r.dataset, r.method) for r in records}
+    group_of = {(r.dataset, r.method): r.group for r in records}
+    counts: dict[str, dict[str, int]] = {g: {} for g in GROUPS}
+    by_kind: dict[str, int] = {}
+    for dataset, method, level in verification.verdicts:
+        group = group_of[(dataset, method)]
+        counts[group][level] = counts[group].get(level, 0) + 1
+        if group == "control" and level == "supported":
+            kind = dataset.split("/")[0]
+            by_kind[kind] = by_kind.get(kind, 0) + 1
+    synth = {k: v for k, v in cfg["synthetic"].items() if k in ("preset", "topologies", "n_cells", "n_genes")}
+    ver = cfg["tree_support"]["verification"]
+    return {
+        "generated": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+        "commit": commit,
+        "config": {
+            "verification": ver,
+            "methods": cfg["tree_support"]["calibration"]["methods"],
+            "synthetic": synth,
+            "controls": cfg["synthetic"]["controls"],
+            "prep": dataclasses.asdict(PrepParams()),
+            "thresholds": dataclasses.asdict(thresholds),
+        },
+        "records": [dataclasses.asdict(r) for r in records],
+        "verdicts": [list(v) for v in verification.verdicts],
+        "level_counts": counts,
+        "controls_supported": list(verification.controls_supported),
+        "controls_supported_by_kind": by_kind,
+        "matrix_supported_share": verification.matrix_supported_share,
+        "n_failed": verification.n_failed,
+        "max_controls_supported": ver["max_controls_supported"],
+        "passed": verification.passed,
+        "complete": expected_verification_runs(cfg) <= present,
+    }

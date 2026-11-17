@@ -1,0 +1,2257 @@
+{
+  "generated": "2026-11-17T12:19:23+00:00",
+  "commit": "37197c84dcecdc195191f58c56c4f2584af7c98d",
+  "config": {
+    "verification": {
+      "matrix_seeds": [
+        3,
+        4,
+        5
+      ],
+      "control_seeds": [
+        3,
+        4,
+        5
+      ],
+      "max_controls_supported": 0,
+      "on_failure": "provisional"
+    },
+    "methods": [
+      "paga_dpt",
+      "palantir",
+      "scfates_ppt"
+    ],
+    "synthetic": {
+      "preset": "realistic",
+      "topologies": [
+        "linear",
+        "bifurcation",
+        "trifurcation",
+        "binary2"
+      ],
+      "n_cells": 3000,
+      "n_genes": 2000
+    },
+    "controls": {
+      "kinds": [
+        "blob",
+        "two_groups",
+        "loop",
+        "sheet"
+      ],
+      "n_cells": 3000,
+      "n_genes": 2000,
+      "programme_share": 0.1,
+      "loop_programme_share": 0.2,
+      "lfc_scale": 1.0,
+      "group_lfc_scale": 2.0
+    },
+    "prep": {
+      "n_top_genes": 2000,
+      "exclude_receptor_genes": true,
+      "n_pcs": 50,
+      "n_neighbors": 30,
+      "neighbors_pcs": 30,
+      "leiden_resolution": 1.0,
+      "n_diffmap": 15,
+      "seed": 0,
+      "recompute_umap": false
+    },
+    "thresholds": {
+      "tau_tree": null,
+      "tau_lin": null,
+      "tau_pt": null,
+      "coverage_min": 0.95,
+      "clonal_p_max": 0.01
+    }
+  },
+  "records": [
+    {
+      "group": "matrix",
+      "dataset": "linear/seed3",
+      "seed": 3,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9996967576990227
+        ],
+        [
+          1.0,
+          0.9976259373313022
+        ],
+        [
+          2.0,
+          0.9461360165101198
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9987012920919563,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "linear/seed3",
+      "seed": 3,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9996967576990227
+        ],
+        [
+          1.0,
+          0.9976259373313022
+        ],
+        [
+          2.0,
+          0.9461360165101198
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9965471454493947,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "linear/seed3",
+      "seed": 3,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9996967576990227
+        ],
+        [
+          1.0,
+          0.9976259373313022
+        ],
+        [
+          2.0,
+          0.9461360165101198
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9993469344986543,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "linear/seed4",
+      "seed": 4,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          1.0,
+          0.9970781325251304
+        ],
+        [
+          2.0,
+          0.9542297535211267
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9989184998122395,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "linear/seed4",
+      "seed": 4,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          1.0,
+          0.9970781325251304
+        ],
+        [
+          2.0,
+          0.9542297535211267
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9992574208773798,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "linear/seed4",
+      "seed": 4,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          1.0,
+          0.9970781325251304
+        ],
+        [
+          2.0,
+          0.9542297535211267
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9991198881680946,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "linear/seed5",
+      "seed": 5,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9997361498453353
+        ],
+        [
+          1.0,
+          0.9943173941010061
+        ],
+        [
+          2.0,
+          0.9252981941445103
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9990575579961036,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "linear/seed5",
+      "seed": 5,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9997361498453353
+        ],
+        [
+          1.0,
+          0.9943173941010061
+        ],
+        [
+          2.0,
+          0.9252981941445103
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9996696946040421,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "linear/seed5",
+      "seed": 5,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9997361498453353
+        ],
+        [
+          1.0,
+          0.9943173941010061
+        ],
+        [
+          2.0,
+          0.9252981941445103
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9993096065325909,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "bifurcation/seed3",
+      "seed": 3,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9998601251015391
+        ],
+        [
+          1.0,
+          0.88101112601022
+        ],
+        [
+          2.0,
+          0.8341434187395802
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9985655961051382,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "bifurcation/seed3",
+      "seed": 3,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9998601251015391
+        ],
+        [
+          1.0,
+          0.88101112601022
+        ],
+        [
+          2.0,
+          0.8341434187395802
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9969485977702502,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "bifurcation/seed3",
+      "seed": 3,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9998601251015391
+        ],
+        [
+          1.0,
+          0.88101112601022
+        ],
+        [
+          2.0,
+          0.8341434187395802
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.998742091119281,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "bifurcation/seed4",
+      "seed": 4,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9977251028734574
+        ],
+        [
+          1.0,
+          0.9133478729238258
+        ],
+        [
+          2.0,
+          0.8626405451044196
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9979023130038737,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "bifurcation/seed4",
+      "seed": 4,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9977251028734574
+        ],
+        [
+          1.0,
+          0.9133478729238258
+        ],
+        [
+          2.0,
+          0.8626405451044196
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9987790006560765,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "bifurcation/seed4",
+      "seed": 4,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9977251028734574
+        ],
+        [
+          1.0,
+          0.9133478729238258
+        ],
+        [
+          2.0,
+          0.8626405451044196
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9980664828871885,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "bifurcation/seed5",
+      "seed": 5,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9973060914780733
+        ],
+        [
+          1.0,
+          0.9175162490514904
+        ],
+        [
+          2.0,
+          0.7982715460613393
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9990543991413888,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "bifurcation/seed5",
+      "seed": 5,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9973060914780733
+        ],
+        [
+          1.0,
+          0.9175162490514904
+        ],
+        [
+          2.0,
+          0.7982715460613393
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9979172166522945,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "bifurcation/seed5",
+      "seed": 5,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9973060914780733
+        ],
+        [
+          1.0,
+          0.9175162490514904
+        ],
+        [
+          2.0,
+          0.7982715460613393
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9991893210957343,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "trifurcation/seed3",
+      "seed": 3,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.87477550533213
+        ],
+        [
+          1.0,
+          0.8695887003926
+        ],
+        [
+          2.0,
+          0.6778891848617074
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9985145707053322,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "trifurcation/seed3",
+      "seed": 3,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.87477550533213
+        ],
+        [
+          1.0,
+          0.8695887003926
+        ],
+        [
+          2.0,
+          0.6778891848617074
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.996648776336204,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "trifurcation/seed3",
+      "seed": 3,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.87477550533213
+        ],
+        [
+          1.0,
+          0.8695887003926
+        ],
+        [
+          2.0,
+          0.6778891848617074
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9984879492773907,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "trifurcation/seed4",
+      "seed": 4,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.859612002075617
+        ],
+        [
+          1.0,
+          0.8876448299431746
+        ],
+        [
+          2.0,
+          0.8195614214122894
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9985914337832349,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "trifurcation/seed4",
+      "seed": 4,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.859612002075617
+        ],
+        [
+          1.0,
+          0.8876448299431746
+        ],
+        [
+          2.0,
+          0.8195614214122894
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9976706558385231,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "trifurcation/seed4",
+      "seed": 4,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.859612002075617
+        ],
+        [
+          1.0,
+          0.8876448299431746
+        ],
+        [
+          2.0,
+          0.8195614214122894
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9984722864653458,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "trifurcation/seed5",
+      "seed": 5,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.8131720489801219
+        ],
+        [
+          1.0,
+          0.8159481791434432
+        ],
+        [
+          2.0,
+          0.6688016693908212
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9983324688938021,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "trifurcation/seed5",
+      "seed": 5,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.8131720489801219
+        ],
+        [
+          1.0,
+          0.8159481791434432
+        ],
+        [
+          2.0,
+          0.6688016693908212
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.998608043376018,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "trifurcation/seed5",
+      "seed": 5,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.8131720489801219
+        ],
+        [
+          1.0,
+          0.8159481791434432
+        ],
+        [
+          2.0,
+          0.6688016693908212
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9984074436037805,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "binary2/seed3",
+      "seed": 3,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9821942560789108
+        ],
+        [
+          1.0,
+          0.9552492859979811
+        ],
+        [
+          2.0,
+          0.9234188816801073
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9988710692484495,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "binary2/seed3",
+      "seed": 3,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9821942560789108
+        ],
+        [
+          1.0,
+          0.9552492859979811
+        ],
+        [
+          2.0,
+          0.9234188816801073
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9979996876605135,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "binary2/seed3",
+      "seed": 3,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9821942560789108
+        ],
+        [
+          1.0,
+          0.9552492859979811
+        ],
+        [
+          2.0,
+          0.9234188816801073
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9977783526915555,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "binary2/seed4",
+      "seed": 4,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.974559983137582
+        ],
+        [
+          1.0,
+          0.9367701184051043
+        ],
+        [
+          2.0,
+          0.902323534505585
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9991119764083292,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "binary2/seed4",
+      "seed": 4,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.974559983137582
+        ],
+        [
+          1.0,
+          0.9367701184051043
+        ],
+        [
+          2.0,
+          0.902323534505585
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9996097037048092,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "binary2/seed4",
+      "seed": 4,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.974559983137582
+        ],
+        [
+          1.0,
+          0.9367701184051043
+        ],
+        [
+          2.0,
+          0.902323534505585
+        ]
+      ],
+      "lineage_stability": 0.75,
+      "pseudotime_stability": 0.9983890400226743,
+      "n_lineages": 4,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "binary2/seed5",
+      "seed": 5,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9979171714764722
+        ],
+        [
+          1.0,
+          0.9781599005767166
+        ],
+        [
+          2.0,
+          0.8693000894295531
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9990640432402852,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "binary2/seed5",
+      "seed": 5,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9979171714764722
+        ],
+        [
+          1.0,
+          0.9781599005767166
+        ],
+        [
+          2.0,
+          0.8693000894295531
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9994043529779278,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "matrix",
+      "dataset": "binary2/seed5",
+      "seed": 5,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.9979171714764722
+        ],
+        [
+          1.0,
+          0.9781599005767166
+        ],
+        [
+          2.0,
+          0.8693000894295531
+        ]
+      ],
+      "lineage_stability": 0.75,
+      "pseudotime_stability": 0.9978377576301936,
+      "n_lineages": 4,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "blob/seed3",
+      "seed": 3,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          1.0,
+          0.1885437180843168
+        ],
+        [
+          2.0,
+          0.05301545474044341
+        ]
+      ],
+      "lineage_stability": 0.0,
+      "pseudotime_stability": 0.7486484448062942,
+      "n_lineages": 5,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "blob/seed3",
+      "seed": 3,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          1.0,
+          0.1885437180843168
+        ],
+        [
+          2.0,
+          0.05301545474044341
+        ]
+      ],
+      "lineage_stability": 0.2,
+      "pseudotime_stability": 0.5894967221348476,
+      "n_lineages": 5,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "blob/seed3",
+      "seed": 3,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          1.0,
+          0.1885437180843168
+        ],
+        [
+          2.0,
+          0.05301545474044341
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9138744348196495,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "blob/seed4",
+      "seed": 4,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          0.1852433765952635
+        ],
+        [
+          2.0,
+          0.052609122185456915
+        ]
+      ],
+      "lineage_stability": 0.0,
+      "pseudotime_stability": 0.8041699156544992,
+      "n_lineages": 6,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "blob/seed4",
+      "seed": 4,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          0.1852433765952635
+        ],
+        [
+          2.0,
+          0.052609122185456915
+        ]
+      ],
+      "lineage_stability": 0.0,
+      "pseudotime_stability": 0.8938771100481093,
+      "n_lineages": 6,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "blob/seed4",
+      "seed": 4,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          0.1852433765952635
+        ],
+        [
+          2.0,
+          0.052609122185456915
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9044993744571209,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "blob/seed5",
+      "seed": 5,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          0.18547291412318329
+        ],
+        [
+          2.0,
+          0.050192470610969
+        ]
+      ],
+      "lineage_stability": 0.0,
+      "pseudotime_stability": 0.7524884120536497,
+      "n_lineages": 6,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "blob/seed5",
+      "seed": 5,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          0.18547291412318329
+        ],
+        [
+          2.0,
+          0.050192470610969
+        ]
+      ],
+      "lineage_stability": 0.16666666666666666,
+      "pseudotime_stability": 0.5376895456058238,
+      "n_lineages": 6,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "blob/seed5",
+      "seed": 5,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          0.18547291412318329
+        ],
+        [
+          2.0,
+          0.050192470610969
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.8973645001255721,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "two_groups/seed3",
+      "seed": 3,
+      "method": "paga_dpt",
+      "coverage": 0.5086666666666667,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          1.0
+        ],
+        [
+          2.0,
+          0.20306660093149312
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.8729246344302156,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "two_groups/seed3",
+      "seed": 3,
+      "method": "palantir",
+      "coverage": null,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          1.0
+        ],
+        [
+          2.0,
+          0.20306660093149312
+        ]
+      ],
+      "lineage_stability": null,
+      "pseudotime_stability": null,
+      "n_lineages": 0,
+      "error": "InvariantError: fate probabilities must sum to 1"
+    },
+    {
+      "group": "control",
+      "dataset": "two_groups/seed3",
+      "seed": 3,
+      "method": "scfates_ppt",
+      "coverage": null,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          1.0
+        ],
+        [
+          2.0,
+          0.20306660093149312
+        ]
+      ],
+      "lineage_stability": null,
+      "pseudotime_stability": null,
+      "n_lineages": 0,
+      "error": "IndexError: index 0 is out of bounds for axis 0 with size 0"
+    },
+    {
+      "group": "control",
+      "dataset": "two_groups/seed4",
+      "seed": 4,
+      "method": "paga_dpt",
+      "coverage": 0.49833333333333335,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          1.0
+        ],
+        [
+          2.0,
+          0.1841401770469477
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9202583604065493,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "two_groups/seed4",
+      "seed": 4,
+      "method": "palantir",
+      "coverage": null,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          1.0
+        ],
+        [
+          2.0,
+          0.1841401770469477
+        ]
+      ],
+      "lineage_stability": null,
+      "pseudotime_stability": null,
+      "n_lineages": 0,
+      "error": "InvariantError: fate probabilities must sum to 1"
+    },
+    {
+      "group": "control",
+      "dataset": "two_groups/seed4",
+      "seed": 4,
+      "method": "scfates_ppt",
+      "coverage": null,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          1.0
+        ],
+        [
+          2.0,
+          0.1841401770469477
+        ]
+      ],
+      "lineage_stability": null,
+      "pseudotime_stability": null,
+      "n_lineages": 0,
+      "error": "IndexError: index 0 is out of bounds for axis 0 with size 0"
+    },
+    {
+      "group": "control",
+      "dataset": "two_groups/seed5",
+      "seed": 5,
+      "method": "paga_dpt",
+      "coverage": 0.4846666666666667,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          0.976262298989267
+        ],
+        [
+          2.0,
+          0.21982324738623912
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.8200074553954286,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "two_groups/seed5",
+      "seed": 5,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          0.976262298989267
+        ],
+        [
+          2.0,
+          0.21982324738623912
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.8819485201005709,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "two_groups/seed5",
+      "seed": 5,
+      "method": "scfates_ppt",
+      "coverage": null,
+      "tree_likeness": [
+        [
+          0.5,
+          null
+        ],
+        [
+          1.0,
+          0.976262298989267
+        ],
+        [
+          2.0,
+          0.21982324738623912
+        ]
+      ],
+      "lineage_stability": null,
+      "pseudotime_stability": null,
+      "n_lineages": 0,
+      "error": "IndexError: index 0 is out of bounds for axis 0 with size 0"
+    },
+    {
+      "group": "control",
+      "dataset": "loop/seed3",
+      "seed": 3,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.8800142895514165
+        ],
+        [
+          1.0,
+          0.8586660763416717
+        ],
+        [
+          2.0,
+          0.9132274369798737
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9979658069385081,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "loop/seed3",
+      "seed": 3,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.8800142895514165
+        ],
+        [
+          1.0,
+          0.8586660763416717
+        ],
+        [
+          2.0,
+          0.9132274369798737
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9996105244547832,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "loop/seed3",
+      "seed": 3,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.8800142895514165
+        ],
+        [
+          1.0,
+          0.8586660763416717
+        ],
+        [
+          2.0,
+          0.9132274369798737
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9708769053899596,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "loop/seed4",
+      "seed": 4,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.8630151162577504
+        ],
+        [
+          1.0,
+          0.9179603605407443
+        ],
+        [
+          2.0,
+          0.924117585312262
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9979079874840255,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "loop/seed4",
+      "seed": 4,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.8630151162577504
+        ],
+        [
+          1.0,
+          0.9179603605407443
+        ],
+        [
+          2.0,
+          0.924117585312262
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9995935867337631,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "loop/seed4",
+      "seed": 4,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.8630151162577504
+        ],
+        [
+          1.0,
+          0.9179603605407443
+        ],
+        [
+          2.0,
+          0.924117585312262
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.5929597298915723,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "loop/seed5",
+      "seed": 5,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.8964312336414655
+        ],
+        [
+          1.0,
+          0.9084214222008437
+        ],
+        [
+          2.0,
+          0.9235610890961525
+        ]
+      ],
+      "lineage_stability": 0.5,
+      "pseudotime_stability": 0.9981368529751481,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "loop/seed5",
+      "seed": 5,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.8964312336414655
+        ],
+        [
+          1.0,
+          0.9084214222008437
+        ],
+        [
+          2.0,
+          0.9235610890961525
+        ]
+      ],
+      "lineage_stability": 0.0,
+      "pseudotime_stability": 0.9995778740582921,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "loop/seed5",
+      "seed": 5,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.8964312336414655
+        ],
+        [
+          1.0,
+          0.9084214222008437
+        ],
+        [
+          2.0,
+          0.9235610890961525
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.7383171548469871,
+      "n_lineages": 1,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "sheet/seed3",
+      "seed": 3,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.7528809896437817
+        ],
+        [
+          1.0,
+          0.6584820429778626
+        ],
+        [
+          2.0,
+          0.4903195199867647
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9980970691140744,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "sheet/seed3",
+      "seed": 3,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.7528809896437817
+        ],
+        [
+          1.0,
+          0.6584820429778626
+        ],
+        [
+          2.0,
+          0.4903195199867647
+        ]
+      ],
+      "lineage_stability": 0.5,
+      "pseudotime_stability": 0.9974338858392163,
+      "n_lineages": 2,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "sheet/seed3",
+      "seed": 3,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.7528809896437817
+        ],
+        [
+          1.0,
+          0.6584820429778626
+        ],
+        [
+          2.0,
+          0.4903195199867647
+        ]
+      ],
+      "lineage_stability": 0.6666666666666666,
+      "pseudotime_stability": 0.7635268077754076,
+      "n_lineages": 6,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "sheet/seed4",
+      "seed": 4,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.674165486176193
+        ],
+        [
+          1.0,
+          0.6605703024031456
+        ],
+        [
+          2.0,
+          0.5048626116509287
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9981306533204826,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "sheet/seed4",
+      "seed": 4,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.674165486176193
+        ],
+        [
+          1.0,
+          0.6605703024031456
+        ],
+        [
+          2.0,
+          0.5048626116509287
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9917936758738574,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "sheet/seed4",
+      "seed": 4,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.674165486176193
+        ],
+        [
+          1.0,
+          0.6605703024031456
+        ],
+        [
+          2.0,
+          0.5048626116509287
+        ]
+      ],
+      "lineage_stability": 0.125,
+      "pseudotime_stability": -0.10515918761997269,
+      "n_lineages": 8,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "sheet/seed5",
+      "seed": 5,
+      "method": "paga_dpt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.7368891024938616
+        ],
+        [
+          1.0,
+          0.6205745933080682
+        ],
+        [
+          2.0,
+          0.5644433603127018
+        ]
+      ],
+      "lineage_stability": 0.6666666666666666,
+      "pseudotime_stability": 0.998550031866325,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "sheet/seed5",
+      "seed": 5,
+      "method": "palantir",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.7368891024938616
+        ],
+        [
+          1.0,
+          0.6205745933080682
+        ],
+        [
+          2.0,
+          0.5644433603127018
+        ]
+      ],
+      "lineage_stability": 1.0,
+      "pseudotime_stability": 0.9973492293569299,
+      "n_lineages": 3,
+      "error": null
+    },
+    {
+      "group": "control",
+      "dataset": "sheet/seed5",
+      "seed": 5,
+      "method": "scfates_ppt",
+      "coverage": 1.0,
+      "tree_likeness": [
+        [
+          0.5,
+          0.7368891024938616
+        ],
+        [
+          1.0,
+          0.6205745933080682
+        ],
+        [
+          2.0,
+          0.5644433603127018
+        ]
+      ],
+      "lineage_stability": 0.4,
+      "pseudotime_stability": 0.7163863932272277,
+      "n_lineages": 5,
+      "error": null
+    }
+  ],
+  "verdicts": [
+    [
+      "linear/seed3",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "linear/seed3",
+      "palantir",
+      "supported"
+    ],
+    [
+      "linear/seed3",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "linear/seed4",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "linear/seed4",
+      "palantir",
+      "supported"
+    ],
+    [
+      "linear/seed4",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "linear/seed5",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "linear/seed5",
+      "palantir",
+      "supported"
+    ],
+    [
+      "linear/seed5",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "bifurcation/seed3",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "bifurcation/seed3",
+      "palantir",
+      "supported"
+    ],
+    [
+      "bifurcation/seed3",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "bifurcation/seed4",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "bifurcation/seed4",
+      "palantir",
+      "supported"
+    ],
+    [
+      "bifurcation/seed4",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "bifurcation/seed5",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "bifurcation/seed5",
+      "palantir",
+      "supported"
+    ],
+    [
+      "bifurcation/seed5",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "trifurcation/seed3",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "trifurcation/seed3",
+      "palantir",
+      "supported"
+    ],
+    [
+      "trifurcation/seed3",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "trifurcation/seed4",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "trifurcation/seed4",
+      "palantir",
+      "supported"
+    ],
+    [
+      "trifurcation/seed4",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "trifurcation/seed5",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "trifurcation/seed5",
+      "palantir",
+      "supported"
+    ],
+    [
+      "trifurcation/seed5",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "binary2/seed3",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "binary2/seed3",
+      "palantir",
+      "supported"
+    ],
+    [
+      "binary2/seed3",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "binary2/seed4",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "binary2/seed4",
+      "palantir",
+      "supported"
+    ],
+    [
+      "binary2/seed4",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "binary2/seed5",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "binary2/seed5",
+      "palantir",
+      "supported"
+    ],
+    [
+      "binary2/seed5",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "blob/seed3",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "blob/seed3",
+      "palantir",
+      "supported"
+    ],
+    [
+      "blob/seed3",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "blob/seed4",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "blob/seed4",
+      "palantir",
+      "supported"
+    ],
+    [
+      "blob/seed4",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "blob/seed5",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "blob/seed5",
+      "palantir",
+      "supported"
+    ],
+    [
+      "blob/seed5",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "two_groups/seed3",
+      "paga_dpt",
+      "not_supported"
+    ],
+    [
+      "two_groups/seed4",
+      "paga_dpt",
+      "not_supported"
+    ],
+    [
+      "two_groups/seed5",
+      "paga_dpt",
+      "not_supported"
+    ],
+    [
+      "two_groups/seed5",
+      "palantir",
+      "supported"
+    ],
+    [
+      "loop/seed3",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "loop/seed3",
+      "palantir",
+      "supported"
+    ],
+    [
+      "loop/seed3",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "loop/seed4",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "loop/seed4",
+      "palantir",
+      "supported"
+    ],
+    [
+      "loop/seed4",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "loop/seed5",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "loop/seed5",
+      "palantir",
+      "supported"
+    ],
+    [
+      "loop/seed5",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "sheet/seed3",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "sheet/seed3",
+      "palantir",
+      "supported"
+    ],
+    [
+      "sheet/seed3",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "sheet/seed4",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "sheet/seed4",
+      "palantir",
+      "supported"
+    ],
+    [
+      "sheet/seed4",
+      "scfates_ppt",
+      "supported"
+    ],
+    [
+      "sheet/seed5",
+      "paga_dpt",
+      "supported"
+    ],
+    [
+      "sheet/seed5",
+      "palantir",
+      "supported"
+    ],
+    [
+      "sheet/seed5",
+      "scfates_ppt",
+      "supported"
+    ]
+  ],
+  "level_counts": {
+    "matrix": {
+      "supported": 36
+    },
+    "control": {
+      "supported": 28,
+      "not_supported": 3
+    }
+  },
+  "controls_supported": [
+    "blob/seed3 paga_dpt",
+    "blob/seed3 palantir",
+    "blob/seed3 scfates_ppt",
+    "blob/seed4 paga_dpt",
+    "blob/seed4 palantir",
+    "blob/seed4 scfates_ppt",
+    "blob/seed5 paga_dpt",
+    "blob/seed5 palantir",
+    "blob/seed5 scfates_ppt",
+    "two_groups/seed5 palantir",
+    "loop/seed3 paga_dpt",
+    "loop/seed3 palantir",
+    "loop/seed3 scfates_ppt",
+    "loop/seed4 paga_dpt",
+    "loop/seed4 palantir",
+    "loop/seed4 scfates_ppt",
+    "loop/seed5 paga_dpt",
+    "loop/seed5 palantir",
+    "loop/seed5 scfates_ppt",
+    "sheet/seed3 paga_dpt",
+    "sheet/seed3 palantir",
+    "sheet/seed3 scfates_ppt",
+    "sheet/seed4 paga_dpt",
+    "sheet/seed4 palantir",
+    "sheet/seed4 scfates_ppt",
+    "sheet/seed5 paga_dpt",
+    "sheet/seed5 palantir",
+    "sheet/seed5 scfates_ppt"
+  ],
+  "controls_supported_by_kind": {
+    "blob": 9,
+    "two_groups": 1,
+    "loop": 9,
+    "sheet": 9
+  },
+  "matrix_supported_share": 1.0,
+  "n_failed": 5,
+  "max_controls_supported": 0,
+  "passed": false,
+  "complete": true
+}

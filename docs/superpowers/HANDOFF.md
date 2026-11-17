@@ -24,8 +24,10 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   lineage-onset split and the clonal metric_version is 2 (see "Phase 2 N2a decisions and result").
   Task 8 (verdict calibration, #32) is recorded: C2, C3 and C4 are all non-discriminating, so no
   tau is set (see "Phase 2 Task 8 decisions and result"). Task 10 (the `stability` worker job,
-  #31) is merged. Next: Task 9, which is expected to fail and trigger the declared
-  `on_failure = "provisional"` cap, then 11 and 12; Tasks 2-4 wait for the download approval.
+  #31) is merged. Task 9 (#33) verified the verdict on fresh seeds 3-5 and FAILED (28 of 31
+  control runs supported, max 0), so every served verdict is capped at provisional; Shreyan chose
+  to accept a provisional-only verdict (see "Phase 2 Task 9 decisions and result"). Shreyan approved
+  the Task 2 downloads on 2026-11-17. Next: Tasks 2, 3, 4, then 11, 12 and 13.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -191,6 +193,42 @@ records). The quantile arithmetic was recomputed independently from the records 
   control kind, and leaving them out cannot change any result (without two_groups the control q90 is
   still 1.0 for C3 and >= 0.998 for C4, and loop alone beats the matrix at C2 x1.0 and x2.0).
   Caveat: each control quantile rests on 12 datasets or 31 runs, so it is set by its top two to four values.
+
+## Phase 2 Task 9 decisions and result
+
+Two commits: 37197c8 adds `verify`, `Verification` and `verification_payload` (make ci 0); the run was made
+on that clean tree, 2026-11-17, 6.2 min, once: `benchmarks/results/verdict-verification-2026-11-17.json`
+(commit 37197c8, `complete`, 72 of 72 records). The second commit records the file and applies F14.
+
+- **Result: verification FAILED, as expected.** Controls verdicted supported: 28 of 31 control runs (max 0):
+  blob 9, loop 9, sheet 9, two_groups 1 (palantir seed 5). The 3 not supported are two_groups paga_dpt
+  seeds 3-5 (coverage 0.48-0.51, C1 fails). `passed` is false.
+- **Matrix:** 36 of 36 runs verdicted supported (share 1.0, reported, not gated).
+- **Runs left out (5, reference failed, all two_groups):** palantir seeds 3 and 4, scfates_ppt seeds 3-5,
+  the same two engine findings as Task 8 (a kNN graph in two parts gives an internal error). One palantir
+  subsample replicate raised (non-finite input) on a dataset that still ran; it counts as zero agreement.
+- **Reading, plainly.** With C2, C3 and C4 all non-discriminating (Task 8) the verdict is C1 alone, and C1
+  only asks that 95% of cells have a pseudotime. Every single-lineage, loop or sheet control reaches
+  that, so the verdict cannot tell a tree from these controls: supported means "connected", not "a tree".
+  Nothing was tuned or re-run; rule, taus (all None), seeds and controls unchanged.
+- **F14 applied.** `[tree_support.verified]` (passed = false, date, source) mirrors into
+  `VERDICT_VERIFIED = False` and `VERDICT_VERIFIED_ON`. In `_level`, while it is False, supported and weak
+  become provisional with a reason naming the failed verification and its date; not_supported is kept.
+  `verdict(..., verified=None)` reads the constant; `verify` passes `verified=True` so the rule is measured,
+  not the cap. The share of matrix runs supported is reported, not gated. The existing verdict tests run
+  with the constant patched True; the capped state has its own tests.
+- **Tasks 11 and 12 go ahead with the cap (ruling F14, which supersedes plan Step 6).** Shreyan ruled on
+  2026-11-17 ("yes downloads and a"): option (a), accept a provisional-only verdict. The F14 cap stays
+  (`VERDICT_VERIFIED = False`); wherever the verdict is served or documented, the failed verification is
+  stated plainly. Nothing is re-run or tuned to rescue it.
+- **Follow-up, a pre-declared redesign of C1/C2 (not in phase 2).** Task 8 and this run show C1 (coverage)
+  passes on every control and C2 (PAGA tree-likeness) does not separate loops, forests and single clusters
+  from trees; C3 saturates (share_matched is a Jaccard >= 0.6 threshold, median of 5). A redesign must be
+  declared in `thresholds.toml` with reasons and a date before any run that measures it, calibrated on a
+  fresh seed range (not 0-5), and verified on another; until then the served verdict stays provisional.
+- Test fix round (after review): survivor tests for a weak control, the factor-1.0 tree-likeness, n_failed,
+  the matrix share, a failed payload by kind, `complete`, and no cap note on a pending C2. The recorded
+  run and the measured commit 37197c8 are unchanged.
 
 ## Phase 2 Task 1 decisions
 
@@ -724,6 +762,10 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
   approved a pre-declared N2 amendment for phase 2 (see "Phase 2 rulings").
 - **Reordering cells (closed 2026-11-17).** Within Monte Carlo error accepted (see "Phase 2
   rulings").
+- **Verdict verification failed (closed 2026-11-17).** 28 of 31 control runs were verdicted supported
+  (max 0); the served verdict is capped at provisional. Shreyan ruled option (a): accept a
+  provisional-only verdict, keep the cap, state the failure plainly, and record a pre-declared C1/C2
+  redesign as follow-up work (see "Phase 2 Task 9 decisions and result"). Tasks 11 and 12 proceed.
 - Commit 33c281d and PR #5 were created at 07:57 under your account, not by the orchestrating
   session. Was that you, or a tool?
 
@@ -797,6 +839,7 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/24-n2-amendment` | #30 | phase 2 N2a; merged with a merge commit so the recorded commit 2b15c77 stays on `main` |
 | `pivot/28-stability-job` | #31 | merged (squash), phase 2 Task 10 |
 | `pivot/27-verdict-calibration` | #32 | merged (merge commit, 67361c8, keeps the recorded commit 0a584d5), phase 2 Task 8 |
+| `pivot/29-verdict-verification` | #33 | merged (merge commit, keeps the recorded commit 37197c8), phase 2 Task 9 (FAILED, verdict capped) |
 
 ## Verify the current state
 

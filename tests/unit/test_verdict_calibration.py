@@ -19,13 +19,18 @@ from lumencell.bench.verdict_calibration import (
     CheckCalibration,
     Group,
     RunRecord,
+    Verification,
     calibration_payload,
     collect_records,
     derive,
     expected_runs,
+    expected_verification_runs,
     records_from_payload,
+    verification_payload,
+    verify,
     write_json,
 )
+from lumencell.engine.tree_support import Thresholds, calibrated_thresholds
 
 CFG = load_thresholds()
 CAL = CFG["tree_support"]["calibration"]
@@ -260,3 +265,160 @@ def test_the_committed_taus_follow_from_the_recorded_calibration() -> None:
             expected[key] = tau
     assert CFG["tree_support"]["calibrated"] == expected
     assert doc["taus"] == {"tau_tree": cal.tau_tree, "tau_lin": cal.tau_lin, "tau_pt": cal.tau_pt}
+
+
+# ---- Task 9: verification -------------------------------------------------------------------
+
+VER = CFG["tree_support"]["verification"]
+LOOSE = Thresholds(tau_tree=None, tau_lin=None, tau_pt=None)  # only C1 decides
+
+
+def _cov(rec: RunRecord, coverage: float) -> RunRecord:
+    return RunRecord(**{**rec.__dict__, "coverage": coverage})
+
+
+def test_a_supported_control_fails_verification() -> None:
+    recs = [_rec("matrix", "m/seed3"), _rec("control", "loop/seed3")]
+    ver = verify(recs, LOOSE, 0)
+    assert ver.controls_supported == ("loop/seed3 paga_dpt",)
+    assert ver.passed is False
+    assert verify(recs, LOOSE, 1).passed is True
+
+
+def test_a_control_that_is_not_supported_passes() -> None:
+    recs = [_rec("matrix", "m/seed3"), _cov(_rec("control", "two_groups/seed3"), 0.5)]
+    ver = verify(recs, LOOSE, 0)
+    assert ver.controls_supported == ()
+    assert ver.passed is True
+    assert ("two_groups/seed3", "paga_dpt", "not_supported") in ver.verdicts
+
+
+def test_the_matrix_share_is_reported_not_gated() -> None:
+    # Every matrix record is weak (C3 fails against tau 0.9), no control is supported.
+    tau = Thresholds(tau_tree=None, tau_lin=0.9, tau_pt=None)
+    recs = [_rec("matrix", f"m/seed{i}", lin=0.1) for i in range(3)] + [
+        _cov(_rec("control", "loop/seed3"), 0.5)
+    ]
+    ver = verify(recs, tau, 0)
+    assert {lvl for d, _, lvl in ver.verdicts if d.startswith("m/")} == {"weak"}
+    assert ver.matrix_supported_share == 0.0
+    assert ver.passed is True
+
+
+def test_the_matrix_share_counts_supported_matrix_runs() -> None:
+    recs = [_rec("matrix", "m/seed3"), _cov(_rec("matrix", "m/seed4"), 0.5)]
+    assert verify(recs, LOOSE, 0).matrix_supported_share == 0.5
+
+
+def test_failed_runs_get_no_verdict_and_are_counted() -> None:
+    recs = [_rec("matrix", "m/seed3"), _rec("control", "loop/seed3", error="boom")]
+    ver = verify(recs, LOOSE, 0)
+    assert ver.n_failed == 1
+    assert [d for d, _, _ in ver.verdicts] == ["m/seed3"]
+    assert ver.passed is True
+
+
+def test_the_verification_payload_is_strict_json_and_has_passed(tmp_path: Path) -> None:
+    recs = [_rec("matrix", "m/seed3"), _rec("control", "loop/seed3", error="x", tree=math.nan)]
+    ver = verify(recs, LOOSE, 0)
+    payload = verification_payload(recs, ver, LOOSE, CFG, "abc")
+    assert payload["passed"] is True
+    assert payload["complete"] is False
+    assert payload["level_counts"]["matrix"] == {"supported": 1}
+    out = tmp_path / "v.json"
+    write_json(out, payload)
+    doc = json.loads(out.read_text(), parse_constant=lambda c: pytest.fail(c))
+    assert doc["controls_supported"] == []
+    again = verify(records_from_payload(doc), LOOSE, doc["max_controls_supported"])
+    assert again == ver
+
+
+def test_a_weak_control_is_not_counted_as_supported() -> None:
+    tau = Thresholds(tau_tree=None, tau_lin=0.9, tau_pt=None)
+    recs = [_rec("matrix", "m/seed3"), _rec("control", "loop/seed3", lin=0.1)]
+    ver = verify(recs, tau, 0)
+    assert ("loop/seed3", "paga_dpt", "weak") in ver.verdicts
+    assert ver.controls_supported == ()
+    assert ver.passed is True
+
+
+def test_the_verdict_reads_tree_likeness_at_factor_one() -> None:
+    tau = Thresholds(tau_tree=0.5, tau_lin=None, tau_pt=None)
+    trees = [0.9 if f == 1.0 else 0.1 for f in FACTORS]
+    assert verify([_rec("matrix", "m/seed3", tree=trees)], tau, 0).verdicts[0][2] == "supported"
+    trees = [0.1 if f == 1.0 else 0.9 for f in FACTORS]
+    assert verify([_rec("matrix", "m/seed3", tree=trees)], tau, 0).verdicts[0][2] == "not_supported"
+
+
+def test_n_failed_counts_only_the_failed_runs() -> None:
+    recs = [_rec("matrix", "m/seed3"), _rec("matrix", "m/seed4"), _rec("control", "loop/seed3", error="boom")]
+    assert verify(recs, LOOSE, 0).n_failed == 1
+
+
+def test_the_matrix_share_ignores_controls_and_is_zero_without_matrix_runs() -> None:
+    recs = [_rec("matrix", "m/seed3"), _cov(_rec("matrix", "m/seed4"), 0.5), _rec("control", "loop/seed3")]
+    assert verify(recs, LOOSE, 0).matrix_supported_share == 0.5
+    assert verify([_rec("control", "loop/seed3")], LOOSE, 0).matrix_supported_share == 0.0
+
+
+def test_a_failed_verification_payload_says_so_by_kind() -> None:
+    recs = [
+        _rec("matrix", "m/seed3"),
+        _rec("control", "loop/seed3"),
+        _cov(_rec("control", "blob/seed3"), 0.5),
+    ]
+    ver = verify(recs, LOOSE, 0)
+    payload = verification_payload(recs, ver, LOOSE, CFG, "abc")
+    assert payload["passed"] is False
+    assert payload["controls_supported"] == ["loop/seed3 paga_dpt"]
+    assert payload["controls_supported_by_kind"] == {"loop": 1}
+    assert payload["level_counts"]["control"] == {"supported": 1, "not_supported": 1}
+
+
+def test_the_payload_is_complete_only_with_every_expected_run() -> None:
+    runs = sorted(expected_verification_runs(CFG))
+    recs = [_rec(g, d, m) for g, d, m in runs]
+    assert verification_payload(recs, verify(recs, LOOSE, 0), LOOSE, CFG, "abc")["complete"] is True
+    part = recs[:-1]
+    assert verification_payload(part, verify(part, LOOSE, 0), LOOSE, CFG, "abc")["complete"] is False
+    extra = [*recs, _rec("matrix", "m/seed99")]
+    assert verification_payload(extra, verify(extra, LOOSE, 0), LOOSE, CFG, "abc")["complete"] is True
+
+
+def test_expected_verification_runs_use_the_fresh_seeds() -> None:
+    runs = expected_verification_runs(CFG)
+    assert {int(d.rsplit("seed", 1)[1]) for _, d, _ in runs} == set(VER["matrix_seeds"]) | set(
+        VER["control_seeds"]
+    )
+    assert not {0, 1, 2} & {int(d.rsplit("seed", 1)[1]) for _, d, _ in runs}
+
+
+@pytest.mark.slow
+def test_verification_on_fresh_seeds(tmp_path_factory: pytest.TempPathFactory) -> None:
+    from lumencell.bench.calibration import _commit
+
+    seeds: dict[Group, list[int]] = {"matrix": VER["matrix_seeds"], "control": VER["control_seeds"]}
+    records = collect_records(CFG, seeds, CAL["methods"], tmp_path_factory.mktemp("verdict-ver"))
+    thresholds = calibrated_thresholds()
+    ver: Verification = verify(records, thresholds, VER["max_controls_supported"])
+    payload = verification_payload(records, ver, thresholds, CFG, _commit())
+    out = os.environ.get("LUMENCELL_VERDICT_VERIFICATION_OUT")
+    if out:
+        write_json(Path(out), payload)
+    print(f"level counts: {payload['level_counts']}")
+    print(f"controls supported: {payload['controls_supported_by_kind']} of {len(ver.controls_supported)}")
+    print(f"matrix supported share: {ver.matrix_supported_share:.3f}; n_failed: {ver.n_failed}")
+    assert payload["complete"]
+    assert ver.passed, f"controls verdicted supported: {ver.controls_supported}"
+
+
+def test_the_recorded_verification_follows_from_its_records() -> None:
+    found = sorted((REPO / "benchmarks" / "results").glob("verdict-verification-*.json"))
+    if not found:
+        pytest.skip("verification not recorded yet")
+    doc = json.loads(found[-1].read_text())
+    assert doc["complete"] is True
+    assert not doc["commit"].endswith("-dirty")
+    ver = verify(records_from_payload(doc), calibrated_thresholds(), VER["max_controls_supported"])
+    assert doc["passed"] == ver.passed
+    assert doc["controls_supported"] == list(ver.controls_supported)

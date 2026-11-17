@@ -245,6 +245,14 @@ on_failure = "provisional"
 # (run at 0a584d5). A non-discriminating check has no tau key and is left out of the verdict.
 non_discriminating = ["C2", "C3", "C4"]
 
+[tree_support.verified]
+# The recorded outcome of [tree_support.verification], written after the run. passed = false: 28 of
+# 31 control runs were verdicted supported (max 0), so every served verdict that would read
+# supported or weak is capped at provisional, with a note naming this verification and its date.
+passed = false
+date = "2026-11-17"
+source = "benchmarks/results/verdict-verification-2026-11-17.json"
+
 [regression]
 # CI fails if a synthetic metric falls further than this below benchmarks/baseline.json.
 max_drop = 0.03
@@ -346,3 +354,11 @@ max_drop = 0.03
 #             C3 matrix q10 1.000, control q90 1.000, non-discriminating;
 #             C4 matrix q10 0.998, control q90 0.999, non-discriminating.
 #             No tau is set: tau_tree, tau_lin and tau_pt are all left out. Rule, seeds and controls unchanged.
+#
+# 2026-11-17  Verdict verification on seeds 3-5, benchmarks/results/verdict-verification-2026-11-17.json
+#             (run at 37197c8, clean tree, 72 of 72 runs, 5 left out because the reference failed:
+#             two_groups palantir seeds 3 and 4, scfates_ppt seeds 3-5): 28 of 31 control runs
+#             supported (blob 9, loop 9, sheet 9, two_groups 1), max 0, so verification FAILED;
+#             36 of 36 matrix runs supported (share 1.0, reported, not gated). Rule, taus and
+#             seeds unchanged. Per [tree_support.verification] on_failure, [tree_support.verified]
+#             passed = false and the served verdict is capped at provisional (VERDICT_VERIFIED).

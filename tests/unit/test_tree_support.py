@@ -17,6 +17,15 @@ from lumencell.engine.tree_support import (
 )
 from tests.conftest import Prepared
 
+
+@pytest.fixture(autouse=True)
+def _verified(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The rules are tested as verified; the capped state has its own tests below."""
+    import lumencell.engine.tree_support as ts
+
+    monkeypatch.setattr(ts, "VERDICT_VERIFIED", True)
+
+
 TAU = Thresholds(tau_tree=0.7, tau_lin=0.8, tau_pt=0.85)
 GOOD_STAB = StabilityEvidence("done", lineage=0.9, pseudotime=0.95)
 OK_CLONAL = ClonalEvidence("scored", 3, status="ok", p=0.001, delta_eta=0.2)
@@ -238,3 +247,71 @@ def test_the_committed_calibration_leaves_c2_to_c4_out_and_still_gives_a_verdict
     v = _v(thresholds=calibrated_thresholds())
     assert {_check(v, cid).state for cid in ("C2", "C3", "C4")} == {"excluded"}
     assert v.level == "supported"
+
+
+# ---- the cap while the verdict is not verified (F14) ----------------------------------------
+
+
+def _unverified(monkeypatch: pytest.MonkeyPatch) -> None:
+    import lumencell.engine.tree_support as ts
+
+    monkeypatch.setattr(ts, "VERDICT_VERIFIED", False)
+    monkeypatch.setattr(ts, "VERDICT_VERIFIED_ON", "2026-01-02")
+
+
+def test_an_unverified_verdict_caps_supported_at_provisional_with_a_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert _v().level == "supported"
+    _unverified(monkeypatch)
+    v = _v()
+    assert v.level == "provisional"
+    assert [c.state for c in v.checks] == [c.state for c in _v_verified().checks]  # checks untouched
+    assert any("failed its verification" in r and "2026-01-02" in r for r in v.reasons)
+
+
+def _v_verified():  # type: ignore[no-untyped-def]
+    return verdict(1.0, 0.9, GOOD_STAB, OK_CLONAL, TAU, verified=True)
+
+
+def test_an_unverified_verdict_caps_weak_at_provisional(monkeypatch: pytest.MonkeyPatch) -> None:
+    low = StabilityEvidence("done", lineage=0.1, pseudotime=0.95)
+    assert _v(stab=low).level == "weak"
+    _unverified(monkeypatch)
+    v = _v(stab=low)
+    assert v.level == "provisional"
+    assert any("failed its verification" in r for r in v.reasons)
+
+
+def test_an_unverified_verdict_keeps_not_supported(monkeypatch: pytest.MonkeyPatch) -> None:
+    _unverified(monkeypatch)
+    v = _v(cov=0.5)
+    assert v.level == "not_supported"
+    assert not any("failed its verification" in r for r in v.reasons)
+
+
+def test_an_already_provisional_verdict_gets_no_cap_note(monkeypatch: pytest.MonkeyPatch) -> None:
+    _unverified(monkeypatch)
+    v = _v(stab=StabilityEvidence("pending"))
+    assert v.level == "provisional"
+    assert not any("failed its verification" in r for r in v.reasons)
+
+
+def test_verified_true_measures_the_rule_whatever_the_constant(monkeypatch: pytest.MonkeyPatch) -> None:
+    _unverified(monkeypatch)
+    assert verdict(1.0, 0.9, GOOD_STAB, OK_CLONAL, TAU, verified=True).level == "supported"
+    assert verdict(1.0, 0.9, GOOD_STAB, OK_CLONAL, TAU, verified=False).level == "provisional"
+
+
+def test_the_committed_verification_failed_so_the_served_verdict_is_capped() -> None:
+    from lumencell.trust import constants
+
+    assert constants.VERDICT_VERIFIED is False
+
+
+def test_a_pending_c2_gets_no_cap_note(monkeypatch: pytest.MonkeyPatch) -> None:
+    _unverified(monkeypatch)
+    v = _v(tree=None)
+    assert _check(v, "C2").state == "pending"
+    assert v.level == "provisional"
+    assert not any("failed its verification" in r for r in v.reasons)
