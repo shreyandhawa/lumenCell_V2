@@ -294,8 +294,34 @@ class Stability(Model):
     notes: list[str]
 
 
+CheckId = Literal["C1", "C2", "C3", "C4", "C5"]
+CheckState = Literal["pass", "fail", "not_applicable", "pending", "unavailable", "excluded"]
+
+
+class SupportCheck(Model):
+    """One check of the tree-support verdict (spec 5.3). ``value`` is null when undefined."""
+
+    id: CheckId
+    name: str
+    state: CheckState
+    value: float | None
+    threshold: float | None
+    reason: str | None
+
+
+class TreeSupport(Model):
+    """How far the run's tree is supported. While the verdict rule has not passed its verification
+    on fresh seeds, no run is shown above provisional, and ``reasons`` says so."""
+
+    level: Literal["supported", "weak", "not_supported", "provisional"]
+    checks: list[SupportCheck]
+    reasons: list[str]
+
+
 class RunTrust(Model):
     clonal: ClonalAgreement | None
+    stability: Stability | None
+    tree_support: TreeSupport | None
 
 
 class DatasetInfo(Model):
@@ -315,6 +341,10 @@ class DatasetInfo(Model):
     versions: dict[str, str]
     clonal: ClonalSettings | None
     clonal_candidates: list[str]
+    tree_likeness: float | None = Field(
+        description="The share of PAGA edge weight on its spanning tree at the default resolution "
+        "(check C2). Null while prep is not loaded, or when the cluster graph has no edges."
+    )
 
 
 class GeneSearchResult(Model):
@@ -440,8 +470,8 @@ class TrajectoryRun(Model):
     cell_arrays: list[str] = Field(description="Names of the arrays served by GET .../cells.")
     provenance: Provenance
     trust: RunTrust | None = Field(
-        description="What the run is checked against. Always filled for a done run; scoring runs "
-        "in the background, so the clonal agreement may be pending."
+        description="What the run is checked against. Always filled for a done run; clonal scoring "
+        "and stability run in the background, so either may be pending."
     )
 
 
@@ -507,7 +537,7 @@ class Comparison(Model):
 
 # ---- jobs -------------------------------------------------------------------------
 
-JobKind = Literal["prepare", "infer", "heatmap", "score_clonal"]
+JobKind = Literal["prepare", "infer", "heatmap", "score_clonal", "stability"]
 JobState = Literal["queued", "running", "done", "failed", "cancelled"]
 
 

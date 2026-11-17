@@ -350,6 +350,12 @@ export type DatasetInfo = {
      */
     schema_version: number;
     /**
+     * Tree Likeness
+     *
+     * The share of PAGA edge weight on its spanning tree at the default resolution (check C2). Null while prep is not loaded, or when the cluster graph has no edges.
+     */
+    tree_likeness: number | null;
+    /**
      * Versions
      */
     versions: {
@@ -537,7 +543,7 @@ export type JobInfo = {
      *
      * A kind the contract does not list is reported by its own name.
      */
-    kind: 'prepare' | 'infer' | 'heatmap' | 'score_clonal' | string;
+    kind: 'prepare' | 'infer' | 'heatmap' | 'score_clonal' | 'stability' | string;
     /**
      * Message
      */
@@ -1128,6 +1134,8 @@ export type RunSummary = {
  */
 export type RunTrust = {
     clonal: ClonalAgreement | null;
+    stability: Stability | null;
+    tree_support: TreeSupport | null;
 };
 
 /**
@@ -1150,6 +1158,186 @@ export type Segment = {
      * Target
      */
     target: number;
+};
+
+/**
+ * Stability
+ */
+export type Stability = {
+    /**
+     * Lineage Stability
+     */
+    lineage_stability: number | null;
+    /**
+     * Match Jaccard
+     */
+    match_jaccard: number;
+    /**
+     * N Failed
+     */
+    n_failed: number;
+    /**
+     * Notes
+     */
+    notes: Array<string>;
+    /**
+     * Pseudotime Stability
+     */
+    pseudotime_stability: number | null;
+    /**
+     * Reference Lineages
+     */
+    reference_lineages: number | null;
+    reseeds: StabilitySummary | null;
+    /**
+     * Status
+     */
+    status: 'ok' | 'pending' | 'failed' | 'not_available';
+    subsamples: StabilitySummary | null;
+};
+
+/**
+ * StabilityReplicate
+ */
+export type StabilityReplicate = {
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Index
+     */
+    index: number;
+    /**
+     * Kind
+     */
+    kind: 'reseed' | 'subsample';
+    /**
+     * Mean Jaccard
+     */
+    mean_jaccard: number | null;
+    /**
+     * Method Seed
+     */
+    method_seed: number | null;
+    /**
+     * N Cells
+     */
+    n_cells: number;
+    /**
+     * N Compared
+     */
+    n_compared: number;
+    /**
+     * N Lineages
+     */
+    n_lineages: number;
+    /**
+     * Seed
+     */
+    seed: number;
+    /**
+     * Share Matched
+     */
+    share_matched: number | null;
+    /**
+     * Spearman
+     */
+    spearman: number | null;
+    /**
+     * Terminals
+     */
+    terminals: Array<string> | null;
+};
+
+/**
+ * StabilitySummary
+ */
+export type StabilitySummary = {
+    /**
+     * Fraction
+     */
+    fraction: number;
+    /**
+     * Kind
+     */
+    kind: 'reseed' | 'subsample';
+    /**
+     * Mean Jaccard Median
+     */
+    mean_jaccard_median: number | null;
+    /**
+     * Mean Jaccard Min
+     */
+    mean_jaccard_min: number | null;
+    /**
+     * N Lineages Median
+     */
+    n_lineages_median: number | null;
+    /**
+     * N Lineages Min
+     */
+    n_lineages_min: number;
+    /**
+     * R
+     */
+    r: number;
+    /**
+     * Replicates
+     */
+    replicates: Array<StabilityReplicate>;
+    /**
+     * Seeds
+     */
+    seeds: Array<number>;
+    /**
+     * Share Matched Median
+     */
+    share_matched_median: number | null;
+    /**
+     * Share Matched Min
+     */
+    share_matched_min: number | null;
+    /**
+     * Spearman Median
+     */
+    spearman_median: number | null;
+    /**
+     * Spearman Min
+     */
+    spearman_min: number | null;
+};
+
+/**
+ * SupportCheck
+ *
+ * One check of the tree-support verdict (spec 5.3). ``value`` is null when undefined.
+ */
+export type SupportCheck = {
+    /**
+     * Id
+     */
+    id: 'C1' | 'C2' | 'C3' | 'C4' | 'C5';
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Reason
+     */
+    reason: string | null;
+    /**
+     * State
+     */
+    state: 'pass' | 'fail' | 'not_applicable' | 'pending' | 'unavailable' | 'excluded';
+    /**
+     * Threshold
+     */
+    threshold: number | null;
+    /**
+     * Value
+     */
+    value: number | null;
 };
 
 /**
@@ -1234,13 +1422,34 @@ export type TrajectoryRun = {
      */
     topology_kind: 'tree' | 'fate_star';
     /**
-     * What the run is checked against. Always filled for a done run; scoring runs in the background, so the clonal agreement may be pending.
+     * What the run is checked against. Always filled for a done run; clonal scoring and stability run in the background, so either may be pending.
      */
     trust: RunTrust | null;
     /**
      * Warnings
      */
     warnings: Array<Notice>;
+};
+
+/**
+ * TreeSupport
+ *
+ * How far the run's tree is supported. While the verdict rule has not passed its verification
+ * on fresh seeds, no run is shown above provisional, and ``reasons`` says so.
+ */
+export type TreeSupport = {
+    /**
+     * Checks
+     */
+    checks: Array<SupportCheck>;
+    /**
+     * Level
+     */
+    level: 'supported' | 'weak' | 'not_supported' | 'provisional';
+    /**
+     * Reasons
+     */
+    reasons: Array<string>;
 };
 
 /**

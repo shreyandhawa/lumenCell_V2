@@ -28,6 +28,8 @@ from lumencell.engine.store import STORE_VERSION, RunStore, run_id
 from lumencell.engine.trends import gene_trends, temporal_heatmap
 from lumencell.jobs.manager import ACTIVE, Job, JobManager
 from lumencell.trust.clonal import not_scored, trust_hash, trust_name
+from lumencell.trust.stability import not_measured, stability_hash, stability_name
+from lumencell.trust.verdict import tree_support_for_run
 
 # Run ids name folders in the run store, so anything that is not a plain name is not a run.
 _RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
@@ -218,6 +220,9 @@ class Runs:
         ]
         root = to_api_root(g["root"])
         terminals = [lin.terminal_label for lin in lineages if lin.terminal_label]
+        clonal = self.clonal_agreement(rid, g)  # first: a GET that queues both queues clonal first
+        stability = self.stability(rid, g)
+        tree_support = tree_support_for_run(g, self.view.tree_likeness(), stability, clonal)
         return models.TrajectoryRun(
             run_id=rid,
             state="done",
@@ -247,7 +252,7 @@ class Runs:
                 terminals_source="user" if g.get("terminals_source") == "user" else "auto",
                 created_at=datetime.fromisoformat(g["created_at"]),
             ),
-            trust=models.RunTrust(clonal=self.clonal_agreement(rid, g)),
+            trust=models.RunTrust(clonal=clonal, stability=stability, tree_support=tree_support),
         )
 
     # ---- trust ------------------------------------------------------------------------------
@@ -355,13 +360,45 @@ class Runs:
             return 0
         return sum(self.submit_clonal(r["run_id"], settings) is not None for r in self.store.list())
 
+    def _stability_payload(self, rid: str) -> dict[str, Any]:
+        # The terminals, the label column and the clone columns come from the run's own record.
+        return {**self._job_payload(), "run_id": rid, "trust_name": stability_name()}
+
+    def stability(self, rid: str, graph: dict[str, Any]) -> models.Stability:
+        """The run's stability; queues its measurement when neither the file nor a job exists.
+
+        A failed or cancelled job is reported as failed and is not resubmitted by a GET.
+        """
+        if graph.get("store_version") != STORE_VERSION:
+            return not_measured("not_available", LEGACY_NOTE)
+        found = self._trust_lookup(
+            rid,
+            "stability",
+            stability_name(),
+            stability_hash(),
+            lambda: self._stability_payload(rid),
+            models.Stability.model_validate,
+        )
+        if found.stored is not None:
+            return models.Stability.model_validate(found.stored)
+        assert found.job is not None
+        if found.job.state in ACTIVE:
+            return not_measured("pending", PENDING_NOTE)
+        return not_measured("failed", found.job.error or "cancelled")
+
+    def submit_stability(self, rid: str) -> Job | None:
+        """Queue the run's stability job; None when its file already exists."""
+        if self._read_valid(rid, stability_name(), models.Stability.model_validate) is not None:
+            return None
+        key = f"stability:{rid}:{stability_hash()}"
+        return self.jobs.submit("stability", key, self._stability_payload(rid))
+
     def submit_trust_jobs(self, rid: str) -> list[Job]:
-        """Queue every trust job a newly finished run needs: clonal scoring when settings exist."""
+        """Queue every trust job a newly finished run needs: clonal scoring when settings exist,
+        then stability, which every run gets."""
         settings = self._clonal()
-        if settings is None:
-            return []
-        job = self.submit_clonal(rid, settings)
-        return [job] if job is not None else []
+        clonal = self.submit_clonal(rid, settings) if settings is not None else None
+        return [job for job in (clonal, self.submit_stability(rid)) if job is not None]
 
     def run_cells(self, rid: str) -> bytes:
         self._require_run(rid)

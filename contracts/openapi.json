@@ -677,6 +677,18 @@
             "title": "Schema Version",
             "type": "integer"
           },
+          "tree_likeness": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The share of PAGA edge weight on its spanning tree at the default resolution (check C2). Null while prep is not loaded, or when the cluster graph has no edges.",
+            "title": "Tree Likeness"
+          },
           "versions": {
             "additionalProperties": {
               "type": "string"
@@ -710,7 +722,8 @@
           "root",
           "versions",
           "clonal",
-          "clonal_candidates"
+          "clonal_candidates",
+          "tree_likeness"
         ],
         "title": "DatasetInfo",
         "type": "object"
@@ -987,7 +1000,8 @@
                   "prepare",
                   "infer",
                   "heatmap",
-                  "score_clonal"
+                  "score_clonal",
+                  "stability"
                 ],
                 "type": "string"
               },
@@ -2115,10 +2129,32 @@
                 "type": "null"
               }
             ]
+          },
+          "stability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stability"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tree_support": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TreeSupport"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
-          "clonal"
+          "clonal",
+          "stability",
+          "tree_support"
         ],
         "title": "RunTrust",
         "type": "object"
@@ -2150,6 +2186,429 @@
           "length"
         ],
         "title": "Segment",
+        "type": "object"
+      },
+      "Stability": {
+        "additionalProperties": false,
+        "properties": {
+          "lineage_stability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lineage Stability"
+          },
+          "match_jaccard": {
+            "title": "Match Jaccard",
+            "type": "number"
+          },
+          "n_failed": {
+            "title": "N Failed",
+            "type": "integer"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "pseudotime_stability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pseudotime Stability"
+          },
+          "reference_lineages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Lineages"
+          },
+          "reseeds": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StabilitySummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "pending",
+              "failed",
+              "not_available"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "subsamples": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StabilitySummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "match_jaccard",
+          "reference_lineages",
+          "n_failed",
+          "reseeds",
+          "subsamples",
+          "lineage_stability",
+          "pseudotime_stability",
+          "notes"
+        ],
+        "title": "Stability",
+        "type": "object"
+      },
+      "StabilityReplicate": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "reseed",
+              "subsample"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mean_jaccard": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Jaccard"
+          },
+          "method_seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method Seed"
+          },
+          "n_cells": {
+            "title": "N Cells",
+            "type": "integer"
+          },
+          "n_compared": {
+            "title": "N Compared",
+            "type": "integer"
+          },
+          "n_lineages": {
+            "title": "N Lineages",
+            "type": "integer"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "share_matched": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Matched"
+          },
+          "spearman": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spearman"
+          },
+          "terminals": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminals"
+          }
+        },
+        "required": [
+          "kind",
+          "index",
+          "seed",
+          "method_seed",
+          "n_cells",
+          "n_compared",
+          "n_lineages",
+          "spearman",
+          "share_matched",
+          "mean_jaccard",
+          "terminals",
+          "error"
+        ],
+        "title": "StabilityReplicate",
+        "type": "object"
+      },
+      "StabilitySummary": {
+        "additionalProperties": false,
+        "properties": {
+          "fraction": {
+            "title": "Fraction",
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "reseed",
+              "subsample"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mean_jaccard_median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Jaccard Median"
+          },
+          "mean_jaccard_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Jaccard Min"
+          },
+          "n_lineages_median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Lineages Median"
+          },
+          "n_lineages_min": {
+            "title": "N Lineages Min",
+            "type": "integer"
+          },
+          "r": {
+            "title": "R",
+            "type": "integer"
+          },
+          "replicates": {
+            "items": {
+              "$ref": "#/components/schemas/StabilityReplicate"
+            },
+            "title": "Replicates",
+            "type": "array"
+          },
+          "seeds": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Seeds",
+            "type": "array"
+          },
+          "share_matched_median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Matched Median"
+          },
+          "share_matched_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Matched Min"
+          },
+          "spearman_median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spearman Median"
+          },
+          "spearman_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spearman Min"
+          }
+        },
+        "required": [
+          "kind",
+          "r",
+          "fraction",
+          "seeds",
+          "spearman_median",
+          "spearman_min",
+          "share_matched_median",
+          "share_matched_min",
+          "mean_jaccard_median",
+          "mean_jaccard_min",
+          "n_lineages_median",
+          "n_lineages_min",
+          "replicates"
+        ],
+        "title": "StabilitySummary",
+        "type": "object"
+      },
+      "SupportCheck": {
+        "additionalProperties": false,
+        "description": "One check of the tree-support verdict (spec 5.3). ``value`` is null when undefined.",
+        "properties": {
+          "id": {
+            "enum": [
+              "C1",
+              "C2",
+              "C3",
+              "C4",
+              "C5"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "pass",
+              "fail",
+              "not_applicable",
+              "pending",
+              "unavailable",
+              "excluded"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "value",
+          "threshold",
+          "reason"
+        ],
+        "title": "SupportCheck",
         "type": "object"
       },
       "TrajectoryRequest": {
@@ -2299,7 +2758,7 @@
                 "type": "null"
               }
             ],
-            "description": "What the run is checked against. Always filled for a done run; scoring runs in the background, so the clonal agreement may be pending."
+            "description": "What the run is checked against. Always filled for a done run; clonal scoring and stability run in the background, so either may be pending."
           },
           "warnings": {
             "items": {
@@ -2325,6 +2784,43 @@
           "trust"
         ],
         "title": "TrajectoryRun",
+        "type": "object"
+      },
+      "TreeSupport": {
+        "additionalProperties": false,
+        "description": "How far the run's tree is supported. While the verdict rule has not passed its verification\non fresh seeds, no run is shown above provisional, and ``reasons`` says so.",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/SupportCheck"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "level": {
+            "enum": [
+              "supported",
+              "weak",
+              "not_supported",
+              "provisional"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "level",
+          "checks",
+          "reasons"
+        ],
+        "title": "TreeSupport",
         "type": "object"
       },
       "Trends": {

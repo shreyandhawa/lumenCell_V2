@@ -27,7 +27,9 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   #31) is merged. Task 9 (#33) verified the verdict on fresh seeds 3-5 and FAILED (28 of 31
   control runs supported, max 0), so every served verdict is capped at provisional; Shreyan chose
   to accept a provisional-only verdict (see "Phase 2 Task 9 decisions and result"). Shreyan approved
-  the Task 2 downloads on 2026-11-17. Next: Tasks 2, 3, 4, then 11, 12 and 13.
+  the Task 2 downloads on 2026-11-17. Task 11 (serving stability and the capped verdict, without
+  the cell-cycle check) is open as PR `pivot/30-robustness-api` (see "Phase 2 Task 11 decisions").
+  Next: Tasks 2, 3, 4 (Task 4 adds the cell-cycle fields Task 11 left out), then 12 and 13.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -229,6 +231,47 @@ on that clean tree, 2026-11-17, 6.2 min, once: `benchmarks/results/verdict-verif
 - Test fix round (after review): survivor tests for a weak control, the factor-1.0 tree-likeness, n_failed,
   the matrix share, a failed payload by kind, `complete`, and no cap note on a pending C2. The recorded
   run and the measured commit 37197c8 are unchanged.
+
+## Phase 2 Task 11 decisions
+
+- **R7, no cell cycle here.** Tasks 2-4 are blocked on a manual download, so `CellCycleCheck`,
+  `CellCycleInfo` and `cell_cycle_check` do not exist yet. `RunTrust.cell_cycle`,
+  `DatasetInfo.cell_cycle`, `Runs.cell_cycle`, `DatasetView.cell_cycle_info`, the run's cell-cycle
+  warnings and `test_a_cycling_lineage_is_warned_on_the_run` are left to Task 4. The dataset test is
+  `test_dataset_info_carries_tree_likeness`, without its cell-cycle half. Task 4 also adds
+  `cell_cycle: null` to the web `dataset()` fixture.
+- **The capped verdict is served as is (F14, ruling (a)).** Nothing in `src/` passes `verified=` to
+  `verdict`; it reads `VERDICT_VERIFIED` (False). Tests that need the uncapped level patch
+  `lumencell.engine.tree_support.VERDICT_VERIFIED` to True and say so in their docstring;
+  `test_the_served_verdict_is_capped_while_the_verification_has_failed` checks, unpatched, that a
+  finished run is provisional (or not_supported) with the failed-verification reason.
+- **All taus are None, so tests that exercise C2-C4 patch the thresholds.** Under the calibrated
+  thresholds C2, C3 and C4 are `excluded`, so the verdict is C1 and C5. The Review Focus 4 test
+  (cancelled stability) gives C3/C4 a tau of 0.5 and lifts the cap, so stability really decides the
+  level; a second test checks the served defaults never reach supported. The Review Focus 5 test
+  (no PAGA edges) first checks C2 `excluded` with a null value under the served defaults, then gives
+  C2 a tau and checks `fail`, null value, a reason and `not_supported`. Patched at
+  `lumencell.trust.verdict.calibrated_thresholds`.
+- **F1.** Stability is queued for every finished run, with or without clonal settings.
+  `submit_trust_jobs` queues clonal scoring first, then stability; `get_run` looks up clonal first
+  too, so a GET that queues both runs the cheap one first.
+  `test_submit_trust_jobs_queues_clonal_only_with_settings` is now
+  `test_submit_trust_jobs_queues_clonal_only_with_settings_and_stability_always`.
+- **The payload** is `_job_payload()` plus `run_id` and `trust_name` only (Task 10: the handler
+  reads terminals, clone columns and the label column from `result.json`). One builder,
+  `Runs._stability_payload`, serves submit and GET healing; dedup key `stability:<rid>:<hash>`.
+- **`clonal_evidence(c, n_lineages)`** takes the run's lineage count, not only `c` as the plan lists:
+  a failed or refused agreement has no `primary` to read L from, and defaulting it would make C5
+  `not_applicable` instead of the plan's `scored`/fail. The run's count equals `primary.n_lineages`
+  whenever a primary exists. A non-ok scored status carries the agreement's first note into C5's reason.
+- **A pending stability** is `not_measured("pending", "being scored in the background")`;
+  `not_measured` now accepts `pending`. Legacy runs (`store_version` other than 2) are
+  `not_available` with no job; the store does not serve them on GET at all, so that test calls
+  `Runs.stability` directly, as the clonal legacy test does.
+- **`DatasetView.tree_likeness()`** is computed from the loaded prep on each call (cheap; no cache,
+  so it follows the loaded artifacts). `Session.dataset_info()` maps NaN to null.
+- Extra tests beyond the plan: a failed stability job is served with its error and not resubmitted;
+  a stability file that does not validate counts as missing with one stderr line.
 
 ## Phase 2 Task 1 decisions
 
@@ -840,6 +883,7 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 | `pivot/28-stability-job` | #31 | merged (squash), phase 2 Task 10 |
 | `pivot/27-verdict-calibration` | #32 | merged (merge commit, 67361c8, keeps the recorded commit 0a584d5), phase 2 Task 8 |
 | `pivot/29-verdict-verification` | #33 | merged (merge commit, keeps the recorded commit 37197c8), phase 2 Task 9 (FAILED, verdict capped) |
+| `pivot/30-robustness-api` | open | phase 2 Task 11 (stability and the capped verdict served; cell cycle deferred to Task 4) |
 
 ## Verify the current state
 
