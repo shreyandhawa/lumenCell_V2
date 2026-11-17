@@ -14,7 +14,7 @@ import numpy.typing as npt
 from scipy import sparse
 
 from lumencell.clonal.scores import ClonalResult
-from lumencell.trust.constants import CLONAL_P_MAX, COVERAGE_MIN
+from lumencell.trust.constants import CLONAL_P_MAX, COVERAGE_MIN, TAU_LIN, TAU_PT, TAU_TREE
 
 CheckId = Literal["C1", "C2", "C3", "C4", "C5"]
 CheckState = Literal["pass", "fail", "not_applicable", "pending", "unavailable", "excluded"]
@@ -54,6 +54,11 @@ class Thresholds:
     tau_pt: float | None
     coverage_min: float = COVERAGE_MIN
     clonal_p_max: float = CLONAL_P_MAX
+
+
+def calibrated_thresholds() -> Thresholds:
+    """The taus from the recorded calibration ([tree_support.calibrated]); None leaves a check out."""
+    return Thresholds(tau_tree=TAU_TREE, tau_lin=TAU_LIN, tau_pt=TAU_PT)
 
 
 @dataclass(frozen=True)

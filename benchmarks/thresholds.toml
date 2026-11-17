@@ -240,6 +240,11 @@ max_controls_supported = 0
 # If verification fails, every served verdict is capped at provisional, with a note naming the failed verification. Declared 2026-11-17, before any verdict was computed.
 on_failure = "provisional"
 
+[tree_support.calibrated]
+# Derived by the [tree_support.calibration] rule from benchmarks/results/verdict-calibration-2026-11-17.json
+# (run at 0a584d5). A non-discriminating check has no tau key and is left out of the verdict.
+non_discriminating = ["C2", "C3", "C4"]
+
 [regression]
 # CI fails if a synthetic metric falls further than this below benchmarks/baseline.json.
 max_drop = 0.03
@@ -330,3 +335,14 @@ max_drop = 0.03
 #             not calibrated as they must be; the 9 monotonic cases pass. By the pre-declared rule
 #             the amended N2 is the runtime N2 and metric_version goes 1 -> 2. Nothing was re-run
 #             and no seed, bound or definition changed.
+#
+# 2026-11-17  Verdict calibration, results in benchmarks/results/verdict-calibration-2026-11-17.json
+#             (run at 0a584d5, clean tree, 72 of 72 runs, 5 left out because the reference failed:
+#             two_groups palantir seeds 0 and 2, two_groups scfates_ppt seeds 0-2):
+#             C2 x0.5 matrix q10 0.908, control q90 0.852, discriminates (tau 0.880);
+#             C2 x1.0 matrix q10 0.833, control q90 1.000, non-discriminating;
+#             C2 x2.0 matrix q10 0.714, control q90 0.919, non-discriminating;
+#             so C2 is non-discriminating (it must discriminate at all three);
+#             C3 matrix q10 1.000, control q90 1.000, non-discriminating;
+#             C4 matrix q10 0.998, control q90 0.999, non-discriminating.
+#             No tau is set: tau_tree, tau_lin and tau_pt are all left out. Rule, seeds and controls unchanged.
