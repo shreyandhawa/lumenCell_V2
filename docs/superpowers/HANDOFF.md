@@ -27,14 +27,16 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   max 0), so every served verdict is capped at provisional; Shreyan chose to accept a
   provisional-only verdict. Task 11 serves stability and the capped verdict without the cell-cycle
   check; Task 12 reported both on the three real datasets (every gated metric identical to phase 1).
-  - Task 13 (security review of phase 2, `pivot/32-phase2-security`) is this PR: two Low findings
-    fixed, two recorded; see "Security review (phase 2)" and "Done When (phase 2)".
+  - Task 13 (#36): three Low findings fixed (S5, S6, S9), three recorded; see "Security review
+    (phase 2)" and "Done When (phase 2)" (three Done When commands fail, as recorded: the cell-cycle
+    tests do not exist yet, and the verification's `passed` is False).
   - **Blocked: Tasks 2, 3, 4** (Tirosh lists, cell-cycle stage, cell-cycle check). They wait on the
     Tirosh 2016 supplement, which Shreyan must download by hand: PMC and science.org are behind a
     CAPTCHA. Task 4 adds the cell-cycle fields Task 11 left out. Their security items are pending
     in the phase 2 review.
-  - **Final review:** after Tasks 2-4 merge, re-run the Done When commands on `main` and review the
-    whole phase once.
+  - **Final review:** done on 1167b2d (see "Phase 2 final review"): no blocker, one question for
+    Shreyan (H-1) and five follow-up tasks. After Tasks 2-4 merge, re-run the Done When commands on
+    `main` and review those three PRs' seams with Task 11.
   - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
     Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
     a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
@@ -229,8 +231,11 @@ on that clean tree, 2026-11-17, 6.2 min, once: `benchmarks/results/verdict-verif
   (`VERDICT_VERIFIED = False`); wherever the verdict is served or documented, the failed verification is
   stated plainly. Nothing is re-run or tuned to rescue it.
 - **Follow-up, a pre-declared redesign of C1/C2 (not in phase 2).** Task 8 and this run show C1 (coverage)
-  passes on every control and C2 (PAGA tree-likeness) does not separate loops, forests and single clusters
-  from trees; C3 saturates (share_matched is a Jaccard >= 0.6 threshold, median of 5). A redesign must be
+  passes on every control except two_groups paga_dpt (0.48-0.51), and C2 (PAGA tree-likeness) does not
+  separate loops and forests from trees; C3 reads 1.0 on many controls, mostly because a run with one
+  lineage matches itself trivially (11 of 31 control runs in Task 8, 13 in Task 9), not because of the
+  Jaccard >= 0.6 cut (multi-lineage blob runs score 0-0.2), and stable non-trees with two or more
+  lineages (sheet, two_groups palantir) also reach 1.0 (see "Phase 2 final review"). A redesign must be
   declared in `thresholds.toml` with reasons and a date before any run that measures it, calibrated on a
   fresh seed range (not 0-5), and verified on another; until then the served verdict stays provisional.
 - Test fix round (after review): survivor tests for a weak control, the factor-1.0 tree-likeness, n_failed,
@@ -850,7 +855,47 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 - **Gate failures don't fail the benchmark commands.** `lumencell bench real` and
   `bench synth` exit 0 on gate failures; only regressions fail `bench-synth`.
 
+## Phase 2 final review (2026-11-17)
+
+One Opus reviewer read the spec, plan, every phase 2 section and recorded file and the code diff
+`2217f76..1167b2d`. Full report: the controller's notes folder, `phase2-final-review-2026-11-17.md`
+(outside the repo). No blocker. Declare-before-measure holds for every recorded file (N2a 2b15c77 after
+b0e235a; calibration 0a584d5 after 59d8213; verification 37197c8 after the taus in 0d0608a; real run
+99c3786 after both). The fast suite on 1167b2d passes (1009).
+- **H-1, for Shreyan (see Open questions).** `engine/tree_support.py` `_level` caps `weak` at `provisional`
+  as well as `supported`. A failed C5 (clones that do not agree, p 0.5) or a scored `single_lineage` is then
+  served as provisional. C5's rule passed its own calibration (N2a); the verification failed because the
+  rule is too lenient, which says nothing against a weak verdict. The reviewer proposes keeping `weak`
+  when a check fails, as `not_supported` is kept. Not changed: it amends F14 and ruling (a).
+- **X-1, phase 3 plan amendment needed.** It calls `clonal_evidence(agreement)` (now `(c, n_lineages)`),
+  and its slow test and case-study text expect supported/weak levels the cap makes impossible.
+- **X-2, X-4.** `verify` passes no `n_replicates`/`n_failed` and `RunRecord` does not record replicate
+  failures, so the "every replicate failed" path the API serves is never measured; real rows carry no
+  `n_failed` or reference lineage count, so "none failed" in Task 12 cannot be checked from the file.
+- **Minor:** the README sentence (from `bench/report.py`) says C2 does not separate trees from sheets or blobs,
+  but at x1.0 it does separate blob (0.19-0.23) and sheet (<= 0.66) from the matrix (>= 0.816); loop and
+  two_groups beat it. The cap note is missing while C5 is pending. Coverage has two equivalent formulas.
+  "80%" and `1.0 * factor` are hard-coded. The served verdict carries no rule version. The security
+  section does not say the review was by hand (the skill was not invoked).
+- **Lessons (records, seeds 0-5).** C3: one-lineage runs score 1.0 trivially; even with L >= 2, sheet and
+  two_groups palantir reach 1.0, so stability measures reproducibility, not tree shape. C4 separates only
+  blob (max 0.94 vs matrix min 0.993); paga_dpt reseeds reuse the diffusion map, so 2 of 5 replicates
+  are copies. C1: palantir gives finite pseudotime across two_groups' disconnected parts.
+- **Candidate redesign (to pre-declare, not adopted):** C1' share of cells in the root's kNN component;
+  C2a the current ratio with a 3-cluster floor (blob, sheet); C2b the longest cycle an off-tree PAGA edge
+  closes (loop); C3' symmetric branch-only Jaccard with L >= 2 plus a "random terminals" control; C4'
+  calibrated against blob only. Seeds never used: 6-99 and 500 up. Proposed: 500-509 calibrate,
+  510-519 verify, 900-904 a declared, burned pilot range.
+- **Follow-up tasks (not phase 2):** (1) the C1-C4 redesign, folding in X-2, X-4 and a
+  `STABILITY_METRIC_VERSION` bump; (2) a clear engine error for a disconnected kNN graph (palantir
+  "fate probabilities must sum to 1", scFates IndexError on `two_groups`) before phase 3's T-cell data;
+  (3) the phase 3 plan amendment (X-1); (4) Shreyan's ruling on H-1; (5) the minor doc fixes, in Task 4's PR.
+
 ## Open questions for Shreyan
+
+- **H-1 (2026-11-17, phase 2 final review): should a failed check keep `weak` under the cap?** Today a
+  run whose clones disagree (C5 fails) is served `provisional`, like an unmeasured one. Keeping `weak` (and
+  capping only `supported`) would state a real failure plainly; it amends F14 / ruling (a), so it is yours.
 
 - **depth_only/N2 (closed 2026-11-17).** The failed check stays recorded as failed; Shreyan
   approved a pre-declared N2 amendment for phase 2 (see "Phase 2 rulings").
@@ -984,7 +1029,8 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/29-verdict-verification` | #33 | merged (merge commit, keeps the recorded commit 37197c8), phase 2 Task 9 (FAILED, verdict capped) |
 | `pivot/30-robustness-api` | #34 | merged (squash), phase 2 Task 11 (stability and the capped verdict served; cell cycle deferred to Task 4) |
 | `pivot/31-bench-real-stability` | #35 | merged (merge commit, 4961426, keeps the measured commit 99c3786), phase 2 Task 12 |
-| `pivot/32-phase2-security` | #36 | open, phase 2 Task 13 (security review; Done When recorded) |
+| `pivot/32-phase2-security` | #36 | merged (squash, 1167b2d), phase 2 Task 13 (security review; Done When recorded) |
+| `pivot/33-phase2-final-review` | this PR | phase 2 final review recorded; H-1 asked of Shreyan |
 
 ## Verify the current state
 
