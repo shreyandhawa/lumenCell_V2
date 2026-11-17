@@ -1,0 +1,245 @@
+"""The tau calibration rule ([tree_support.calibration]) and its recorded run.
+
+The rule is pure and tested on hand-made records. ``test_calibration_on_the_declared_seeds`` is the
+slow, run-once measurement: ``LUMENCELL_VERDICT_CALIBRATION_OUT=<path>`` writes its payload before
+any assertion, so an honest result is always recorded.
+"""
+
+import json
+import math
+import os
+from collections.abc import Sequence
+from pathlib import Path
+
+import pytest
+
+from lumencell.bench.gates import load_thresholds
+from lumencell.bench.verdict_calibration import (
+    Calibration,
+    CheckCalibration,
+    Group,
+    RunRecord,
+    calibration_payload,
+    collect_records,
+    derive,
+    expected_runs,
+    records_from_payload,
+    write_json,
+)
+
+CFG = load_thresholds()
+CAL = CFG["tree_support"]["calibration"]
+FACTORS = tuple(CAL["c2_resolution_factors"])
+
+
+def _rec(
+    group: Group,
+    dataset: str,
+    method: str = "paga_dpt",
+    *,
+    lin: float = 1.0,
+    pt: float = 1.0,
+    tree: float | Sequence[float] = 1.0,
+    error: str | None = None,
+) -> RunRecord:
+    trees = [tree] * len(FACTORS) if isinstance(tree, float) else list(tree)
+    return RunRecord(
+        group=group,
+        dataset=dataset,
+        seed=0,
+        method=method,
+        coverage=1.0,
+        tree_likeness=tuple(zip(FACTORS, trees, strict=True)),
+        lineage_stability=lin,
+        pseudotime_stability=pt,
+        n_lineages=2,
+        error=error,
+    )
+
+
+def _check(cal: Calibration, check: str, factor: float | None = None) -> CheckCalibration:
+    (c,) = [c for c in cal.checks if c.check == check and c.factor == factor]
+    return c
+
+
+def _spread(matrix: Sequence[float], control: Sequence[float], field: str = "lin") -> list[RunRecord]:
+    out = [_rec("matrix", f"m/seed{i}", **{field: v}) for i, v in enumerate(matrix)]  # type: ignore[arg-type]
+    out += [_rec("control", f"c/seed{i}", **{field: v}) for i, v in enumerate(control)]  # type: ignore[arg-type]
+    return out
+
+
+def test_tau_is_the_midpoint_of_the_declared_quantiles() -> None:
+    cal = derive(_spread([0.6, 0.7, 0.8, 0.9, 1.0], [0.1, 0.2, 0.3, 0.4, 0.5]), CAL)
+    c3 = _check(cal, "C3")
+    assert c3.matrix_quantile == pytest.approx(0.64)
+    assert c3.control_quantile == pytest.approx(0.46)
+    assert c3.tau == pytest.approx(0.55)
+    assert c3.discriminating
+    assert (c3.n_matrix, c3.n_control) == (5, 5)
+    assert cal.tau_lin == c3.tau
+    assert "C3" not in cal.non_discriminating
+
+
+@pytest.mark.parametrize(
+    ("matrix", "control"),
+    [
+        ([0.1, 0.2, 0.3, 0.4, 0.5], [0.6, 0.7, 0.8, 0.9, 1.0]),  # overlap the wrong way
+        ([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),  # touch: equal quantiles
+    ],
+)
+def test_ranges_that_overlap_or_touch_are_non_discriminating(
+    matrix: list[float], control: list[float]
+) -> None:
+    cal = derive(_spread(matrix, control, "pt"), CAL)
+    c4 = _check(cal, "C4")
+    assert c4.discriminating is False
+    assert c4.tau is None
+    assert cal.tau_pt is None
+    assert "C4" in cal.non_discriminating
+    assert "C3" in cal.non_discriminating  # lin is 1.0 everywhere, so it touches too
+
+
+def _c2_records(control_at: dict[float, float]) -> list[RunRecord]:
+    """Matrix tree-likeness 0.9 at every factor; controls at ``control_at[factor]``."""
+    recs = [_rec("matrix", f"m/seed{i}", tree=0.9, lin=0.9) for i in range(3)]
+    recs += [_rec("control", f"c/seed{i}", tree=[control_at[f] for f in FACTORS], lin=0.1) for i in range(3)]
+    return recs
+
+
+def test_c2_is_kept_only_if_it_discriminates_at_all_three_resolutions() -> None:
+    overlapping = derive(_c2_records({0.5: 0.5, 1.0: 0.5, 2.0: 0.95}), CAL)
+    assert _check(overlapping, "C2", 0.5).discriminating
+    assert _check(overlapping, "C2", 1.0).discriminating
+    assert not _check(overlapping, "C2", 2.0).discriminating
+    assert overlapping.tau_tree is None
+    assert "C2" in overlapping.non_discriminating
+
+    kept = derive(_c2_records({0.5: 0.3, 1.0: 0.5, 2.0: 0.7}), CAL)
+    assert kept.tau_tree == _check(kept, "C2", 1.0).tau == pytest.approx(0.7)
+    assert "C2" not in kept.non_discriminating
+    assert kept.non_discriminating == ("C4",)  # pt is 1.0 everywhere
+
+
+def test_c2_counts_each_dataset_once() -> None:
+    recs = [
+        _rec("matrix", f"m/seed{i}", method, tree=0.1 * (i + 1))
+        for i in range(4)
+        for method in ("paga_dpt", "palantir", "scfates_ppt")
+    ]
+    recs += [_rec("control", "c/seed0", method) for method in ("paga_dpt", "palantir")]
+    cal = derive(recs, CAL)
+    c2 = _check(cal, "C2", 1.0)
+    assert (c2.n_matrix, c2.n_control) == (4, 1)
+    assert c2.matrix_quantile == pytest.approx(0.13)  # quantile of 0.1, 0.2, 0.3, 0.4
+    assert _check(cal, "C3").n_matrix == 12
+
+
+def test_failed_runs_are_left_out_and_counted() -> None:
+    recs = _spread([0.6, 0.7, 0.8, 0.9, 1.0], [0.1, 0.2, 0.3, 0.4, 0.5])
+    nan = math.nan
+    recs += [
+        _rec("matrix", "m/seed9", lin=nan, pt=nan, tree=nan, error="RuntimeError: boom"),
+        _rec("control", "c/seed9", lin=0.99, pt=0.99, tree=0.99, error="ValueError: no root"),
+    ]
+    cal = derive(recs, CAL)
+    c3 = _check(cal, "C3")
+    assert (c3.n_matrix, c3.n_control) == (5, 5)
+    assert c3.tau == pytest.approx(0.55)
+    assert _check(cal, "C2", 1.0).n_control == 5
+    assert cal.n_failed == 2
+
+
+def test_an_undefined_tree_likeness_counts_as_zero() -> None:
+    recs = [_rec("matrix", f"m/seed{i}", tree=0.8) for i in range(2)]
+    recs += [_rec("control", "c/seed0", tree=math.nan), _rec("control", "c/seed1", tree=0.4)]
+    c2 = _check(derive(recs, CAL), "C2", 1.0)
+    assert c2.n_control == 2
+    assert c2.control_quantile == pytest.approx(0.36)  # 0.9 quantile of 0.0 and 0.4
+
+
+def test_an_empty_group_is_non_discriminating() -> None:
+    cal = derive([_rec("matrix", "m/seed0")], CAL)
+    c3 = _check(cal, "C3")
+    assert c3.n_control == 0
+    assert math.isnan(c3.control_quantile)
+    assert not c3.discriminating
+    assert cal.non_discriminating == ("C2", "C3", "C4")
+
+
+def test_the_payload_is_strict_json(tmp_path: Path) -> None:
+    recs = _spread([0.6, 0.7], [0.1, 0.2])
+    recs.append(_rec("matrix", "m/seed9", lin=math.nan, pt=math.nan, tree=math.nan, error="E: x"))
+    cal = derive(recs, CAL)
+    payload = calibration_payload(recs, cal, CFG, "abc123")
+    path = tmp_path / "out.json"
+    write_json(path, payload)
+    doc = json.loads(path.read_text())  # strict: NaN would not be valid here
+    assert "NaN" not in path.read_text()
+    assert set(doc) >= {
+        "generated",
+        "commit",
+        "config",
+        "records",
+        "checks",
+        "taus",
+        "non_discriminating",
+        "n_failed",
+        "complete",
+    }
+    assert doc["commit"] == "abc123"
+    assert doc["n_failed"] == 1
+    assert doc["complete"] is False
+    assert doc["records"][-1]["lineage_stability"] is None
+    assert doc["records"][-1]["tree_likeness"] == [[f, None] for f in FACTORS]
+    assert doc["config"]["calibration"] == CAL
+    assert set(doc["taus"]) == {"tau_tree", "tau_lin", "tau_pt"}
+
+
+def test_records_read_back_from_a_written_payload_derive_the_same(tmp_path: Path) -> None:
+    recs = _spread([0.6, 0.7, 0.9], [0.1, 0.2, 0.3])
+    recs.append(_rec("control", "c/seed8", tree=math.nan))
+    recs.append(_rec("matrix", "m/seed9", lin=math.nan, pt=math.nan, tree=math.nan, error="E: x"))
+    path = tmp_path / "out.json"
+    write_json(path, calibration_payload(recs, derive(recs, CAL), CFG, "abc"))
+    back = records_from_payload(json.loads(path.read_text()))
+    assert derive(back, CAL) == derive(recs, CAL)
+    assert back[:-2] == recs[:-2]
+
+
+def test_write_json_refuses_infinity(tmp_path: Path) -> None:
+    with pytest.raises(ValueError):
+        write_json(tmp_path / "x.json", {"v": math.inf})
+
+
+def test_expected_runs_are_every_dataset_and_method() -> None:
+    runs = expected_runs(CFG)
+    topologies, kinds = CFG["synthetic"]["topologies"], CFG["synthetic"]["controls"]["kinds"]
+    n_datasets = len(topologies) * len(CAL["matrix_seeds"]) + len(kinds) * len(CAL["control_seeds"])
+    assert len(runs) == n_datasets * len(CAL["methods"]) == 72
+    assert ("matrix", "bifurcation/seed0", "palantir") in runs
+    assert ("control", "loop/seed2", "scfates_ppt") in runs
+
+
+def test_a_payload_with_every_run_is_complete() -> None:
+    recs = [_rec(g, d, m) for g, d, m in sorted(expected_runs(CFG))]
+    payload = calibration_payload(recs, derive(recs, CAL), CFG, "abc")
+    assert payload["complete"] is True
+
+
+@pytest.mark.slow
+def test_calibration_on_the_declared_seeds(tmp_path_factory: pytest.TempPathFactory) -> None:
+    from lumencell.bench.calibration import _commit
+
+    seeds: dict[Group, list[int]] = {"matrix": CAL["matrix_seeds"], "control": CAL["control_seeds"]}
+    records = collect_records(CFG, seeds, CAL["methods"], tmp_path_factory.mktemp("verdict-cal"))
+    cal = derive(records, CAL)
+    payload = calibration_payload(records, cal, CFG, _commit())
+    out = os.environ.get("LUMENCELL_VERDICT_CALIBRATION_OUT")
+    if out:
+        write_json(Path(out), payload)
+    for c in cal.checks:
+        print(c)
+    print(f"taus: {payload['taus']}; non_discriminating: {list(cal.non_discriminating)}")
+    print(f"n_failed: {cal.n_failed}")
+    assert payload["complete"]
+    assert len(records) == 72
