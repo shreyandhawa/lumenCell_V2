@@ -48,6 +48,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - **Phase 3 Task 9** (PR `pivot/41-sheih-verify`): Sheih 2020 passes the join check; see "Phase 3 Task 9 decisions and result".
 - **Phase 3 Task 1** (PR `pivot/39-registry-sources`): multi-file sources and a build step; see "Phase 3 Task 1 decisions".
 - **Phase 3 Task 2** (PR `pivot/40-daniel-fetch`): the nine Daniel 2022 GEO files, sizes and SHA-256; see "Phase 3 Task 2 decisions and result".
+- **Phase 3 Task 3** (PR `pivot/43-daniel-metadata`): the 46 GSM records and the two metadata files, read without touching clones: 23 captures (none lacks a TCR file), label column `ident`, no mouse recorded; see "Phase 3 Task 3 decisions".
 - **Phase 3 Task 4** (PR `pivot/44-contig-clones`): pure clone calling from 10x contigs in `bench/builders/common.py`; see "Phase 3 Task 4 decisions".
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
@@ -1133,6 +1134,23 @@ listed in the plan's "Amendments" block.
 - `gzip -t` passed on all eight .gz files. The plan's tests pin no count of 24, so no test changed.
 - **Licence:** the GEO disclaimer page and PMC11225711 both returned a reCAPTCHA page (not bypassed); LICENCE records both as UNVERIFIED.
 
+## Phase 3 Task 3 decisions
+
+- **Branch** `pivot/43-daniel-metadata`. The research note is [research/2026-11-19-daniel2022-metadata.md](research/2026-11-19-daniel2022-metadata.md); the script is `benchmarks/inspection/daniel2022_metadata.py`. Nothing was downloaded; no matrix and no contig file was opened.
+- **No sample lacks a TCR file.** GSE188666 is 23 captures, each with one GEX and one TCR GSM (46 = 2 x 23). The "24" of the spec and the dataset note was a miscount (GSM5687816-GSM5687834 is 19 GSMs, not 20). Task 5a's `len(CAPTURES)` is therefore 23, "the number the note records". Controller ruling P6 stands; nothing is missing.
+- **Two record inconsistencies are left to Task 5a's join check,** not resolved from names: (1) GSM6381667 and GSM6381668 have titles (D5 TetPos_rep1, TetNeg_rep2) that disagree with their attached file names (TetNeg_rep2, TetPos_rep1); (2) the D21 spleen TetNeg/TetPos and their `_rep1` pairs (GSM5687810-13 with GSM5687829-32) cross sequencers when paired by title. The note pairs by title and flags both.
+- **Label column found: `ident`** (11 labels in the main file, 7 in the D5 file; the vocabularies differ). Sample column: `orig.ident`. Task 5a sets `LABEL_COLUMN`; Task 6 applies its rules.
+- **The D5 metadata repeats the chronic spleen D8/D21 cells** (43,820 of them, every one also in the main file) with its own labels and embedding. Found with a scratch script outside the repo that read the two files' index, `orig.ident` and `ident` only (`usecols`), beyond the fixed output of the committed script (now `--compare`, see Fix round 1). It bears on Task 6's Days rule ("processed together", "same vocabulary"), which the records answer "not stated" and the vocabularies answer "no".
+- **Records read beyond the GSMs:** the 46 linked BioSample records (efetch, text; their only attributes are source name and cell type) and the GSE188666/GSE188670 series records. They are sample records, not data files. No mouse identifier is in any of them.
+- **The paper was not read:** PMC is behind a CAPTCHA (Task 2) and Europe PMC has no open full text (`fullTextXML` HTTP 500). The note marks mice per capture and pooling as not stated.
+- **The script refuses a withheld column as `--labels` or `--samples`** (exit 2, no values printed), tested; the plan's two tests are as written, plus one for the tag vocabulary.
+- **Freeze kept:** `tcr_cdr3s_aa` and `tcr_cdr3s_nt` were listed by name and dtype only. No clone x state, clone x capture or clone x lineage count was computed.
+- **Fix round 1 (PR #48 review):**
+  - Every withholding rule is pinned by its own parametrised test (`Clonotype`, `ir_foo`, `airr:x`, `raw_clonotype_id`, `my_cdr3`, `Xclon`, `foo_gene`, upper-case `TRB_V` and `CHAIN_x`): a planted value never reaches stdout or stderr and the column is listed by name only. Four mutants (drop the regex, drop `clon`, drop `_gene`, drop `.lower()`) each fail it.
+  - A `--labels` or `--samples` column absent from a file now exits non-zero with "is not a column of <file>" (it was a soft "cross-tab skipped", exit 0); both flags are tested.
+  - The output shape (value-count order, cross-tab header with samples as rows and labels as columns, the "first index values" line) is pinned.
+  - The 43,820-cell overlap and the main-vs-D5 label cross-tab are now reproducible with `--compare --labels ident --samples orig.ident` on the committed script. It reads only the index and those two columns of each file, applies the same withholding guard, and prints cells in both, only in main, only in D5 and the cross-tab of the shared cells. Tested on synthetic files; not run on the real files. The earlier "scratch script" is superseded by it.
+
 ## Phase 3 Task 4 decisions
 
 - **Branch** `pivot/44-contig-clones`, from `main` 7d7a212. Tested on synthetic contig tables only; no Daniel file was read.
@@ -1298,6 +1316,8 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/37-cell-cycle-stage` | #42 | merged (squash), phase 2 Task 3 (report-only cell_cycle stage, left out of prep_key) |
 | `pivot/42-cell-cycle-check` | #46 | merged (squash, 570fb5e), phase 2 Task 4 (per-run cell-cycle check, served with run and dataset; final-review doc fixes) |
 | `pivot/41-sheih-verify` | #45 | merged (squash), phase 3 Task 9, Sheih 2020 TCR tables join to cells (PASS, share 0.99) |
+| `pivot/43-daniel-metadata` | #48 | merged (squash), phase 3 Task 3, Daniel 2022 sample records and metadata inspected without touching clones |
+| `pivot/44-contig-clones` | #47 | merged (squash, 6932b67), phase 3 Task 4, paired and TRB-only clone calling from 10x contigs |
 
 ## Phase 3 Task 9 decisions and result
 
