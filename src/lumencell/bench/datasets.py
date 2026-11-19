@@ -103,8 +103,8 @@ DATASETS: dict[str, RealDataset] = {
                 ),
             ),
             licence=(
-                "licence not checked yet (page not read in phase 3 Task 1: "
-                "https://github.com/theislab/scvelo_notebooks); cite Bastidas-Ponce et al. 2019"
+                "no licence stated on https://github.com/theislab/scvelo_notebooks, read 2026-11-19; "
+                "cite Bastidas-Ponce et al. 2019"
             ),
             label_key="clusters",
             root_label="Ductal",
@@ -129,8 +129,11 @@ DATASETS: dict[str, RealDataset] = {
                     sha256="12222efe4a9dd5916fa279860a2a4fdec383bd2e0db0249a1cd18c549c4a4c2c",
                 ),
             ),
-            licence="licence not checked yet (page not read in phase 3 Task 1: "
-            "https://figshare.com/ (file 27686835)); cite Setty et al. 2019",
+            licence=(
+                "CC BY 4.0, as stated on "
+                "https://figshare.com/articles/dataset/human_cd34_bone_marrow_h5ad/14465559 "
+                "(figshare file 27686835), read 2026-11-19; cite Setty et al. 2019"
+            ),
             label_key="clusters",
             root_label="HSC_1",
             lineages={
@@ -152,8 +155,11 @@ DATASETS: dict[str, RealDataset] = {
                     sha256="0af49504137dc8dc930a19e3534243a121da1ddddbe28ebc5fab0470294d60d4",
                 ),
             ),
-            licence="licence not checked yet (page not read in phase 3 Task 1: "
-            "https://figshare.com/ (file 27686871)); cite Pijuan-Sala et al. 2019",
+            licence=(
+                "CC BY 4.0, as stated on "
+                "https://figshare.com/articles/dataset/Gastrulation_erythroid_lineage/14465562 "
+                "(figshare file 27686871), read 2026-11-19; cite Pijuan-Sala et al. 2019"
+            ),
             label_key="celltype",
             root_label="Blood progenitors 1",
             lineages={

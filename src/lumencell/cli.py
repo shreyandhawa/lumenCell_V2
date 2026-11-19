@@ -510,14 +510,17 @@ def bench_fetch(
             typer.echo(f"  licence: {ds.licence}")
             for s in missing:
                 typer.echo(f"  from {s.url}\n    {s.size / 1e6:,.1f} MB -> {source_path(s)}")
-            typer.echo(f"  total {sum(s.size for s in missing) / 1e6:,.1f} MB")
+            total = sum(s.size for s in missing)
+            typer.echo(f"  total {total / 1e6:,.1f} MB ({total:,} bytes)")
             if not yes and not typer.confirm("  download it?", default=False):
                 typer.echo("  skipped")
                 continue
             from lumencell.bench.download import fetch_source
 
             for s in missing:
-                typer.echo(f"  {s.filename}: sha256 {sha256_of(fetch_source(s))}")
+                digest = sha256_of(fetch_source(s))
+                note = "" if s.sha256 else " (unverified until its SHA-256 is recorded in the registry)"
+                typer.echo(f"  {s.filename}: sha256 {digest}{note}")
             if ds.build is not None:
                 typer.echo(f"  building {local_path(ds)}")
             fetch(ds)

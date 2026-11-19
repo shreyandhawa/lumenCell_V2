@@ -125,7 +125,7 @@ _REAL_FIELDS: dict[str, Any] = {
 def test_fetch_checks_the_checksum_and_cleans_up(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LUMENCELL_DATASETS_DIR", str(tmp_path))
     payload = b"not really an h5ad"
-    monkeypatch.setattr(dl.urllib.request, "urlopen", lambda *a, **k: _FakeResponse(payload))
+    monkeypatch.setattr(dl, "_open", lambda *a, **k: _FakeResponse(payload))
     with pytest.raises(FetchError, match="checksum"):
         fetch_source(_fake_single(payload, "0" * 64).sources[0])
     assert list(tmp_path.iterdir()) == [], "a failed download leaves nothing behind"
@@ -135,7 +135,7 @@ def test_fetch_checks_the_checksum_and_cleans_up(tmp_path: Path, monkeypatch: py
 
 def test_fetch_checks_the_size(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LUMENCELL_DATASETS_DIR", str(tmp_path))
-    monkeypatch.setattr(dl.urllib.request, "urlopen", lambda *a, **k: _FakeResponse(b"short"))
+    monkeypatch.setattr(dl, "_open", lambda *a, **k: _FakeResponse(b"short"))
     src = Source(url="https://h/fake", filename="fake.h5ad", size=100, sha256=None)
     with pytest.raises(FetchError, match="expected 100 bytes"):
         fetch_source(src)
@@ -173,11 +173,11 @@ class TwoFile:
             )
         )
 
-        def urlopen(request: Any, **_: Any) -> _FakeResponse:
+        def fake_open(request: Any) -> _FakeResponse:
             self.opens += 1
             return _FakeResponse(PAYLOADS[request.full_url.rsplit("/", 1)[1]])
 
-        monkeypatch.setattr(dl.urllib.request, "urlopen", urlopen)
+        monkeypatch.setattr(dl, "_open", fake_open)
 
     def _builder(self, paths: Any, out: Path, params: Any) -> None:
         self.builds += 1
@@ -200,6 +200,8 @@ def test_fetch_downloads_every_source_then_builds(two_file: TwoFile) -> None:
     for s in ds.sources:
         assert source_path(s).read_bytes() == PAYLOADS[s.filename]
     assert not [p for p in two_file.dir.iterdir() if ".tmp" in p.name]
+    leftovers = {p.name for p in two_file.dir.iterdir()} - {local_path(ds).name, *PAYLOADS}
+    assert not leftovers, "no temporary file or directory remains"
     assert is_cached(ds)
 
 
@@ -273,3 +275,118 @@ def test_dataset_rules() -> None:
         RealDataset(**(_REAL_FIELDS | {"sources": (a, a), "build": b}))  # duplicate filenames
     with pytest.raises(ValueError):
         RealDataset(**(_REAL_FIELDS | {"sources": (a,), "licence": " "}))
+
+
+def test_each_download_gets_its_own_empty_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LUMENCELL_DATASETS_DIR", str(tmp_path))
+    seen: list[list[str]] = []
+    payload = b"abc"
+
+    def fake_open(request: Any) -> _FakeResponse:
+        (work,) = [p for p in tmp_path.iterdir() if p.is_dir()]
+        seen.append([p.name for p in work.iterdir()])
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(dl, "_open", fake_open)
+    for name in ("a.bin", "b.bin"):
+        fetch_source(Source("https://h/" + name, name, len(payload), None))
+    assert seen == [["a.bin"], ["b.bin"]], "each download's directory held only its own file"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["a.bin", "b.bin"]
+
+
+def test_the_tls_context_verifies_certificates_with_certifi(monkeypatch: pytest.MonkeyPatch) -> None:
+    import ssl
+
+    import certifi
+
+    calls: list[dict[str, Any]] = []
+    real = ssl.create_default_context
+
+    def spy(*a: Any, **k: Any) -> ssl.SSLContext:
+        calls.append(k)
+        return real(*a, **k)
+
+    monkeypatch.setattr(dl.ssl, "create_default_context", spy)
+    ctx = dl._tls_context()
+    assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname
+    assert calls == [{"cafile": certifi.where()}]
+
+
+def test_the_opener_has_the_redirect_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    import urllib.request
+
+    seen: list[Any] = []
+    real = urllib.request.build_opener
+
+    def spy(*handlers: Any) -> Any:
+        seen.extend(handlers)
+        raise OSError("stop before any network use")
+
+    monkeypatch.setattr(dl.urllib.request, "build_opener", spy)
+    with pytest.raises(OSError, match="stop before"):
+        dl._open(urllib.request.Request("https://h/x"))
+    assert real is not spy
+    assert any(isinstance(h, dl._HttpsOnlyRedirect) for h in seen)
+    assert any(isinstance(h, urllib.request.HTTPSHandler) for h in seen)
+
+
+def test_a_redirect_to_a_non_https_address_is_refused() -> None:
+    import urllib.request
+
+    handler = dl._HttpsOnlyRedirect()
+    req = urllib.request.Request("https://h/x")
+    for target in ("http://evil/x", "ftp://evil/x", "file:///etc/passwd"):
+        with pytest.raises(FetchError, match="non-https"):
+            handler.redirect_request(req, None, 302, "Found", {}, target)  # type: ignore[arg-type]
+    other_host = handler.redirect_request(req, None, 302, "Found", {}, "https://s3.example/x")  # type: ignore[arg-type]
+    assert other_host is not None and other_host.full_url == "https://s3.example/x"
+
+
+def test_fetch_refuses_a_redirect_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LUMENCELL_DATASETS_DIR", str(tmp_path))
+
+    def refuse(request: Any) -> Any:
+        raise FetchError("refusing a redirect to a non-https address: 'http://evil/x'")
+
+    monkeypatch.setattr(dl, "_open", refuse)
+    with pytest.raises(FetchError, match="non-https"):
+        fetch_source(Source("https://h/a", "a", 3, None))
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_an_empty_build_is_refused_and_leaves_no_file(two_file: TwoFile) -> None:
+    ds = two_file.ds
+    assert ds.build is not None
+    empty = Build(builder=lambda paths, out, params: None, version=1, params={"k": 1})
+    from dataclasses import replace
+
+    ds = replace(ds, build=empty)
+    with pytest.raises(FetchError, match="empty"):
+        fetch(ds)
+    assert not local_path(ds).exists()
+    assert not list(two_file.dir.glob("*.tmp.h5ad"))
+    assert not is_cached(ds)
+
+
+def test_build_dataset_names_a_source_that_is_not_downloaded(two_file: TwoFile) -> None:
+    with pytest.raises(FetchError, match="not downloaded"):
+        build_dataset(two_file.ds)
+    assert two_file.builds == 0
+
+
+def test_is_downloaded_rejects_a_wrong_size_and_fetch_downloads_again(two_file: TwoFile) -> None:
+    from lumencell.bench.download import is_downloaded
+
+    src = two_file.ds.sources[0]
+    source_path(src).write_bytes(b"x" * (src.size + 3))
+    assert not is_downloaded(src)
+    fetch_source(src)
+    assert two_file.opens == 1 and source_path(src).read_bytes() == PAYLOADS[src.filename]
+
+
+def test_a_cached_check_needs_every_source_even_when_the_derived_file_exists(two_file: TwoFile) -> None:
+    ds = two_file.ds
+    fetch(ds)
+    assert is_cached(ds)
+    source_path(ds.sources[0]).unlink()
+    assert local_path(ds).exists() and not is_cached(ds)

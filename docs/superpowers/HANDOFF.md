@@ -1015,10 +1015,15 @@ listed in the plan's "Amendments" block.
 - **Where:** `bench/download.py` (new) holds `Source`, `Build`, `fetch_source`, `build_dataset`, `build_key`,
   `local_path`, `is_cached`, `fetch`; `bench/datasets.py` re-exports them. `RealDataset` takes
   `sources`, `licence`, `build`. The three cached datasets keep their paths and recorded SHA-256s.
-- **Licences are NOT yet checked.** This task was told to fetch nothing from the network, so the plan's
-  step of reading the hosting pages (theislab/scvelo_notebooks; the figshare items 27686835 and
-  27686871) was not done. Each entry's `licence` says "licence not checked yet" with the URL and the
-  citation. Someone must read those pages and replace the text before any of them is redistributed.
+- **Licences (read 2026-11-19, hosting pages only, no data file downloaded):**
+  - pancreas: no licence stated on https://github.com/theislab/scvelo_notebooks (no LICENSE file, badge or README
+    mention; the `data/Pancreas` folder page was not opened). Recorded as "no licence stated"; cite Bastidas-Ponce 2019.
+  - bonemarrow: CC BY 4.0 per the figshare API record of article 14465559 (file 27686835,
+    https://figshare.com/articles/dataset/human_cd34_bone_marrow_h5ad/14465559).
+  - gastrulation_erythroid: CC BY 4.0 per the figshare API record of article 14465562 (file 27686871,
+    https://figshare.com/articles/dataset/Gastrulation_erythroid_lineage/14465562).
+  - The article pages themselves returned 403 to the web fetcher; the figshare API (`api.figshare.com/v2/articles/<id>`)
+    metadata gave the licence and confirmed each file id and byte size.
 - **Decisions on small ambiguities:**
   - `fetch_source` and `build_dataset` use `os.replace` (atomic, overwrites) rather than `Path.rename`.
   - `build_dataset` checks each source for: downloaded, recorded checksum, matching checksum, in that order.
@@ -1028,6 +1033,22 @@ listed in the plan's "Amendments" block.
     Otherwise it lists only the missing sources and the total, asks once, prints each new file's SHA-256, then builds.
   - `Fetchable` is a Protocol with read-only properties so `RealDataset` (frozen) satisfies it.
   - The CLI test reuses the `TwoFile` helper from `tests/unit/test_datasets.py`.
+
+### Fix round 1
+
+- **P3 redirects:** downloads use `build_opener(HTTPSHandler(context), _HttpsOnlyRedirect)`; any redirect whose target
+  is not https raises `FetchError`. Host changes are allowed (figshare to S3). Tested on the handler directly.
+- **P4 empty build:** a builder that leaves the temporary output at 0 bytes raises `FetchError("... empty file")`;
+  no derived file is left.
+- **P5 one directory per download:** `fetch_source` makes a fresh `mkdtemp` directory (`.download-*`) under the datasets
+  directory for each source, writes and verifies the file there, `os.replace`s it into place, and always removes the
+  directory. Two downloads never share a directory.
+- **Unverified files:** `fetch_source` still accepts `sha256=None`; the CLI line then adds "unverified until its
+  SHA-256 is recorded in the registry". The total line now also gives bytes.
+- **`is_cached` with the derived file present but a source missing:** the plan says every source downloaded AND the
+  derived file exists, so it is False; implemented as written. `bench fetch` then re-downloads the missing source only.
+- **Network seam:** `download._open(request)` is the one place a connection is made; tests patch it, and a separate test
+  pins the TLS context (`CERT_REQUIRED`, `cafile=certifi.where()`).
 
 ## Open questions for Shreyan
 

@@ -4,13 +4,15 @@ A dataset is one or more ``Source`` files, each checked against a recorded size
 and SHA-256, plus an optional build step that turns them into one derived
 ``.h5ad`` in the cache. Nothing here is called implicitly: ``lumencell bench
 fetch`` shows the sources and asks first. Sources are never modified, and every
-file is written to a temporary name and renamed into place.
+file is written to a temporary name and renamed into place. Each download goes into
+its own fresh, empty directory first. Redirects must stay on https.
 """
 
 import hashlib
 import json
 import os
 import re
+import shutil
 import ssl
 import tempfile
 import urllib.request
@@ -92,21 +94,44 @@ def is_downloaded(src: Source) -> bool:
     return p.exists() and p.stat().st_size == src.size
 
 
+class _HttpsOnlyRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow redirects (hosts may change, e.g. figshare to S3) but never to a non-https target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        if not newurl.lower().startswith("https://"):
+            raise FetchError(f"refusing a redirect to a non-https address: {newurl!r}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _tls_context() -> ssl.SSLContext:
+    # certifi's CA bundle: some Python builds (e.g. python.org on macOS) ship without CA certificates.
+    return ssl.create_default_context(cafile=certifi.where())
+
+
+def _open(request: urllib.request.Request) -> Any:
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=_tls_context()), _HttpsOnlyRedirect()
+    )
+    return opener.open(request, timeout=60)
+
+
 def fetch_source(src: Source, progress: Callable[[int, int], None] | None = None) -> Path:
-    """Download one file (the caller has already asked the user). Returns its path."""
+    """Download one file (the caller has already asked the user). Returns its path.
+
+    The bytes go into a fresh, empty directory made for this download, are checked there,
+    and only then moved into place; the directory is always removed.
+    """
     target = source_path(src)
     if is_downloaded(src):
         return target
     target.parent.mkdir(parents=True, exist_ok=True)
     request = urllib.request.Request(src.url, headers={"User-Agent": USER_AGENT})
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{src.filename}.", dir=target.parent)
-    tmp = Path(tmp_name)
+    workdir = Path(tempfile.mkdtemp(prefix=".download-", dir=target.parent))
     try:
+        tmp = workdir / src.filename
         h = hashlib.sha256()
         done = 0
-        # certifi's CA bundle: some Python builds (e.g. python.org on macOS) ship without CA certificates.
-        context = ssl.create_default_context(cafile=certifi.where())
-        with os.fdopen(fd, "wb") as out, urllib.request.urlopen(request, timeout=60, context=context) as res:
+        with tmp.open("wb") as out, _open(request) as res:
             while chunk := res.read(1 << 20):
                 out.write(chunk)
                 h.update(chunk)
@@ -120,9 +145,8 @@ def fetch_source(src: Source, progress: Callable[[int, int], None] | None = None
             raise FetchError(f"{src.filename}: checksum mismatch ({digest} != {src.sha256})")
         os.replace(tmp, target)
         return target
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 def build_key(item: Fetchable) -> str:
@@ -170,6 +194,8 @@ def build_dataset(item: Fetchable) -> Path:
     tmp = Path(tmp_name)
     try:
         b.builder(paths, tmp, b.params)
+        if tmp.stat().st_size == 0:
+            raise FetchError(f"{item.id}: the build wrote an empty file")
         os.replace(tmp, target)
         return target
     except BaseException:
