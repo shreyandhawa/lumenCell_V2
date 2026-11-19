@@ -11,6 +11,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   were re-run on `main` (PR #24, see "Done When (phase 1)"). Phase 2 has started: this PR
   (`pivot/21-phase2-start`) brings this file up to date and records Shreyan's two rulings of
   2026-11-17 (see "Phase 2 rulings").
+- **Phase 3 Task 9 (2026-11-19, PR `pivot/41-sheih-verify`):** the Sheih 2020 TCR tables join to expression cells (share 0.99 against a 0.5 rule), so the case study stays on Sheih and the Cao branch is not taken; see "Phase 3 Task 9 decisions and result".
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
   with the two plan-time amendments under Decisions.
@@ -25,8 +26,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   "Phase 2 N2a decisions and result"). Task 8 found C2, C3 and C4 non-discriminating, so no tau is
   set. Task 9 verified the verdict on fresh seeds 3-5 and FAILED (28 of 31 control runs supported,
   max 0), so a supported verdict is capped at provisional (a failed check is served weak,
-  H-1, 2026-11-19); Shreyan chose to accept a provisional-only supported level. Task 11 serves stability and the capped verdict without the cell-cycle
-  check; Task 12 reported both on the three real datasets (every gated metric identical to phase 1).
+  H-1, 2026-11-19); Shreyan chose to accept a provisional-only supported level. Task 11 serves stability and the capped verdict; the cell-cycle check was added by Task 4 (`pivot/42-cell-cycle-check`); Task 12 reported both on the three real datasets (every gated metric identical to phase 1).
   - Task 13 (#36): three Low findings fixed (S5, S6, S9), three recorded; see "Security review
     (phase 2)" and "Done When (phase 2)" (three Done When commands fail, as recorded: the cell-cycle
     tests do not exist yet, and the verification's `passed` is False).
@@ -45,9 +45,11 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - Branches `pivot/NN-<slug>`, numbered from 21 in execution order.
   - Ledger (git-ignored, this machine only): `.superpowers/sdd/2026-11-17-phase-2-robustness/progress.md`.
     The phase 1 ledger folder no longer exists on this machine; this file and `git log` are the record.
+- **Phase 3 Task 9** (PR `pivot/41-sheih-verify`): Sheih 2020 passes the join check; see "Phase 3 Task 9 decisions and result".
 - **Phase 3 Task 1** (PR `pivot/39-registry-sources`): multi-file sources and a build step; see "Phase 3 Task 1 decisions".
 - **Phase 3 Task 2** (PR `pivot/40-daniel-fetch`): the nine Daniel 2022 GEO files, sizes and SHA-256; see "Phase 3 Task 2 decisions and result".
 - **Phase 3 Task 3** (PR `pivot/43-daniel-metadata`): the 46 GSM records and the two metadata files, read without touching clones: 23 captures (none lacks a TCR file), label column `ident`, no mouse recorded; see "Phase 3 Task 3 decisions".
+- **Phase 3 Task 4** (PR `pivot/44-contig-clones`): pure clone calling from 10x contigs in `bench/builders/common.py`; see "Phase 3 Task 4 decisions".
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
 ## Phase 2 rulings (Shreyan, 2026-11-17: "approve both")
@@ -372,6 +374,22 @@ Package data: hatchling includes the TSVs in the wheel (checked with `uv build -
   silently dropping or misreading a row. Tests pin the renamed genes' mouse forms (Cenpu, Pimreg, Jpt1),
   `unmapped == ()`, an unknown species raising, and the first var index of any accepted symbol winning.
   An independent re-derivation from the five sources matched both TSVs row for row.
+
+## Phase 2 Task 4 decisions
+
+- **Scope.** The plan's Task 4 plus, by ruling R7, the cell-cycle parts Task 11 deferred: `RunTrust.cell_cycle` and `DatasetInfo.cell_cycle`
+  (no defaults), `DatasetView.cell_cycle_info()`, `Runs.cell_cycle(rid, names)`, the run's cell-cycle warnings appended to
+  `TrajectoryRun.warnings`, `Session.dataset_info()`, `make contract`, and `cell_cycle: null` in the web `dataset()` fixture.
+- **`None` means prep is not loaded.** A prep whose stage was not scored gives a `CellCycleCheck` with `status="not_scored"` and the reason as `note`.
+- **Names.** The check takes the lineage names after renames (list index = lineage id). They reach only the served notice text, never a path or a log line.
+- **`CellCycleInfo.genes_found` and `genes_listed`** sum `cc_info`'s per-list dicts; `source` is `""` if the stage recorded none.
+- **Doc fixes from the final review.** The README/report sentence now says C2 separates blob and sheet from the matrix but not loop or two_groups at x1.0,
+  citing the recorded calibration (README regenerated; no recorded result changed). The phase 2 security review was done by hand.
+
+- **Fix round 1 (ruling R20).** An unreadable run cell file no longer gives `cell_cycle: null` (which the API
+  documents as "prep is not loaded"): `Runs.cell_cycle` serves `not_scored` with the note "the run's cell file
+  could not be read (<ExcType>)" and one stderr line; any non-OSError still propagates. Test:
+  `test_an_unreadable_cell_file_is_reported_not_hidden`.
 
 ## Phase 2 Task 3 decisions
 
@@ -1133,6 +1151,22 @@ listed in the plan's "Amendments" block.
   - The output shape (value-count order, cross-tab header with samples as rows and labels as columns, the "first index values" line) is pinned.
   - The 43,820-cell overlap and the main-vs-D5 label cross-tab are now reproducible with `--compare --labels ident --samples orig.ident` on the committed script. It reads only the index and those two columns of each file, applies the same withholding guard, and prints cells in both, only in main, only in D5 and the cross-tab of the shared cells. Tested on synthetic files; not run on the real files. The earlier "scratch script" is superseded by it.
 
+## Phase 3 Task 4 decisions
+
+- **Branch** `pivot/44-contig-clones`, from `main` 7d7a212. Tested on synthetic contig tables only; no Daniel file was read.
+- **Barcodes without a qualifying contig are kept.** Output has one row per distinct `(capture, barcode)` in the input, with counts 0 and NaN ids, so Task 5 can tell "seen, unlabelled" from "absent". Rows are sorted by `(capture, barcode)`.
+- **`raw_clonotype_id` per barcode** is the first non-missing, non-`"None"` value among its contigs in input order, prefixed `capture:`. It ignores contig qualification (it is the 10x label, reported only).
+- **`is_cell`** is parsed with `parse_flag` when the column is present; a missing column is not an error.
+- **Missing required columns** raise `BuildError` naming the column names (ours, not data values).
+- **`read_members` errors** state only a count, never member names (untrusted). A wanted name that is a directory or other non-regular member counts as missing. Duplicate wanted members: the last one wins (tar semantics).
+- **`cdr3_nt` regex** is applied with `fullmatch` and is case-sensitive: lowercase bases do not qualify.
+
+Fix round 1:
+- **Zero contig rows raise `BuildError("no contigs")`**, not an empty frame. The plan fixes no empty-input contract, and an empty contig table in a real build means a wrong or truncated file, so the builder should stop rather than label every cell as unseen. Task 5b maps a cell with no contig to NaN itself.
+- **A blank `raw_clonotype_id`** (empty or whitespace-only) is missing, like `"None"` and NaN.
+- **`read_members`:** a file that is not a tar raises `BuildError` naming the path (ours) and the error class. Wanted names never appear in the "other" list; for a repeated wanted name the last member wins, so a later directory hides an earlier file and the name counts as missing.
+- **Pinned by tests:** the TRA/TRB count rules (3 TRA + 1 TRB, repeated TRA), first non-missing raw id, `parse_flag` near misses, lowercase `cdr3_nt` ignored and `ANA` accepted, sorted index and `other`, no member names in errors, and `is_cell` NaN, `"None"` and numpy bools. Each fix test was checked against a re-applied mutant.
+
 ## Open questions for Shreyan
 
 - **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep
@@ -1190,7 +1224,7 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 
 ## Security review (phase 2)
 
-Reviewed by hand along the brief's untrusted-input paths, on the diff `2217f76..HEAD` (phase 1's last
+Reviewed by hand (the security-review skill was not invoked) along the brief's untrusted-input paths, on the diff `2217f76..HEAD` (phase 1's last
 merge to `main`, c2b3e97 as the head). Tasks 2-4 (Tirosh lists, cell-cycle stage, cell-cycle check) are not
 merged, so their inputs are listed as pending below.
 
@@ -1280,7 +1314,19 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/40-daniel-fetch` | open | phase 3 Task 2, Daniel 2022 GEO files recorded (sizes, SHA-256, 23 contig files) |
 | `pivot/39-registry-sources` | open | phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
 | `pivot/37-cell-cycle-stage` | #42 | merged (squash), phase 2 Task 3 (report-only cell_cycle stage, left out of prep_key) |
-| `pivot/43-daniel-metadata` | open | phase 3 Task 3, Daniel 2022 sample records and metadata inspected without touching clones |
+| `pivot/42-cell-cycle-check` | #46 | merged (squash, 570fb5e), phase 2 Task 4 (per-run cell-cycle check, served with run and dataset; final-review doc fixes) |
+| `pivot/41-sheih-verify` | #45 | merged (squash), phase 3 Task 9, Sheih 2020 TCR tables join to cells (PASS, share 0.99) |
+| `pivot/43-daniel-metadata` | #48 | merged (squash), phase 3 Task 3, Daniel 2022 sample records and metadata inspected without touching clones |
+| `pivot/44-contig-clones` | #47 | merged (squash, 6932b67), phase 3 Task 4, paired and TRB-only clone calling from 10x contigs |
+
+## Phase 3 Task 9 decisions and result
+
+- **Owner's OK (STOP steps):** Shreyan, in chat on 2026-11-19, "Yes, approve all" (relayed by the parent session). It covered the largest post-infusion Sheih clonotype table, the first line of `GSE125881_raw.expMatrix.csv.gz` (streamed, capped at 16 MB) and the Step 5 whole-matrix fetch (not needed). The Cao 2025 fallback was approved only for its metaData, cells_colnames and aggregated contig files, and only if Sheih failed.
+- **Result: PASS.** CLL-2 d12 (GSM3583882), 5,817 of 5,873 distinct table barcodes found among the matrix cell IDs, share 0.99 (rule: at least 0.5). Mapping: `<16-nt core>-1` becomes `<16-nt core>-<aggr ID>`. The Cao fallback was not needed; nothing from GSE207192 was downloaded.
+- **Approval wording:** the owner's approval named "the largest post-infusion clonotype table" for Task 9 and `GSE125881_RAW.tar` for Task 10. The tables exist only inside that 2 MB tar, so Task 9 fetched the tar; the controller ruled this within the approval (ledger P8).
+- **Listing differs from the plan:** the suppl folder lists only `GSE125881_RAW.tar` (2,048,000 bytes, 16 clonotype tables inside, 6.9 KB to 297 KB each) and the matrix (114,573,707 bytes). The tables exist only inside the tar, so the whole 2 MB tar was fetched (SHA-256 `769fa5b71b12b7efe433f51164d4370e0af00c20bebc647029cc4fbd9a943487`) and read in memory, never extracted. It sits at `/private/tmp/claude-501/-Users-shreyan-lumenCell-V2/453b6f74-ae4a-4614-a97a-fbc583e58d2c/scratchpad/sheih-verify/GSE125881_RAW.tar` with the matrix header beside it (`header.txt`, SHA-256 `23955ade...`), not in the dataset cache; the chosen member's SHA-256 is `93f8ef95...` and the largest table is 305,886 bytes (members run 6,905 to 305,886). Full hashes and a negative control (wrong suffix gives 0.00) are in the research note; Tasks 10 and 11 re-verify the tar's hash when they fetch it again.
+- **Matrix is genes x cells** (62,167 cells, aggr IDs 1-16), so no whole-matrix fetch. Tables are one row per clonotype x chain, `;`-separated barcode lists, no productive flag. Details, the GSM table and the licence lines are in [research/2026-11-19-sheih-verification.md](research/2026-11-19-sheih-verification.md); Tasks 10 and 11 read it.
+- **Script:** `benchmarks/inspection/barcode_join.py` prints headers, dtypes, counts, barcodes and the share, never a receptor value.
 
 ## Verify the current state
 

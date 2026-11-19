@@ -17,6 +17,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from scipy import sparse
@@ -320,12 +321,53 @@ def test_dataset_info_carries_tree_likeness(
     empty = Session(path, jobs, cache_root=tmp_path / "empty", state_dir=tmp_path / "s1")
     assert _client(empty).get("/api/v1/dataset").json()["tree_likeness"] is None
     assert empty.view.tree_likeness() is None
+    assert _client(empty).get("/api/v1/dataset").json()["cell_cycle"] is None
+    assert empty.view.cell_cycle_info() is None
     own = tmp_path / "cache"
     shutil.copytree(prepared[1], own, ignore=shutil.ignore_patterns("runs"))
     ready = _session(prepared, own, jobs, tmp_path)
     tree = _client(ready).get("/api/v1/dataset").json()["tree_likeness"]
     assert 0 < tree <= 1
     assert ready.view.tree_likeness() == tree
+    # the synthetic genes are not Tirosh symbols, so the report-only stage could not score them
+    cell_cycle = _client(ready).get("/api/v1/dataset").json()["cell_cycle"]
+    assert cell_cycle["status"] == "not_scored" and cell_cycle["share_cycling"] is None
+    assert cell_cycle["reason"]
+
+
+def test_a_cycling_lineage_is_warned_on_the_run(
+    prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
+) -> None:
+    session = _session(prepared, cache_root, jobs, tmp_path)
+    _save_run(session, "r1")
+    client = _client(session)
+    trust = _trust(client, "r1")
+    assert trust["cell_cycle"]["status"] == "not_scored" and trust["cell_cycle"]["warnings"] == []
+    prep = session.view.loaded_prep()
+    assert prep is not None
+    primary = session.runs._load("r1").primary_lineage
+    phase = np.full(len(primary), "G1", dtype="<U8")
+    phase[primary == 0] = "S"
+    prep.artifacts["cc_phase"] = phase
+    prep.artifacts["cc_info"] = {
+        **prep.artifacts["cc_info"],
+        "status": "scored",
+        "reason": None,
+        "species": "human",
+        "source": "test",
+    }
+    run = client.get("/api/v1/trajectories/r1").json()
+    cycling = run["trust"]["cell_cycle"]
+    assert cycling["status"] == "scored"
+    (name,) = [lin["name"] for lin in cycling["lineages"] if lin["flagged"]]
+    assert name == run["lineages"][0]["name"]
+    codes = [w["code"] for w in cycling["warnings"]]
+    assert codes == ["lineage_mostly_cycling"]
+    assert [w for w in run["warnings"] if w["code"] == "lineage_mostly_cycling"] == cycling["warnings"]
+    # a rename is what the warning says
+    client.patch("/api/v1/trajectories/r1/lineages/0", json={"name": "Renamed"})
+    run = client.get("/api/v1/trajectories/r1").json()
+    assert "Lineage Renamed is mostly cycling" in run["trust"]["cell_cycle"]["warnings"][0]["message"]
 
 
 def test_clonal_support_enters_the_verdict(
@@ -423,3 +465,34 @@ def test_tree_likeness_is_computed_once_per_prep(
     view._prep = type(prep)(artifacts=dict(prep.artifacts), stages=prep.stages)
     view.tree_likeness()
     assert len(calls) == 2
+
+
+def test_an_unreadable_cell_file_is_reported_not_hidden(
+    prepared: tuple[Path, Path],
+    cache_root: Path,
+    jobs: JobManager,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Review of #46 (ruling R20): a missing cell file gives not_scored with a note, never the
+    'prep is not loaded' null; any other error still propagates."""
+    session = _session(prepared, cache_root, jobs, tmp_path)
+    _save_run(session, "r1")
+    assert session.view.loaded_prep() is not None
+
+    def gone(_rid: str) -> None:
+        raise FileNotFoundError("cells.lcb")
+
+    monkeypatch.setattr(session.runs, "_load", gone)
+    check = session.runs.cell_cycle("r1", ["A", "B"])
+    assert check is not None and check.status == "not_scored"
+    assert check.note == "the run's cell file could not be read (FileNotFoundError)"
+    assert "cell-cycle check skipped for run r1: FileNotFoundError" in capsys.readouterr().err
+
+    def bad(_rid: str) -> None:
+        raise ValueError("corrupt")
+
+    monkeypatch.setattr(session.runs, "_load", bad)
+    with pytest.raises(ValueError, match="corrupt"):
+        session.runs.cell_cycle("r1", ["A", "B"])

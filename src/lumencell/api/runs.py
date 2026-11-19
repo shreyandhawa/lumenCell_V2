@@ -27,7 +27,9 @@ from lumencell.engine.schema import ResolvedRoot, TrajectoryResult
 from lumencell.engine.store import STORE_VERSION, RunStore, run_id
 from lumencell.engine.trends import gene_trends, temporal_heatmap
 from lumencell.jobs.manager import ACTIVE, Job, JobManager
+from lumencell.trust.cell_cycle import cell_cycle_check
 from lumencell.trust.clonal import not_scored, trust_hash, trust_name
+from lumencell.trust.constants import CELL_CYCLE_RATIO_MIN, CELL_CYCLE_SHARE_MIN
 from lumencell.trust.stability import not_measured, safe_text, stability_hash, stability_name
 from lumencell.trust.verdict import tree_support_for_run
 
@@ -223,6 +225,7 @@ class Runs:
         clonal = self.clonal_agreement(rid, g)  # first: a GET that queues both queues clonal first
         stability = self.stability(rid, g)
         tree_support = tree_support_for_run(g, self.view.tree_likeness(), stability, clonal)
+        cell_cycle = self.cell_cycle(rid, [lin.name for lin in lineages])
         return models.TrajectoryRun(
             run_id=rid,
             state="done",
@@ -231,7 +234,8 @@ class Runs:
             segments=[models.Segment(**s) for s in g["segments"]],
             lineages=lineages,
             divergence=[models.Divergence(**d) for d in g["divergence"]],
-            warnings=[models.Notice(**w) for w in g["warnings"]],
+            warnings=[models.Notice(**w) for w in g["warnings"]]
+            + (cell_cycle.warnings if cell_cycle is not None else []),
             n_unassigned=g["n_unassigned"],
             runtime_seconds=g["runtime_seconds"],
             cell_arrays=["pseudotime", "membership", "primary_lineage", "segment", "progress"]
@@ -252,8 +256,30 @@ class Runs:
                 terminals_source="user" if g.get("terminals_source") == "user" else "auto",
                 created_at=datetime.fromisoformat(g["created_at"]),
             ),
-            trust=models.RunTrust(clonal=clonal, stability=stability, tree_support=tree_support),
+            trust=models.RunTrust(
+                clonal=clonal, stability=stability, tree_support=tree_support, cell_cycle=cell_cycle
+            ),
         )
+
+    def cell_cycle(self, rid: str, names: list[str]) -> models.CellCycleCheck | None:
+        """Lineages made mostly of cycling cells, on the loaded prep; None while prep is not loaded."""
+        prep = self.view.loaded_prep()
+        if prep is None:
+            return None
+        try:
+            primary = self._load(rid).primary_lineage
+        except OSError as exc:  # the run's cell file is unreadable; say so rather than look unprepared
+            print(f"lumencell: cell-cycle check skipped for run {rid}: {type(exc).__name__}", file=sys.stderr)
+            return models.CellCycleCheck(
+                status="not_scored",
+                dataset_share=None,
+                ratio_min=CELL_CYCLE_RATIO_MIN,
+                share_min=CELL_CYCLE_SHARE_MIN,
+                lineages=[],
+                warnings=[],
+                note=f"the run's cell file could not be read ({type(exc).__name__})",
+            )
+        return cell_cycle_check(primary, names, prep.artifacts["cc_phase"], prep.artifacts["cc_info"])
 
     # ---- trust ------------------------------------------------------------------------------
     #

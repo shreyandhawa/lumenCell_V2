@@ -110,9 +110,10 @@ def render() -> str:
         ):
             out.append(
                 "\nA supported verdict is capped at provisional, because the verdict's verification "
-                "failed on fresh seeds (2026-11-17): the tree-likeness and stability checks do not "
-                "separate trees from loops, sheets or blobs. A weak or not_supported verdict is a real "
-                "failure and is not capped. The verdict is reported, not gated, "
+                "failed on fresh seeds (2026-11-17): at x1.0 the tree-likeness check (C2) separates blob "
+                "and sheet from the matrix in the recorded calibration but not loop or two_groups, and the "
+                "stability checks do not separate trees from the controls. A weak or not_supported "
+                "verdict is a real failure and is not capped. The verdict is reported, not gated, "
                 "and is not evidence of a tree."
             )
     return "\n".join(out) + "\n"
