@@ -88,3 +88,22 @@ def test_synth_fate_bias_reaches_add_clones(tmp_path: Path, monkeypatch: object)
     assert runner.invoke(app, ["synth", str(out), *base, "--fate-bias", "0.7", "--seed", "3"]).exit_code == 0
     assert seen == [(0.0, 0), (0.7, 3)]
     assert runner.invoke(app, ["synth", str(out), "--fate-bias", "-0.1"]).exit_code == 2
+
+
+def test_bench_fetch_lists_every_source_and_asks_once(tmp_path: Path, monkeypatch: object) -> None:
+    from lumencell.bench import datasets as dsmod
+    from lumencell.bench import download as dl
+    from tests.unit.test_datasets import TwoFile
+
+    two = TwoFile(tmp_path, monkeypatch)  # type: ignore[arg-type]
+    monkeypatch.setitem(dsmod.DATASETS, "twofile", two.ds)  # type: ignore[attr-defined]
+    assert dl is not None
+    declined = runner.invoke(app, ["bench", "fetch", "twofile"], input="n\n")
+    assert declined.exit_code == 0
+    for s in two.ds.sources:
+        assert s.url in declined.output
+    assert "test licence" in declined.output and "skipped" in declined.output
+    assert two.opens == 0
+    done = runner.invoke(app, ["bench", "fetch", "twofile", "--yes"])
+    assert done.exit_code == 0, done.output
+    assert done.output.count("sha256") == 2 and "built" in done.output

@@ -44,6 +44,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - Branches `pivot/NN-<slug>`, numbered from 21 in execution order.
   - Ledger (git-ignored, this machine only): `.superpowers/sdd/2026-11-17-phase-2-robustness/progress.md`.
     The phase 1 ledger folder no longer exists on this machine; this file and `git log` are the record.
+- **Phase 3 Task 1** (PR `pivot/39-registry-sources`): multi-file sources and a build step; see "Phase 3 Task 1 decisions".
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
 ## Phase 2 rulings (Shreyan, 2026-11-17: "approve both")
@@ -1008,6 +1009,26 @@ listed in the plan's "Amendments" block.
   a paragraph; `provisional` is "not shown to be a tree"; a test checks the statement and that no unit
   is `supported`.
 
+## Phase 3 Task 1 decisions
+
+- **Phase 3 base:** `main` at 35ac459. Branch `pivot/39-registry-sources`.
+- **Where:** `bench/download.py` (new) holds `Source`, `Build`, `fetch_source`, `build_dataset`, `build_key`,
+  `local_path`, `is_cached`, `fetch`; `bench/datasets.py` re-exports them. `RealDataset` takes
+  `sources`, `licence`, `build`. The three cached datasets keep their paths and recorded SHA-256s.
+- **Licences are NOT yet checked.** This task was told to fetch nothing from the network, so the plan's
+  step of reading the hosting pages (theislab/scvelo_notebooks; the figshare items 27686835 and
+  27686871) was not done. Each entry's `licence` says "licence not checked yet" with the URL and the
+  citation. Someone must read those pages and replace the text before any of them is redistributed.
+- **Decisions on small ambiguities:**
+  - `fetch_source` and `build_dataset` use `os.replace` (atomic, overwrites) rather than `Path.rename`.
+  - `build_dataset` checks each source for: downloaded, recorded checksum, matching checksum, in that order.
+    A changed-bytes source at the same size passes `is_downloaded` and is caught by the checksum.
+  - `build_dataset` does not create `datasets_dir()`; sources exist there already when it runs.
+  - CLI: with every source present and only the derived file missing, it builds with no question.
+    Otherwise it lists only the missing sources and the total, asks once, prints each new file's SHA-256, then builds.
+  - `Fetchable` is a Protocol with read-only properties so `RealDataset` (frozen) satisfies it.
+  - The CLI test reuses the `TwoFile` helper from `tests/unit/test_datasets.py`.
+
 ## Open questions for Shreyan
 
 - **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep
@@ -1152,6 +1173,7 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/35-cell-cycle-genes` | #39 | merged (squash), phase 2 Task 2 (Tirosh 2016 lists, verified mouse ortholog table) |
 | `pivot/38-phase3-plan-x1` | #41 | merged (squash, 35eadc1), phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
 | `pivot/36-disconnected-knn-error` | #40 | merged (squash), clear error for a disconnected kNN graph (palantir, scfates_ppt) |
+| `pivot/39-registry-sources` | open | phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
 
 ## Verify the current state
 

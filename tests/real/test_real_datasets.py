@@ -3,7 +3,7 @@
 import anndata as ad
 import pytest
 
-from lumencell.bench.datasets import DATASETS, is_cached, local_path, sha256_of, truth_for
+from lumencell.bench.datasets import DATASETS, is_cached, local_path, sha256_of, source_path, truth_for
 
 pytestmark = [
     pytest.mark.real_data,
@@ -18,7 +18,8 @@ def test_cached_dataset_matches_its_checksum_and_truth(dataset_id: str) -> None:
     ds = DATASETS[dataset_id]
     if not is_cached(ds):
         pytest.skip(f"run: lumencell bench fetch {dataset_id}")
-    assert sha256_of(local_path(ds)) == ds.sha256
+    for s in ds.sources:
+        assert sha256_of(source_path(s)) == s.sha256
     obs = ad.read_h5ad(local_path(ds), backed="r").obs
     truth = truth_for(ds, obs)
     assert truth.root.sum() > 0
