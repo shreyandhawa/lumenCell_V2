@@ -92,3 +92,45 @@ def test_unknown_gene_set_raises():
     assert GENE_SETS == ("tirosh2016",)
     with pytest.raises(ValueError):
         load_gene_set("nope", "human")
+
+
+def test_renamed_genes_map_to_their_mouse_orthologs():
+    m = load_gene_set("tirosh2016", "mouse")
+    assert ("Cenpu",) in m.s
+    assert ("Pimreg",) in m.g2m and ("Jpt1",) in m.g2m
+    assert m.unmapped == ()
+    assert len(m.s) == 43 and len(m.g2m) == 54
+
+
+def test_an_unknown_species_raises():
+    with pytest.raises(ValueError, match="species"):
+        load_gene_set("tirosh2016", "rat")  # type: ignore[arg-type]
+
+
+def test_the_first_var_index_of_any_accepted_symbol_wins():
+    h = load_gene_set("tirosh2016", "human")
+    assert match_genes(["CENPU", "MLF1IP"], h.s) == [0]
+    assert match_genes(["MLF1IP", "x", "CENPU"], h.s) == [0]
+
+
+def test_a_tsv_without_its_header_or_with_a_short_row_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    import lumencell.prep.cell_cycle_genes as ccg
+
+    class _Dir:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        def __truediv__(self, _: str) -> _Dir:
+            return self
+
+        def read_text(self, encoding: str) -> str:
+            return self.text
+
+    monkeypatch.setattr(ccg, "files", lambda _pkg: _Dir("# c\nS\tMCM5\t\n"))
+    with pytest.raises(ValueError, match="header"):
+        ccg._rows("tirosh2016.tsv")
+    monkeypatch.setattr(ccg, "files", lambda _pkg: _Dir("phase\tsymbol\tcurrent_symbol\nS\tMCM5\n"))
+    with pytest.raises(ValueError, match="line 2"):
+        ccg._rows("tirosh2016.tsv")

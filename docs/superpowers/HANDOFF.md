@@ -361,6 +361,12 @@ are mapped and 0 unmapped. HCOP cross-check: 97 agree, 0 disagree, 0 absent.
 
 Package data: hatchling includes the TSVs in the wheel (checked with `uv build --wheel`); `importlib.resources` reads them.
 
+- **Fix round 1 (after review).** `_rows` now checks the header row and the column count of every
+  row and strips fields, so a missing header or a short row is refused naming the line instead of
+  silently dropping or misreading a row. Tests pin the renamed genes' mouse forms (Cenpu, Pimreg, Jpt1),
+  `unmapped == ()`, an unknown species raising, and the first var index of any accepted symbol winning.
+  An independent re-derivation from the five sources matched both TSVs row for row.
+
 ## Phase 2 Task 1 decisions
 
 - **F14 declared.** `[tree_support.verification] on_failure = "provisional"` sits after

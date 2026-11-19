@@ -26,10 +26,27 @@ class CellCycleGenes:
     unmapped: tuple[str, ...]
 
 
+_HEADERS = {
+    "tirosh2016.tsv": ["phase", "symbol", "current_symbol"],
+    "human_mouse_orthologs.tsv": ["human", "mouse", "mgi_class_key"],
+}
+
+
 def _rows(name: str) -> list[list[str]]:
+    """The data rows of a shipped TSV; the header row must be the expected one, and every row
+    must have its columns, or the file is refused naming the line."""
     text = (files("lumencell.prep") / "cell_cycle_data" / name).read_text(encoding="utf-8")
-    lines = [ln for ln in text.splitlines() if ln and not ln.startswith("#")]
-    return [ln.split("\t") for ln in lines[1:]]
+    lines = [ln for ln in text.splitlines() if ln.strip() and not ln.startswith("#")]
+    header = _HEADERS[name]
+    if not lines or [f.strip() for f in lines[0].split("\t")] != header:
+        raise ValueError(f"{name}: the first table line must be the header {header}")
+    rows = []
+    for i, ln in enumerate(lines[1:], start=2):
+        fields = [f.strip() for f in ln.split("\t")]
+        if len(fields) != len(header):
+            raise ValueError(f"{name}: table line {i} has {len(fields)} fields, expected {len(header)}")
+        rows.append(fields)
+    return rows
 
 
 @cache
