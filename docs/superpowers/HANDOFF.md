@@ -1150,7 +1150,7 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/33-phase2-final-review` | #37 | merged (squash, 35752e9), phase 2 final review recorded; H-1 asked of Shreyan |
 | `pivot/34-weak-under-cap` | #38 | merged (squash, 53d0dc1), phase 2 H-1 (weak served as is under the verdict cap) |
 | `pivot/35-cell-cycle-genes` | #39 | merged (squash), phase 2 Task 2 (Tirosh 2016 lists, verified mouse ortholog table) |
-| `pivot/38-phase3-plan-x1` | #41 | merged (squash, 35eadc1), | phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
+| `pivot/38-phase3-plan-x1` | #41 | merged (squash, 35eadc1), phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
 | `pivot/36-disconnected-knn-error` | #40 | merged (squash), clear error for a disconnected kNN graph (palantir, scfates_ppt) |
 
 ## Verify the current state
