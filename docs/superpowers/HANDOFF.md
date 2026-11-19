@@ -46,6 +46,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - Ledger (git-ignored, this machine only): `.superpowers/sdd/2026-11-17-phase-2-robustness/progress.md`.
     The phase 1 ledger folder no longer exists on this machine; this file and `git log` are the record.
 - **Phase 3 Task 1** (PR `pivot/39-registry-sources`): multi-file sources and a build step; see "Phase 3 Task 1 decisions".
+- **Phase 3 Task 2** (PR `pivot/40-daniel-fetch`): the nine Daniel 2022 GEO files, sizes and SHA-256; see "Phase 3 Task 2 decisions and result".
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
 ## Phase 2 rulings (Shreyan, 2026-11-17: "approve both")
@@ -1072,6 +1073,48 @@ listed in the plan's "Amendments" block.
 - **Network seam:** `download._open(request)` is the one place a connection is made; tests patch it, and a separate test
   pins the TLS context (`CERT_REQUIRED`, `cafile=certifi.where()`).
 
+
+## Phase 3 Task 2 decisions and result
+
+- **Branch** `pivot/40-daniel-fetch`. Owner OK for this STOP step: Shreyan, in chat on 2026-11-19, "Yes, approve all" (relayed by the parent session): Daniel 2022, GEO GSE188666, nine files; not the 14.7 GB GSE188670_RAW.tar.
+- **HEAD sizes** all 200; total 1,168,794,468 bytes (1.169 GB, inside 1.0-1.2 GB). The plan's 574 and 519 "MB" for the two mtx files are MiB (602,240,886 and 544,512,106 bytes).
+- **SHA-256 as recorded on first download (2026-11-19):**
+  - GSE188666_scRNA_LCMV.mtx.gz: be4a6e2825d9cdffbb4bebb094e43be00ed388faa11a5bac95c2418bdd576ed6
+  - GSE188666_scRNA_LCMV_barcodes.tsv.gz: c75bc8d63c793b4c74215d46d40d243118b5fb8f4e1aff248af0451ee15196fe
+  - GSE188666_scRNA_LCMV_features.tsv.gz: dee1b30b23a9ceae7117d71b894ec7e4d5441fc934fbcb242493ef57b2e06e2d
+  - GSE188666_scRNA_LCMV_metadata.tsv.gz: 0594a0463b0d667307736fa45453d9aae9ed761ce105d53b3a24c30dffa46393
+  - GSE188666_scRNA_D5_LCMV.mtx.gz: 14bc8bf47f68d11b27dbabfc8ec6613385f58a83578a0a81b7187817602657b3
+  - GSE188666_scRNA_D5_LCMV_barcodes.tsv.gz: 3ec9ca5d7650e5ab428121161c7533d1da42d72ca1187dd9941e8de0207151c8
+  - GSE188666_scRNA_D5_LCMV_features.tsv.gz: e3367683bbf603ef45124593bcc9a2868ffe393e422df1a5a035c24e7e76a576
+  - GSE188666_scRNA_D5_LCMV_metadata.txt.gz: 9f8943dea624e8f56c894421eaad3b723b9e2698a3f8d148122fa516bab7c4ec
+  - GSE188666_RAW.tar: db4932008b1b9e603c2f076aa7cf60302f38d8b66108188f3827a121a676c9a9
+- **Tar members: 23, not the plan's 24** (controller ruling P6: accept; GSE188666_RAW.tar is the approved file and what GEO serves; no other source, including GSE188670, is approved). All end in `_tcr_filtered_contig_annotations.csv.gz`: GSM5687816-GSM5687834 and GSM6381666-GSM6381669. Which sample lacks a TCR file is left to Task 3 / 5a. The tar was never extracted. Members:
+  - GSM5687816_Liver_Chronic_D21_CD8_TetNeg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687817_Liver_Chronic_D21_CD8_TetPos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687818_Lung_Chronic_D21_CD8_TetNeg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687819_Lung_Chronic_D21_CD8_TetPos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687820_Spleen_Acute_D21_CD8_TetNeg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687821_Spleen_Acute_D21_CD8_TetPos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687822_Spleen_Acute_D8_CD8_TetNeg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687823_Spleen_Acute_D8_CD8_TetPos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687824_Spleen_Chronic_D21_CD8_CX3CR1Neg_Slamf6Pos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687825_Spleen_Chronic_D21_CD8_CX3CR1Neg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687826_Spleen_Chronic_D21_CD8_CX3CR1Pos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687827_Spleen_Chronic_D21_CD8_PD1Pos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687828_Spleen_Chronic_D21_CD8_TetMid_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687829_Spleen_Chronic_D21_CD8_TetNeg_rep1_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687830_Spleen_Chronic_D21_CD8_TetNeg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687831_Spleen_Chronic_D21_CD8_TetPos_rep1_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687832_Spleen_Chronic_D21_CD8_TetPos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687833_Spleen_Chronic_D8_CD8_TetNeg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687834_Spleen_Chronic_D8_CD8_TetPos_tcr_filtered_contig_annotations.csv.gz
+  - GSM6381666_Spleen_Chronic_D5_CD8_TetNeg_rep1_tcr_filtered_contig_annotations.csv.gz
+  - GSM6381667_Spleen_Chronic_D5_CD8_TetNeg_rep2_tcr_filtered_contig_annotations.csv.gz
+  - GSM6381668_Spleen_Chronic_D5_CD8_TetPos_rep1_tcr_filtered_contig_annotations.csv.gz
+  - GSM6381669_Spleen_Chronic_D5_CD8_TetPos_rep2_tcr_filtered_contig_annotations.csv.gz
+- `gzip -t` passed on all eight .gz files. The plan's tests pin no count of 24, so no test changed.
+- **Licence:** the GEO disclaimer page and PMC11225711 both returned a reCAPTCHA page (not bypassed); LICENCE records both as UNVERIFIED.
+
 ## Open questions for Shreyan
 
 - **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep
@@ -1216,6 +1259,7 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/35-cell-cycle-genes` | #39 | merged (squash), phase 2 Task 2 (Tirosh 2016 lists, verified mouse ortholog table) |
 | `pivot/38-phase3-plan-x1` | #41 | merged (squash, 35eadc1), phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
 | `pivot/36-disconnected-knn-error` | #40 | merged (squash), clear error for a disconnected kNN graph (palantir, scfates_ppt) |
+| `pivot/40-daniel-fetch` | open | phase 3 Task 2, Daniel 2022 GEO files recorded (sizes, SHA-256, 23 contig files) |
 | `pivot/39-registry-sources` | open | phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
 | `pivot/37-cell-cycle-stage` | #42 | merged (squash), phase 2 Task 3 (report-only cell_cycle stage, left out of prep_key) |
 
