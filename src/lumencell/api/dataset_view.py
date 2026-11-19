@@ -27,6 +27,7 @@ from lumencell.engine.tree_support import tree_likeness
 from lumencell.prep.cache import CacheMiss, PrepCache, prep_key
 from lumencell.prep.pipeline import PrepResult
 from lumencell.prep.stages import PrepParams
+from lumencell.trust.cell_cycle import cell_cycle_info
 
 MAX_CATEGORIES_LISTED = 1000
 MAX_GENES_PER_REQUEST = 200
@@ -127,6 +128,13 @@ class DatasetView:
                 value = tree_likeness(prep.artifacts["paga_connectivities"], prep.artifacts["paga_tree"])
                 self._tree = (prep, value)
             return self._tree[1]
+
+    def cell_cycle_info(self) -> models.CellCycleInfo | None:
+        """How the cells were scored for cell cycle; None while prep is not loaded."""
+        prep = self.loaded_prep()
+        if prep is None:
+            return None
+        return cell_cycle_info(prep.artifacts["cc_info"], prep.artifacts["cc_phase"])
 
     @staticmethod
     def _by_gene(prep: PrepResult) -> PrepResult:
