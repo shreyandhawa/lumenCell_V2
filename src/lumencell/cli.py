@@ -81,6 +81,13 @@ def prepare(data: DataArg, x_is: XIsOpt = None, recompute_umap: UmapOpt = False)
     _ds, prep, _params = _prepared(data, x_is, recompute_umap)
     for r in prep.stages:
         typer.echo(f"{r.name:10s} {r.state:8s} {r.seconds:6.2f}s")
+    cc = prep.artifacts["cc_info"]
+    total = sum(cc["genes_listed"].values())
+    if cc["status"] == "scored":
+        found = sum(cc["genes_found"].values())
+        typer.echo(f"cell cycle: scored as {cc['species']} from {found} of {total} Tirosh 2016 genes")
+    else:
+        typer.echo(f"cell cycle: not scored ({cc['reason']})")
     info = prep.artifacts["hvg_info"]
     source = f"symbols from {info['symbol_source']}"
     if info["receptor_genes"] > 0:

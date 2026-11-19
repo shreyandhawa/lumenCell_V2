@@ -31,6 +31,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
     (phase 2)" and "Done When (phase 2)" (three Done When commands fail, as recorded: the cell-cycle
     tests do not exist yet, and the verification's `passed` is False).
   - **Task 2 (PR `pivot/35-cell-cycle-genes`):** the Tirosh 2016 lists (43 S, 54 G2M) and the 97-gene mouse ortholog table are shipped and verified; Tasks 3 and 4 are unblocked once it merges.
+  - **Task 3 (PR `pivot/37-cell-cycle-stage`):** the report-only `cell_cycle` prep stage is in and left out of `prep_key`, so no run id changes; Task 4 is unblocked once it merges.
   - **Blocked: Tasks 2, 3, 4** (Tirosh lists, cell-cycle stage, cell-cycle check). They wait on the
     Tirosh 2016 supplement, which Shreyan must download by hand: PMC and science.org are behind a
     CAPTCHA. Task 4 adds the cell-cycle fields Task 11 left out. Their security items are pending
@@ -369,6 +370,27 @@ Package data: hatchling includes the TSVs in the wheel (checked with `uv build -
   silently dropping or misreading a row. Tests pin the renamed genes' mouse forms (Cenpu, Pimreg, Jpt1),
   `unmapped == ()`, an unknown species raising, and the first var index of any accepted symbol winning.
   An independent re-derivation from the five sources matched both TSVs row for row.
+
+## Phase 2 Task 3 decisions
+
+- **Stage.** `cell_cycle` is last in `STAGES` with `report_only=True`; `prep_key` hashes only stages with `report_only=False`, and
+  `prep_key(fingerprint "f"*24, PrepParams())` is still `ee3f123928ac0d1c` (checked on 3f5ab9a before and after). `stage_keys`, `status`, `run`
+  and `load_all` cover it, so a cache without it is not ready and one prepare job adds it.
+- **F9.** scanpy returns float64; `cc_s` and `cc_g2m` are cast to float32. When not scored they are all NaN (float32) and `cc_phase` is all `"unscored"`.
+- **Check order** is the binding one in the plan: gene count first (by either species' symbols for `auto`, a gene counted once), then species,
+  then the resolved lists. `total` in "only {k} of {total}" is the number of genes listed (97 = 43 + 54), so synthetic `G00000` symbols read "0 of 97".
+- **Never fails prep.** Any `Exception` while checking or scoring becomes `not_scored` with `scoring failed: {Type}: {msg}` and one stderr line.
+  Duplicate symbols are scored once: `match_genes` takes the first, and the view's var names go through `make_index_unique`.
+- **Renamed genes.** In the human test the paper's symbols (for example MLF1IP) are used; Task 2's two accepted symbols make them match.
+- **F8 (accepted).** The stage key covers only `cc_species` and `cc_gene_set`, so a later edit to the list or seed leaves a stale, report-only
+  result until `PIPELINE_VERSION` moves.
+- **F22.** Every existing prep cache lacks `cell_cycle`, so the first server start re-runs that one cheap stage (`test_a_cache_from_before_the_cell_cycle_stage_is_completed_by_one_prepare`).
+- Two existing tests were adjusted to the new last stage: `test_existing_embedding_skips_umap` looks `umap` up by name, and the receptor-exclusion
+  key test exempts `cell_cycle`, which reads only `lognorm`.
+- **Fix round 1.** The stage setup (`gene_symbols`, both `load_gene_set` calls, the default info) now sits inside the `try`, so a broken
+  shipped TSV gives `not_scored` with the error named and one stderr line instead of failing prep. Pinned by tests: the 10 S + 10 G2M versus
+  9 S + 10 G2M boundary ("only 19 of 97"), an empty phase list (25 S, 0 G2M: the gene-count reason, no stderr), `random_state == CELL_CYCLE_SEED`,
+  the never-raise test over four exception types, and the CLI "scored as human from 97 of 97" line.
 
 ## Phase 2 Task 1 decisions
 
@@ -1195,6 +1217,7 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/38-phase3-plan-x1` | #41 | merged (squash, 35eadc1), phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
 | `pivot/36-disconnected-knn-error` | #40 | merged (squash), clear error for a disconnected kNN graph (palantir, scfates_ppt) |
 | `pivot/39-registry-sources` | open | phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
+| `pivot/37-cell-cycle-stage` | #42 | merged (squash), phase 2 Task 3 (report-only cell_cycle stage, left out of prep_key) |
 
 ## Verify the current state
 
