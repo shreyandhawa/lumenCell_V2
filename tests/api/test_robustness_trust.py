@@ -4,7 +4,8 @@ Each test builds its own job manager and session, as tests/api/test_cache_healin
 that check what a GET queues keep the manager unstarted until those checks are done.
 
 The recorded verification failed (``VERDICT_VERIFIED = False``), so every served verdict that would
-be supported or weak is capped at provisional. Tests that need the uncapped level patch
+be supported is capped at provisional (a failed check is served weak, owner ruling H-1). Tests that
+need the uncapped level patch
 ``lumencell.engine.tree_support.VERDICT_VERIFIED`` to True and say so. The calibration set no tau
 (C2, C3 and C4 are excluded), so tests of the C2 and stability paths patch the thresholds
 ``tree_support_for_run`` uses and say so too.
@@ -167,7 +168,7 @@ def test_a_finished_infer_job_queues_stability_at_background_priority(
 def test_the_served_verdict_is_capped_while_the_verification_has_failed(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:
-    """Unpatched: the recorded verification failed, so nothing is served above provisional."""
+    """Unpatched: the recorded verification failed, so nothing is served as supported."""
     session = _session(prepared, cache_root, jobs, tmp_path)
     _save_run(session, "r1")
     _measure(session, "r1")

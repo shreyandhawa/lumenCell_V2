@@ -1435,7 +1435,8 @@ export type TrajectoryRun = {
  * TreeSupport
  *
  * How far the run's tree is supported. While the verdict rule has not passed its verification
- * on fresh seeds, no run is shown above provisional, and ``reasons`` says so.
+ * on fresh seeds, a supported run is shown as provisional, and ``reasons`` says so.
+ * A failed check is shown as weak.
  */
 export type TreeSupport = {
     /**
