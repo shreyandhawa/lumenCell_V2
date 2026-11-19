@@ -381,6 +381,11 @@ Package data: hatchling includes the TSVs in the wheel (checked with `uv build -
 - **Doc fixes from the final review.** The README/report sentence now says C2 separates blob and sheet from the matrix but not loop or two_groups at x1.0,
   citing the recorded calibration (README regenerated; no recorded result changed). The phase 2 security review was done by hand.
 
+- **Fix round 1 (ruling R20).** An unreadable run cell file no longer gives `cell_cycle: null` (which the API
+  documents as "prep is not loaded"): `Runs.cell_cycle` serves `not_scored` with the note "the run's cell file
+  could not be read (<ExcType>)" and one stderr line; any non-OSError still propagates. Test:
+  `test_an_unreadable_cell_file_is_reported_not_hidden`.
+
 ## Phase 2 Task 3 decisions
 
 - **Stage.** `cell_cycle` is last in `STAGES` with `report_only=True`; `prep_key` hashes only stages with `report_only=False`, and

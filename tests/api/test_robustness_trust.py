@@ -465,3 +465,34 @@ def test_tree_likeness_is_computed_once_per_prep(
     view._prep = type(prep)(artifacts=dict(prep.artifacts), stages=prep.stages)
     view.tree_likeness()
     assert len(calls) == 2
+
+
+def test_an_unreadable_cell_file_is_reported_not_hidden(
+    prepared: tuple[Path, Path],
+    cache_root: Path,
+    jobs: JobManager,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Review of #46 (ruling R20): a missing cell file gives not_scored with a note, never the
+    'prep is not loaded' null; any other error still propagates."""
+    session = _session(prepared, cache_root, jobs, tmp_path)
+    _save_run(session, "r1")
+    assert session.view.loaded_prep() is not None
+
+    def gone(_rid: str) -> None:
+        raise FileNotFoundError("cells.lcb")
+
+    monkeypatch.setattr(session.runs, "_load", gone)
+    check = session.runs.cell_cycle("r1", ["A", "B"])
+    assert check is not None and check.status == "not_scored"
+    assert check.note == "the run's cell file could not be read (FileNotFoundError)"
+    assert "cell-cycle check skipped for run r1: FileNotFoundError" in capsys.readouterr().err
+
+    def bad(_rid: str) -> None:
+        raise ValueError("corrupt")
+
+    monkeypatch.setattr(session.runs, "_load", bad)
+    with pytest.raises(ValueError, match="corrupt"):
+        session.runs.cell_cycle("r1", ["A", "B"])

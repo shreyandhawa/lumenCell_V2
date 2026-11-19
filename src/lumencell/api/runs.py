@@ -29,6 +29,7 @@ from lumencell.engine.trends import gene_trends, temporal_heatmap
 from lumencell.jobs.manager import ACTIVE, Job, JobManager
 from lumencell.trust.cell_cycle import cell_cycle_check
 from lumencell.trust.clonal import not_scored, trust_hash, trust_name
+from lumencell.trust.constants import CELL_CYCLE_RATIO_MIN, CELL_CYCLE_SHARE_MIN
 from lumencell.trust.stability import not_measured, safe_text, stability_hash, stability_name
 from lumencell.trust.verdict import tree_support_for_run
 
@@ -267,9 +268,17 @@ class Runs:
             return None
         try:
             primary = self._load(rid).primary_lineage
-        except OSError as exc:  # the run's cell file is gone; the cells route reports that itself
+        except OSError as exc:  # the run's cell file is unreadable; say so rather than look unprepared
             print(f"lumencell: cell-cycle check skipped for run {rid}: {type(exc).__name__}", file=sys.stderr)
-            return None
+            return models.CellCycleCheck(
+                status="not_scored",
+                dataset_share=None,
+                ratio_min=CELL_CYCLE_RATIO_MIN,
+                share_min=CELL_CYCLE_SHARE_MIN,
+                lineages=[],
+                warnings=[],
+                note=f"the run's cell file could not be read ({type(exc).__name__})",
+            )
         return cell_cycle_check(primary, names, prep.artifacts["cc_phase"], prep.artifacts["cc_info"])
 
     # ---- trust ------------------------------------------------------------------------------
