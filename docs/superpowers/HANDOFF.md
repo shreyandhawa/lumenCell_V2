@@ -86,7 +86,7 @@ One Sonnet scan checked the plan against `main`; its full table is in the ledger
   - Cost: an Opus implementer, a 40-minute run, and one `make bench-synth` to confirm nothing
     regresses.
 - **F14, verification failure is planned for now.** If Task 9 fails, the verdict machinery still
-  ships (Tasks 10-12 go ahead), but every served verdict is capped at `provisional`, with a note
+  ships (Tasks 10-12 go ahead), but every served verdict is capped at `provisional` (amended 2026-11-19 by H-1: only `supported` is capped), with a note
   that the thresholds failed verification on fresh seeds. Task 1 declares this as
   `[tree_support.verification] on_failure = "provisional"`; Task 9 records the outcome as a constant
   (`VERDICT_VERIFIED`), mirrored from the TOML. No rule, seed or control is changed to rescue a

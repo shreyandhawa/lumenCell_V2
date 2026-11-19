@@ -337,3 +337,12 @@ def test_a_left_out_check_names_its_missing_evidence() -> None:
         assert c.state == "excluded" and "cancelled" in (c.reason or "")
     assert _v(thresholds=thr).level == "supported"
     assert "also missing" not in (_check(_v(thresholds=thr), "C3").reason or "")
+
+
+def test_an_unverified_fail_with_a_pending_check_is_weak(monkeypatch: pytest.MonkeyPatch) -> None:
+    _unverified(monkeypatch)
+    low = StabilityEvidence("done", lineage=0.1, pseudotime=0.95)
+    v = _v(stab=low, clonal=ClonalEvidence("pending", 3))
+    assert _check(v, "C5").state == "pending"
+    assert v.level == "weak"
+    assert not any("failed its verification" in r for r in v.reasons)

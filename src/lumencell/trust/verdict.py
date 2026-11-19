@@ -3,7 +3,7 @@
 The rules are in ``engine/tree_support.py``; this module only turns the served stability and clonal
 agreement into its evidence, and the verdict back into the API model. ``verdict`` is never told
 whether the rule is verified: it reads the recorded verification itself, so a failed one caps
-every served level at provisional.
+a served supported verdict at provisional (owner ruling H-1: weak and not_supported are kept).
 """
 
 import math

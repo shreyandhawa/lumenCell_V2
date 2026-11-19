@@ -327,7 +327,8 @@ max_drop = 0.03
 #             calibration and verification rule, and four negative controls outside the gated
 #             matrix. All are set before any of them was measured. Nothing existing changed.
 #             Also declared: [tree_support.verification] on_failure = "provisional", so a failed
-#             verification caps every served verdict at provisional, with a note naming it.
+#             verification caps every served verdict at provisional, with a note naming it
+#             (amended 2026-11-19 by owner ruling H-1: only supported is capped; see below).
 #
 # 2026-11-17  N2 amendment declared (N2a), before any measurement: a lineage-onset split of N2's
 #             strata (definition, reasons and adoption rule under [clonal]) and its calibration
