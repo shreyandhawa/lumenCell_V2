@@ -386,6 +386,10 @@ Package data: hatchling includes the TSVs in the wheel (checked with `uv build -
 - **F22.** Every existing prep cache lacks `cell_cycle`, so the first server start re-runs that one cheap stage (`test_a_cache_from_before_the_cell_cycle_stage_is_completed_by_one_prepare`).
 - Two existing tests were adjusted to the new last stage: `test_existing_embedding_skips_umap` looks `umap` up by name, and the receptor-exclusion
   key test exempts `cell_cycle`, which reads only `lognorm`.
+- **Fix round 1.** The stage setup (`gene_symbols`, both `load_gene_set` calls, the default info) now sits inside the `try`, so a broken
+  shipped TSV gives `not_scored` with the error named and one stderr line instead of failing prep. Pinned by tests: the 10 S + 10 G2M versus
+  9 S + 10 G2M boundary ("only 19 of 97"), an empty phase list (25 S, 0 G2M: the gene-count reason, no stderr), `random_state == CELL_CYCLE_SEED`,
+  the never-raise test over four exception types, and the CLI "scored as human from 97 of 97" line.
 
 ## Phase 2 Task 1 decisions
 

@@ -14,6 +14,7 @@ from lumencell.data.loader import Dataset, load
 from lumencell.prep.cell_cycle_genes import load_gene_set
 from lumencell.prep.pipeline import PrepResult, run_pipeline
 from lumencell.prep.stages import STAGES, PrepParams, multiscale_space
+from lumencell.trust.constants import CELL_CYCLE_SEED
 
 
 def _dataset(tmp_path: Path, n_cells: int = 1500, umap: bool = False, lognorm: bool = False) -> Dataset:
@@ -395,19 +396,78 @@ def test_duplicate_symbols_are_scored_once(tmp_path: Path) -> None:
     assert info["genes_found"]["s"] == 43
 
 
+@pytest.mark.parametrize("error", [RuntimeError, ValueError, KeyError, ZeroDivisionError])
 def test_a_scoring_error_is_reported_and_prep_still_completes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    error: type[Exception],
 ) -> None:
     def boom(*_a: Any, **_k: Any) -> None:
-        raise RuntimeError("boom")
+        raise error("boom")
 
     monkeypatch.setattr(sc.tl, "score_genes_cell_cycle", boom)
     res = run_pipeline(_cc_dataset(tmp_path, _published_human()))
     info = res.artifacts["cc_info"]
     assert info["status"] == "not_scored"
-    assert "RuntimeError: boom" in info["reason"]
+    assert f"{error.__name__}:" in info["reason"] and "boom" in info["reason"]
     assert all(r.state in ("done", "skipped") for r in res.stages)
-    assert "RuntimeError: boom" in capsys.readouterr().err
+    assert "boom" in capsys.readouterr().err
+
+
+def test_a_broken_gene_list_does_not_fail_prep(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def bad(*_a: Any, **_k: Any) -> None:
+        raise ValueError("bad tsv")
+
+    monkeypatch.setattr("lumencell.prep.stages.load_gene_set", bad)
+    ds = _cc_dataset(tmp_path, _published_human())
+    art = run_pipeline(ds).artifacts
+    info = art["cc_info"]
+    assert info["status"] == "not_scored"
+    assert "ValueError: bad tsv" in info["reason"]
+    assert art["cc_s"].dtype == np.float32 and art["cc_g2m"].dtype == np.float32
+    assert art["cc_s"].shape == (ds.n_obs,) and np.isnan(art["cc_s"]).all() and np.isnan(art["cc_g2m"]).all()
+    assert (art["cc_phase"] == "unscored").all()
+    assert len(capsys.readouterr().err.strip().splitlines()) == 1
+
+
+def _first_genes(n_s: int, n_g2m: int) -> list[str]:
+    genes = load_gene_set("tirosh2016", "human")
+    return [g[0] for g in genes.s[:n_s] + genes.g2m[:n_g2m]]
+
+
+def test_ten_s_and_ten_g2m_genes_are_enough_and_nineteen_are_not(tmp_path: Path) -> None:
+    on = run_pipeline(_cc_dataset(tmp_path, _first_genes(10, 10), name="a.h5ad")).artifacts["cc_info"]
+    assert on["status"] == "scored", on
+    assert on["genes_found"] == {"s": 10, "g2m": 10}
+    off = run_pipeline(_cc_dataset(tmp_path, _first_genes(9, 10), name="b.h5ad")).artifacts["cc_info"]
+    assert off["status"] == "not_scored"
+    assert "only 19 of 97" in off["reason"]
+
+
+def test_an_empty_phase_list_is_a_gene_count_reason_not_a_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    info = run_pipeline(_cc_dataset(tmp_path, _first_genes(25, 0))).artifacts["cc_info"]
+    assert info["status"] == "not_scored"
+    assert "only 25 of 97" in info["reason"]
+    assert "scoring failed" not in info["reason"]
+    assert capsys.readouterr().err == ""
+
+
+def test_scoring_is_seeded_with_the_pinned_seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, Any] = {}
+    real = sc.tl.score_genes_cell_cycle
+
+    def spy(*a: Any, **k: Any) -> Any:
+        seen.update(k)
+        return real(*a, **k)
+
+    monkeypatch.setattr(sc.tl, "score_genes_cell_cycle", spy)
+    run_pipeline(_cc_dataset(tmp_path, _published_human()))
+    assert seen["random_state"] == CELL_CYCLE_SEED
 
 
 def test_unknown_cell_cycle_params_are_refused() -> None:

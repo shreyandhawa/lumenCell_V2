@@ -322,11 +322,8 @@ def _needs_umap(ds: Dataset, p: PrepParams) -> bool:
 def _cell_cycle(ds: Dataset, art: Artifacts, p: PrepParams) -> dict[str, Any]:
     """Tirosh 2016 S and G2/M scores and phase calls. Report only: this never raises."""
     n = ds.n_obs
-    symbols = list(ds.gene_symbols)
-    human = load_gene_set(p.cc_gene_set, "human")
-    mouse = load_gene_set(p.cc_gene_set, "mouse")
-    listed = {"s": len(human.s), "g2m": len(human.g2m)}
     found = {"s": 0, "g2m": 0}
+    listed = {"s": 0, "g2m": 0}
     info: dict[str, Any] = {
         "status": "not_scored",
         "reason": None,
@@ -335,7 +332,7 @@ def _cell_cycle(ds: Dataset, art: Artifacts, p: PrepParams) -> dict[str, Any]:
         "gene_set": p.cc_gene_set,
         "genes_found": found,
         "genes_listed": listed,
-        "source": human.source,
+        "source": None,
         "seed": CELL_CYCLE_SEED,
     }
 
@@ -355,6 +352,11 @@ def _cell_cycle(ds: Dataset, art: Artifacts, p: PrepParams) -> dict[str, Any]:
         )
 
     try:
+        symbols = list(ds.gene_symbols)
+        human = load_gene_set(p.cc_gene_set, "human")
+        mouse = load_gene_set(p.cc_gene_set, "mouse")
+        listed.update(s=len(human.s), g2m=len(human.g2m))
+        info["source"] = human.source
         # 1. the gene count, by either species' symbols for "auto"
         sets = [human, mouse] if p.cc_species == "auto" else [load_gene_set(p.cc_gene_set, p.cc_species)]
         for key in ("s", "g2m"):

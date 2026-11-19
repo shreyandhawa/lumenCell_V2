@@ -45,6 +45,22 @@ def test_prepare_reports_the_cell_cycle_status(data: Path) -> None:
     assert "cell cycle: not scored (only 0 of 97" in result.output
 
 
+def test_prepare_reports_a_scored_cell_cycle(tmp_path: Path, cache_env: None) -> None:
+    from lumencell.prep.cell_cycle_genes import load_gene_set
+
+    genes = load_gene_set("tirosh2016", "human")
+    symbols = [g[0] for g in genes.s + genes.g2m]
+    adata = generate("bifurcation", "realistic", n_cells=600, n_genes=400, seed=0)
+    var = list(adata.var_names)
+    var[: len(symbols)] = symbols
+    adata.var_names = var
+    path = tmp_path / "cc.h5ad"
+    adata.write_h5ad(path)
+    result = runner.invoke(app, ["prepare", str(path)])
+    assert result.exit_code == 0, result.output
+    assert "cell cycle: scored as human from 97 of 97 Tirosh 2016 genes" in result.output
+
+
 def test_roots_prints_suggestions(data: Path) -> None:
     result = runner.invoke(app, ["roots", str(data)])
     assert result.exit_code == 0, result.output
