@@ -11,6 +11,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   were re-run on `main` (PR #24, see "Done When (phase 1)"). Phase 2 has started: this PR
   (`pivot/21-phase2-start`) brings this file up to date and records Shreyan's two rulings of
   2026-11-17 (see "Phase 2 rulings").
+- **Phase 3 Task 9 (2026-11-19, PR `pivot/41-sheih-verify`):** the Sheih 2020 TCR tables join to expression cells (share 0.99 against a 0.5 rule), so the case study stays on Sheih and the Cao branch is not taken; see "Phase 3 Task 9 decisions and result".
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
   with the two plan-time amendments under Decisions.
@@ -44,6 +45,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - Branches `pivot/NN-<slug>`, numbered from 21 in execution order.
   - Ledger (git-ignored, this machine only): `.superpowers/sdd/2026-11-17-phase-2-robustness/progress.md`.
     The phase 1 ledger folder no longer exists on this machine; this file and `git log` are the record.
+- **Phase 3 Task 9** (PR `pivot/41-sheih-verify`): Sheih 2020 passes the join check; see "Phase 3 Task 9 decisions and result".
 - **Phase 3 Task 1** (PR `pivot/39-registry-sources`): multi-file sources and a build step; see "Phase 3 Task 1 decisions".
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
@@ -1195,6 +1197,15 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/38-phase3-plan-x1` | #41 | merged (squash, 35eadc1), phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
 | `pivot/36-disconnected-knn-error` | #40 | merged (squash), clear error for a disconnected kNN graph (palantir, scfates_ppt) |
 | `pivot/39-registry-sources` | open | phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
+| `pivot/41-sheih-verify` | open | phase 3 Task 9, Sheih 2020 TCR tables join to cells (PASS, share 0.99) |
+
+## Phase 3 Task 9 decisions and result
+
+- **Owner's OK (STOP steps):** Shreyan, in chat on 2026-11-19, "Yes, approve all" (relayed by the parent session). It covered the largest post-infusion Sheih clonotype table, the first line of `GSE125881_raw.expMatrix.csv.gz` (streamed, capped at 16 MB) and the Step 5 whole-matrix fetch (not needed). The Cao 2025 fallback was approved only for its metaData, cells_colnames and aggregated contig files, and only if Sheih failed.
+- **Result: PASS.** CLL-2 d12 (GSM3583882), 5,817 of 5,873 distinct table barcodes found among the matrix cell IDs, share 0.99 (rule: at least 0.5). Mapping: `<16-nt core>-1` becomes `<16-nt core>-<aggr ID>`. The Cao fallback was not needed; nothing from GSE207192 was downloaded.
+- **Listing differs from the plan:** the suppl folder lists only `GSE125881_RAW.tar` (2,048,000 bytes, 16 clonotype tables inside, 6.9 KB to 297 KB each) and the matrix (114,573,707 bytes). The tables exist only inside the tar, so the whole 2 MB tar was fetched (SHA-256 `769fa5b71b12b7efe433f51164d4370e0af00c20bebc647029cc4fbd9a943487`) and read in memory, never extracted.
+- **Matrix is genes x cells** (62,167 cells, aggr IDs 1-16), so no whole-matrix fetch. Tables are one row per clonotype x chain, `;`-separated barcode lists, no productive flag. Details, the GSM table and the licence lines are in [research/2026-11-19-sheih-verification.md](research/2026-11-19-sheih-verification.md); Tasks 10 and 11 read it.
+- **Script:** `benchmarks/inspection/barcode_join.py` prints headers, dtypes, counts, barcodes and the share, never a receptor value.
 
 ## Verify the current state
 
