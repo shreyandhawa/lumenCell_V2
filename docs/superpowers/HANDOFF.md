@@ -47,6 +47,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
     The phase 1 ledger folder no longer exists on this machine; this file and `git log` are the record.
 - **Phase 3 Task 1** (PR `pivot/39-registry-sources`): multi-file sources and a build step; see "Phase 3 Task 1 decisions".
 - **Phase 3 Task 2** (PR `pivot/40-daniel-fetch`): the nine Daniel 2022 GEO files, sizes and SHA-256; see "Phase 3 Task 2 decisions and result".
+- **Phase 3 Task 3** (PR `pivot/43-daniel-metadata`): the 46 GSM records and the two metadata files, read without touching clones: 23 captures (none lacks a TCR file), label column `ident`, no mouse recorded; see "Phase 3 Task 3 decisions".
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
 ## Phase 2 rulings (Shreyan, 2026-11-17: "approve both")
@@ -1115,6 +1116,18 @@ listed in the plan's "Amendments" block.
 - `gzip -t` passed on all eight .gz files. The plan's tests pin no count of 24, so no test changed.
 - **Licence:** the GEO disclaimer page and PMC11225711 both returned a reCAPTCHA page (not bypassed); LICENCE records both as UNVERIFIED.
 
+## Phase 3 Task 3 decisions
+
+- **Branch** `pivot/43-daniel-metadata`. The research note is [research/2026-11-19-daniel2022-metadata.md](research/2026-11-19-daniel2022-metadata.md); the script is `benchmarks/inspection/daniel2022_metadata.py`. Nothing was downloaded; no matrix and no contig file was opened.
+- **No sample lacks a TCR file.** GSE188666 is 23 captures, each with one GEX and one TCR GSM (46 = 2 x 23). The "24" of the spec and the dataset note was a miscount (GSM5687816-GSM5687834 is 19 GSMs, not 20). Task 5a's `len(CAPTURES)` is therefore 23, "the number the note records". Controller ruling P6 stands; nothing is missing.
+- **Two record inconsistencies are left to Task 5a's join check,** not resolved from names: (1) GSM6381667 and GSM6381668 have titles (D5 TetPos_rep1, TetNeg_rep2) that disagree with their attached file names (TetNeg_rep2, TetPos_rep1); (2) the D21 spleen TetNeg/TetPos and their `_rep1` pairs (GSM5687810-13 with GSM5687829-32) cross sequencers when paired by title. The note pairs by title and flags both.
+- **Label column found: `ident`** (11 labels in the main file, 7 in the D5 file; the vocabularies differ). Sample column: `orig.ident`. Task 5a sets `LABEL_COLUMN`; Task 6 applies its rules.
+- **The D5 metadata repeats the chronic spleen D8/D21 cells** (43,820 of them, every one also in the main file) with its own labels and embedding. Found with a scratch script outside the repo that read the two files' index, `orig.ident` and `ident` only (`usecols`), beyond the fixed output of the committed script. It bears on Task 6's Days rule ("processed together", "same vocabulary"), which the records answer "not stated" and the vocabularies answer "no".
+- **Records read beyond the GSMs:** the 46 linked BioSample records (efetch, text; their only attributes are source name and cell type) and the GSE188666/GSE188670 series records. They are sample records, not data files. No mouse identifier is in any of them.
+- **The paper was not read:** PMC is behind a CAPTCHA (Task 2) and Europe PMC has no open full text (`fullTextXML` HTTP 500). The note marks mice per capture and pooling as not stated.
+- **The script refuses a withheld column as `--labels` or `--samples`** (exit 2, no values printed), tested; the plan's two tests are as written, plus one for the tag vocabulary.
+- **Freeze kept:** `tcr_cdr3s_aa` and `tcr_cdr3s_nt` were listed by name and dtype only. No clone x state, clone x capture or clone x lineage count was computed.
+
 ## Open questions for Shreyan
 
 - **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep
@@ -1262,6 +1275,7 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/40-daniel-fetch` | open | phase 3 Task 2, Daniel 2022 GEO files recorded (sizes, SHA-256, 23 contig files) |
 | `pivot/39-registry-sources` | open | phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
 | `pivot/37-cell-cycle-stage` | #42 | merged (squash), phase 2 Task 3 (report-only cell_cycle stage, left out of prep_key) |
+| `pivot/43-daniel-metadata` | open | phase 3 Task 3, Daniel 2022 sample records and metadata inspected without touching clones |
 
 ## Verify the current state
 
