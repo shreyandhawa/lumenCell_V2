@@ -6,16 +6,18 @@ Pass rule (fixed in the plan, Task 9, before looking): the clonotype table carri
 
 ## Result
 
-- Table checked: `GSM3583882_CLL-2_d12-unpaired-clonotypes.csv.gz`, the largest post-infusion table (305,886 bytes in the tar). Owner OK: Shreyan, in chat on 2026-11-19, "Yes, approve all" (relayed by the parent session).
-- Barcode column: `barcodes`. Each row is one clonotype x chain; the column holds `;`-separated lists of 10x barcodes (`[ACGT]{16}-1`; up to 23 per row; 1,579 of 8,391 rows hold more than one). No `,` separators.
+- Table checked: `GSM3583882_CLL-2_d12-unpaired-clonotypes.csv.gz`, the largest post-infusion table (305,886 bytes in the tar, the largest of all 16 members; the largest infusion-product table is 296,504). Owner OK: Shreyan, in chat on 2026-11-19, "Yes, approve all" (relayed by the parent session).
+- Barcode column: `barcodes` (chosen as the column with the most distinct barcodes among those where more than half of the non-null cells hold only barcodes; the script exits 1 if there is none). Each row is one clonotype x chain; the column holds `;`-separated lists of 10x barcodes (`[ACGT]{16}-1`; up to 23 per row; 1,579 of 8,391 rows hold more than one). No `,` separators.
 - **Mapping rule:** a table barcode `<16-nt core>-1` maps to the matrix cell ID `<16-nt core>-<aggr sample ID>`, where the aggr sample ID is the GSM's "id in raw.expmatrix.csv".
+- **Mapping details:** only `-1` barcodes join; a table barcode with any other ending, bare 16-nt ones included, does not join, stays in the denominator and is counted in the output (here 0 of 5,873). The share's denominator is the distinct table barcodes.
+- **Negative control:** the same table mapped with the wrong aggr suffix `-10` against the same 6,271 `-9` cell IDs: 0 of 5,873, share 0.00.
 - Matrix cell IDs with suffix `-9` (aggr ID of GSM3583882): 6,271. Distinct table barcodes: 5,873. **Found among the matrix cell IDs: 5,817 of 5,873, share 0.99** (pass rule: at least 0.50).
 - Informational, same rule on the other 15 tables (every one has at least 0.97 of its distinct barcodes in the matrix; the lowest are the infusion-product tables of NHL-6 and NHL-7, which share a chromium index): aggr 1: 5272/5346, 2: 6128/6140, 3: 3257/3265, 4: 718/718, 8: 1659/1678, 10: 4021/4028, 11: 548/548, 16: 3802/3891, 5: 5309/5320, 6: 5422/5426, 7: 2898/2898, 12: 3319/3408, 13: 2380/2402, 14: 1923/1925, 15: 164/166. The pass rule is applied to the largest post-infusion table only.
 - Freeze rule kept: only headers, barcodes and counts were printed; no CDR3, gene or clonotype value was printed or tabulated. Only chain counts (TRB 4,505, TRA 3,886) and the number of distinct `clonotype_ids` (5,027) of that one table were read, as counts.
 
 ## Formats
 
-- **TCR tables** (inside `GSE125881_RAW.tar`, 16 members, 2,048,000 bytes, one `*-unpaired-clonotypes.csv.gz` per sample, 6,905 to 296,504 bytes; the spec's "about 7 MB" does not match). Columns (13, all read as text): `chain, clonotype_ids, consensus_ids, barcodes, contig_ids, cdr3s, cdr3_nts, v_genes, d_genes, j_genes, c_genes, frequency, proportion`. One row per clonotype x chain (TRA or TRB), not per cell, and not 10x contig annotations: there is no productive/full-length flag.
+- **TCR tables** (inside `GSE125881_RAW.tar`, 16 members, 2,048,000 bytes, one `*-unpaired-clonotypes.csv.gz` per sample, 6,905 to 305,886 bytes; the spec's "about 7 MB" does not match). Columns (13, all read as text): `chain, clonotype_ids, consensus_ids, barcodes, contig_ids, cdr3s, cdr3_nts, v_genes, d_genes, j_genes, c_genes, frequency, proportion`. One row per clonotype x chain (TRA or TRB), not per cell, and not 10x contig annotations: there is no productive/full-length flag.
 - **Expression matrix** `GSE125881_raw.expMatrix.csv.gz` (listed 109M, 114,573,707 bytes by HEAD): CSV, **genes x cells**. Its first line is an empty first field followed by 62,167 quoted cell IDs `"<16-nt>-<aggr ID>"`, aggr IDs 1 to 16. Rows are therefore genes, and Step 5's whole-matrix fetch was not needed. Cells per aggr ID: 1: 5515, 2: 6722, 3: 4920, 4: 1736, 5: 6117, 6: 6488, 7: 5023, 8: 1763, 9: 6271, 10: 4287, 11: 669, 12: 3484, 13: 2459, 14: 2382, 15: 197, 16: 4134.
 - NHL-6 IP and NHL-7 IP were sequenced on the same chromium index; GEO says VDJ cell barcodes were used to tell them apart. Their tables are assigned by aggr ID (16 and 12), which the join above confirms.
 
@@ -47,6 +49,13 @@ Pass rule (fixed in the plan, Task 9, before looking): the clonotype table carri
 - Article: CC BY 4.0 (PMC6954177, Sheih et al. 2020, Nat Commun 11:219, doi:10.1038/s41467-019-13880-1).
 - Data: public GEO accession GSE125881. GEO/NCBI terms were not read here: the GEO HTML pages sit behind a CAPTCHA, which is not bypassed. UNVERIFIED; cite the paper and the accession.
 - Cao 2025 (CC BY-NC-ND 4.0, PMC12055983) was not used.
+
+## Files and hashes (this machine, session scratchpad; not the dataset cache)
+
+- Tar: `/private/tmp/claude-501/-Users-shreyan-lumenCell-V2/453b6f74-ae4a-4614-a97a-fbc583e58d2c/scratchpad/sheih-verify/GSE125881_RAW.tar`, 2,048,000 bytes, SHA-256 `769fa5b71b12b7efe433f51164d4370e0af00c20bebc647029cc4fbd9a943487`.
+- Chosen member `GSM3583882_CLL-2_d12-unpaired-clonotypes.csv.gz` (305,886 bytes; read in memory with `tar -xO`, never extracted): SHA-256 `93f8ef95bbd990ee92b280bf0aa3922821c702bea3494898df3e0292dbcfa5db`; 1,832,439 bytes uncompressed.
+- Matrix header (uncompressed first line, 1,323,122 bytes): `.../scratchpad/sheih-verify/header.txt`, SHA-256 `23955ade7cc347f34acc9668a537caab01f56a6126112abab5de529cfcf6315f`. Cell IDs with suffix `-9`: `.../scratchpad/cells_9.txt`.
+- They are not in `~/Library/Caches/lumencell/datasets` (the fetch used a fresh scratchpad directory). The scratchpad may be cleaned; Tasks 10 and 11 fetch `GSE125881_RAW.tar` again (approved) and re-verify the SHA-256 above.
 
 ## Handling
 
