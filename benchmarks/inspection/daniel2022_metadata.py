@@ -1,11 +1,14 @@
 """Inspect the two Daniel 2022 metadata files without reading any receptor value (phase 3 Task 3).
 
 Run from the repo root: ``uv run python -I benchmarks/inspection/daniel2022_metadata.py --dir <datasets dir>
-[--labels COL --samples COL]``. It reads the files it is given and writes nothing.
+[--labels COL --samples COL] [--compare]``. It reads the files it is given and writes nothing.
 
 A column is withheld when its name matches ``RECEPTOR_COLUMN`` or contains, case-insensitively, one of
 ``WITHHELD_PARTS``. A withheld column is listed by name and dtype and dropped before anything else is
 computed, so none of its values is printed, summarised or used.
+
+``--compare`` (with ``--labels`` and ``--samples``) reads only the index and those two columns of the main
+and the D5 file, and prints how many cells they share and the main-by-D5 label cross-tab of the shared cells.
 """
 
 import argparse
@@ -30,6 +33,30 @@ def withheld(name: str) -> bool:
 def tag(index_value: str) -> str:
     m = CORE.search(index_value)
     return f"{index_value[: m.start()]}<core>{index_value[m.end() :]}" if m else "<no 16-nt core>"
+
+
+def require_columns(columns: pd.Index, path: Path, *names: str | None) -> None:
+    for name in names:
+        if name not in columns:
+            sys.exit(f"error: {name!r} is not a column of {path.name}")
+
+
+def compare(main_path: Path, d5_path: Path, labels: str, samples: str) -> None:
+    """Index overlap and label cross-tab of two files, reading only the index and two columns of each."""
+    frames = []
+    for path in (main_path, d5_path):
+        header = pd.read_csv(path, sep="\t", nrows=0)
+        require_columns(header.columns, path, labels, samples)
+        frames.append(pd.read_csv(path, sep="\t", usecols=[labels, samples]))
+    main, d5 = frames
+    shared = main.index.intersection(d5.index)
+    print(f"== comparison {main_path.name} vs {d5_path.name}")
+    print(f"cells in both\t{len(shared)}")
+    print(f"only in main\t{len(main.index.difference(d5.index))}")
+    print(f"only in D5\t{len(d5.index.difference(main.index))}")
+    print(f"main {labels} (rows) x D5 {labels} (columns), shared cells:")
+    table = pd.crosstab(main.loc[shared, labels], d5.loc[shared, labels], dropna=False)
+    print(table.to_csv(sep="\t"), end="")
 
 
 def inspect(path: Path, labels: str | None, samples: str | None) -> None:
@@ -58,9 +85,7 @@ def inspect(path: Path, labels: str | None, samples: str | None) -> None:
         elif not pd.api.types.is_numeric_dtype(col):
             print(f"{c}: {n_levels} distinct values, not listed")
     if labels is not None and samples is not None:
-        if labels not in df.columns or samples not in df.columns:
-            print(f"cross-tab skipped: {labels!r} or {samples!r} is not a column of {path.name}")
-            return
+        require_columns(df.columns, path, labels, samples)
         print(f"cross-tab {samples} (rows) x {labels} (columns):")
         print(pd.crosstab(df[samples], df[labels], dropna=False).to_csv(sep="\t"), end="")
 
@@ -70,15 +95,22 @@ def main() -> int:
     ap.add_argument("--dir", type=Path, required=True)
     ap.add_argument("--labels")
     ap.add_argument("--samples")
+    ap.add_argument("--compare", action="store_true")
     a = ap.parse_args()
     if (a.labels is None) != (a.samples is None):
         ap.error("--labels and --samples go together")
     for name in (a.labels, a.samples):
         if name is not None and withheld(name):
             ap.error(f"{name!r} is a withheld column and cannot be cross-tabulated")
-    for src in SOURCES:
-        if "_metadata." in src.filename:
-            inspect(a.dir / src.filename, a.labels, a.samples)
+    if a.compare and a.labels is None:
+        ap.error("--compare needs --labels and --samples")
+    files = [a.dir / src.filename for src in SOURCES if "_metadata." in src.filename]
+    if a.compare:
+        main_path, d5_path = sorted(files, key=lambda p: "_D5_" in p.name)
+        compare(main_path, d5_path, a.labels, a.samples)
+        return 0
+    for path in files:
+        inspect(path, a.labels, a.samples)
     return 0
 
 

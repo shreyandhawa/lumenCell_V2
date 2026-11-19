@@ -136,7 +136,7 @@ Other columns, as printed: `nCount_RNA` 505 / 4,500 / 128,904 (min / median / ma
 | GSM6381664 | `Spleen_Chronic_D5_CD8_TetNeg_rep2_gex_<core>-1` | Spleen_Chronic_D5_TetNeg_rep2 | - | 8,969 |
 | GSM6381665 | `Spleen_Chronic_D5_CD8_TetPos_rep2_gex_<core>-1` | Spleen_Chronic_D5_TetPos_rep2 | - | 8,179 |
 
-**The D5 file is not D5 only.** It holds the four D5 captures and the 11 chronic spleen D8 and D21 captures of the main file. Every one of its D8/D21 cell ids is also a main-file cell id (43,820 shared; 24 main-file chronic spleen cells are absent from it). This comparison used the index and `orig.ident`/`ident` only (a scratch script outside the repo that read no other column); see HANDOFF "Phase 3 Task 3 decisions". Whether the D5 *matrix* holds the same D8/D21 barcodes is Task 5a's to check.
+**The D5 file is not D5 only.** It holds the four D5 captures and the 11 chronic spleen D8 and D21 captures of the main file. Every one of its D8/D21 cell ids is also a main-file cell id (43,820 shared; 24 main-file chronic spleen cells are absent from it). This comparison used the index and `orig.ident`/`ident` only (`benchmarks/inspection/daniel2022_metadata.py --compare --labels ident --samples orig.ident`, which reads no other column); see HANDOFF "Phase 3 Task 3 decisions". Whether the D5 *matrix* holds the same D8/D21 barcodes is Task 5a's to check.
 
 ## 3. State labels
 
