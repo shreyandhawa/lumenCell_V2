@@ -4,52 +4,33 @@ A new session starts with: "Read docs/superpowers/HANDOFF.md and continue."
 This file is updated inside every task's PR. `docs/HANDOFF.md` is the milestone 1 note; its
 stale lines are corrected once, by phase 1's handoff-corrections task.
 
-## Current state (2026-11-17)
+## Current state (2026-11-19)
 
-- **Phase:** phase 1 is complete on `main` (2217f76). Tasks 1-7 merged as squash commits
-  (PRs #7-#13); Tasks 8-17 merged as merge commits (PRs #14-#23), and the Done When commands
-  were re-run on `main` (PR #24, see "Done When (phase 1)"). Phase 2 has started: this PR
-  (`pivot/21-phase2-start`) brings this file up to date and records Shreyan's two rulings of
-  2026-11-17 (see "Phase 2 rulings").
-- **Phase 3 Task 9 (2026-11-19, PR `pivot/41-sheih-verify`):** the Sheih 2020 TCR tables join to expression cells (share 0.99 against a 0.5 rule), so the case study stays on Sheih and the Cao branch is not taken; see "Phase 3 Task 9 decisions and result".
+- **Phase 2 is complete on `main` (570fb5e).** Merged: Tasks 1 (#26), 5 (#27), 6 (#28), 7 (#29), 8 (#32), 9 (#33),
+  10 (#31), 11 (#34), 12 (#35), 13 (#36), N2a (#30), and the late Tasks 2 (#39), 3 (#42) and 4 (#46); the start (#25),
+  the final review (#37) and the follow-ups H-1 (#38), the disconnected-kNN error (#40) and the X-1 phase 3 plan
+  amendment (#41). Phase 2 PRs are #25 to #40, #42 and #46 (#41 is the phase 3 plan amendment; #43 to #45, #47 and #48 are phase 3). This PR (`pivot/45-phase2-close`)
+  records the Done When on 570fb5e (see "Done When (phase 2)") and this state.
+- **What failed and was accepted:** the verdict verification (Task 9) failed on fresh seeds 3-5 (28 of 31 control runs
+  supported, max 0). Shreyan ruled (a): accept a provisional-only verdict; a supported verdict is capped at
+  `provisional`, and a failed check is served `weak` (H-1, 2026-11-19). Two Done When commands therefore fail
+  (the verification's `passed` is `False` and the slow test that asserts it); a pre-declared C1/C2 redesign is the only
+  way to pass them and is not planned. C2, C3 and C4 were non-discriminating in Task 8, so no tau is set for them. The
+  calibrated N2a split is adopted (clonal `metric_version` 2).
+- **Phase 3 is under way** (base 35ac459). Merged: Task 1 (#43, multi-file sources, licences, build step), Task 2 (#44,
+  the nine Daniel 2022 GEO files, sizes and SHA-256), Task 3 (#48, Daniel sample records and metadata; 23 captures),
+  Task 4 (#47, clone calling from 10x contigs) and Task 9 (#45, Sheih 2020 joins at 0.99, so the Cao branch is not
+  taken). Next: Task 5a, then 5b, 6, 7, 8; Task 10 beside them. See each task's decisions section.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
   with the two plan-time amendments under Decisions.
 - **Plans**, merged in PR #6:
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks, done
-  - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks, plus the
-    N2 amendment (see "Phase 2 rulings")
-  - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks
-- **Next:** phase 2. Merged to `main`: Tasks 1 (#26), 5 (#27), 6 (#28), 7 (#29), 8 (#32), 9 (#33),
-  10 (#31), 11 (#34), 12 (#35) and N2a (#30). N2a passed its calibration on seeds 300-499 and was
-  adopted: the runtime N2 uses the lineage-onset split and the clonal metric_version is 2 (see
-  "Phase 2 N2a decisions and result"). Task 8 found C2, C3 and C4 non-discriminating, so no tau is
-  set. Task 9 verified the verdict on fresh seeds 3-5 and FAILED (28 of 31 control runs supported,
-  max 0), so a supported verdict is capped at provisional (a failed check is served weak,
-  H-1, 2026-11-19); Shreyan chose to accept a provisional-only supported level. Task 11 serves stability and the capped verdict; the cell-cycle check was added by Task 4 (`pivot/42-cell-cycle-check`); Task 12 reported both on the three real datasets (every gated metric identical to phase 1).
-  - Task 13 (#36): three Low findings fixed (S5, S6, S9), three recorded; see "Security review
-    (phase 2)" and "Done When (phase 2)" (three Done When commands fail, as recorded: the cell-cycle
-    tests do not exist yet, and the verification's `passed` is False).
-  - **Task 2 (PR `pivot/35-cell-cycle-genes`):** the Tirosh 2016 lists (43 S, 54 G2M) and the 97-gene mouse ortholog table are shipped and verified; Tasks 3 and 4 are unblocked once it merges.
-  - **Task 3 (PR `pivot/37-cell-cycle-stage`):** the report-only `cell_cycle` prep stage is in and left out of `prep_key`, so no run id changes; Task 4 is unblocked once it merges.
-  - **Blocked: Tasks 2, 3, 4** (Tirosh lists, cell-cycle stage, cell-cycle check). They wait on the
-    Tirosh 2016 supplement, which Shreyan must download by hand: PMC and science.org are behind a
-    CAPTCHA. Task 4 adds the cell-cycle fields Task 11 left out. Their security items are pending
-    in the phase 2 review.
-  - **Final review:** done on 1167b2d (see "Phase 2 final review"): no blocker, one question for
-    Shreyan (H-1) and five follow-up tasks. After Tasks 2-4 merge, re-run the Done When commands on
-    `main` and review those three PRs' seams with Task 11.
-  - Executed task by task with subagents: one implementer per task, TDD, two review seats (a
-    Sonnet task reviewer that also covers silent failures, and pr-test-analyzer mutation-testing
-    a scratch copy), one fix round and a scoped re-review, then a squash-merge on green CI.
-  - Branches `pivot/NN-<slug>`, numbered from 21 in execution order.
-  - Ledger (git-ignored, this machine only): `.superpowers/sdd/2026-11-17-phase-2-robustness/progress.md`.
-    The phase 1 ledger folder no longer exists on this machine; this file and `git log` are the record.
-- **Phase 3 Task 9** (PR `pivot/41-sheih-verify`): Sheih 2020 passes the join check; see "Phase 3 Task 9 decisions and result".
-- **Phase 3 Task 1** (PR `pivot/39-registry-sources`): multi-file sources and a build step; see "Phase 3 Task 1 decisions".
-- **Phase 3 Task 2** (PR `pivot/40-daniel-fetch`): the nine Daniel 2022 GEO files, sizes and SHA-256; see "Phase 3 Task 2 decisions and result".
-- **Phase 3 Task 3** (PR `pivot/43-daniel-metadata`): the 46 GSM records and the two metadata files, read without touching clones: 23 captures (none lacks a TCR file), label column `ident`, no mouse recorded; see "Phase 3 Task 3 decisions".
-- **Phase 3 Task 4** (PR `pivot/44-contig-clones`): pure clone calling from 10x contigs in `bench/builders/common.py`; see "Phase 3 Task 4 decisions".
+  - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks plus N2a, done
+  - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks, amended by X-1 (#41); in progress
+- **Phase 2 process:** executed task by task with subagents: one implementer per task, TDD, two review seats, one fix round
+  and a scoped re-review, then a squash-merge on green CI. Branches `pivot/NN-<slug>`.
+  Ledger (git-ignored, this machine only): `.superpowers/sdd/2026-11-17-phase-2-robustness/progress.md`.
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
 ## Phase 2 rulings (Shreyan, 2026-11-17: "approve both")
@@ -1225,8 +1206,7 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 ## Security review (phase 2)
 
 Reviewed by hand (the security-review skill was not invoked) along the brief's untrusted-input paths, on the diff `2217f76..HEAD` (phase 1's last
-merge to `main`, c2b3e97 as the head). Tasks 2-4 (Tirosh lists, cell-cycle stage, cell-cycle check) are not
-merged, so their inputs are listed as pending below.
+merge to `main`, c2b3e97 as the head). Tasks 2-4 (Tirosh lists, cell-cycle stage, cell-cycle check) merged afterwards (#39, #42, #46); their items are closed below.
 
 | # | Severity | Where | Finding | Outcome |
 |---|---|---|---|---|
@@ -1245,30 +1225,37 @@ Checked and found sound, no change:
 - The GET-healing path: a failed or cancelled job is never resubmitted by a GET (`test_a_cancelled_stability_keeps_the_verdict_provisional_and_is_not_resubmitted`, `test_a_failed_stability_job_is_reported_with_its_error_and_not_resubmitted`), and the job manager keys jobs, so concurrent GETs share one job. The one open edge is S7.
 - Strict JSON: writes use `allow_nan=False`; undefined stability values become `null` (`_num`); reads are now strict (S6).
 
-Pending: Tasks 2-4 not merged; reviewed in their PRs:
-- Gene symbols in cell-cycle matching (case, whitespace, the `var` symbol column).
-- The package-data TSV parsing of the Tirosh lists.
-- The downloaded sources are never committed and are parsed with `python -I`. The downloads so far are in `$TMPDIR`, outside the repo (checked: `git status` is clean of them).
+Tasks 2-4 items, closed when their PRs merged:
+- Gene symbols in cell-cycle matching (case, whitespace, the `var` symbol column): resolved in #42 (Task 3). `match_genes` takes the first matching var symbol, the view's var names go through `make_index_unique`, and duplicate symbols are scored once. The stage is report-only: any exception while checking or scoring becomes `not_scored` with the error named and one stderr line, so it never fails prep (`test_a_scoring_error_is_reported_and_prep_still_completes`, `test_duplicate_symbols_are_scored_once`).
+- The package-data TSV parsing of the Tirosh lists: resolved in #39 (Task 2). `_rows` checks the header row and the column count of every row and strips fields, so a missing header or a short row is refused naming the line (fix round 1). The xlsx source was read with stdlib `zipfile` and `ElementTree` only, and every script that read a downloaded source ran with `python -I`.
+- The downloaded sources are never committed: resolved in #39. They were kept outside the repo, with SHA-256 recorded in "Phase 2 Task 2 decisions and result"; `git status` is clean of them.
+- Lineage names in the cell-cycle check (new, #46, Task 4): the names reach only the served notice text, never a path, a job key or a log line. An unreadable run cell file is reported as `not_scored` with the exception type named and one stderr line (ruling R20), not hidden as `cell_cycle: null`; any non-OSError still propagates.
 
 ## Done When (phase 2)
 
-Run from the worktree root of `pivot/32-phase2-security` (branch from `main` c2b3e97, plus this PR's fixes), 2026-11-17,
-exactly as the plan writes them. Tasks 2-4 are not merged (blocked on the Tirosh 2016 supplement, which Shreyan
-must download by hand), so two commands fail for that reason; the verification command fails because the verification
-itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them pass.
+Run on `main` 570fb5e (every phase 2 task, H-1 and the disconnected-kNN error merged) from the worktree root of `pivot/45-phase2-close`,
+2026-11-19, exactly as the plan writes them. Nothing was changed to make any of them pass. Two fail, both because the
+verdict verification failed (Task 9, ruling F14, owner rulings (a) and H-1); the cell-cycle command now passes (Tasks 2-4 merged).
 
-| Command | Actual result |
-|---|---|
-| `make ci; echo $?` | `0` (run after the S5 and S6 fixes): PASS. A first run printed `2` from two ruff E501 lines in this PR's own new code; they were wrapped and the rerun printed `0`. |
-| `make bench-synth > "$TMPDIR/synth.log" 2>&1; echo $?` (background) | `0`: PASS |
-| `grep -c '^REGRESSION' "$TMPDIR/synth.log"` | `0`: PASS |
-| `uv run pytest tests/unit/test_prep.py tests/unit/test_prep_cache.py tests/unit/test_cell_cycle_genes.py tests/api/test_cache_healing.py -q; echo $?` | `ERROR: file or directory not found: tests/unit/test_cell_cycle_genes.py`, `no tests ran`, exit `4`: **FAILED**. Task 3 creates that file and is not merged. It passes once Tasks 2-4 merge (Task 3 also adds the pinned `prep_key` test). |
-| `uv run pytest tests/api/test_robustness_trust.py -q; echo $?` | `15 passed`, exit `0`: PASS |
-| the calibration/verification `python -c` command | `benchmarks/results/verdict-calibration-2026-11-17.json True benchmarks/results/verdict-verification-2026-11-17.json False`: **FAILED** on the second `True`. The verification of the verdict on fresh seeds 3-5 failed (28 of 31 control runs supported, max 0; Task 9, ruling F14/(a)). Shreyan accepted a provisional-only verdict, so every supported level is capped (weak is served as is since H-1). It would pass only with a rule that passes verification on seeds not used before; none is planned. |
-| `grep -c '^\[tree_support.calibrated\]' benchmarks/thresholds.toml` | `1`: PASS |
-| `uv run pytest tests/unit/test_trust_constants.py tests/unit/test_verdict_calibration.py -q` | `1 failed, 35 passed in 756.66s`, exit `1`: **FAILED**. The one failure is `test_verification_on_fresh_seeds`, which asserts `ver.passed` and re-measures the verification (12 minutes); it fails for the same reason as the line above. `test_the_recorded_verification_follows_from_its_records` passes (the recorded `passed=False` matches its records). Passes only with the same verified rule. |
-| `git merge-base --is-ancestor $(git log --format=%h -1 --grep='Declare the T-cell robustness') $(git log --format=%h --reverse -- 'benchmarks/results/verdict-*.json' | head -1); echo $?` | `0` (c8a50d9 is an ancestor of 0d0608a): PASS |
-| this file has "Security review (phase 2)" | present, S5 to S8 plus the pending Tasks 2-4 items: PASS |
+| Command | Exit | Output | Result |
+|---|---|---|---|
+| `make ci; echo $?` | `0` | ruff passed; `1098 passed, 36 deselected, 3 warnings in 313.63s`; web `36 passed`; web-e2e `1 passed` | PASS |
+| `make bench-synth > "$TMPDIR/synth.log" 2>&1; echo $?` (background) | `0` | the 12-case matrix ran; the log ends with 29 `gate` lines for the experimental methods' recorded gate misses (for example `scfates_ppt: binary2/realistic/seed0: pt_spearman_global = 0.869 (needs >= 0.9)`), which are the known baseline, not regressions | PASS |
+| `grep -c '^REGRESSION' "$TMPDIR/synth.log"` | `1` (grep's own status for no match) | `0` | PASS |
+| `uv run pytest tests/unit/test_prep.py tests/unit/test_prep_cache.py tests/unit/test_cell_cycle_genes.py tests/api/test_cache_healing.py -q; echo $?` | `0` | `87 passed, 1 warning in 86.93s` (the warning is the non-unique var names from `loader.py`) | PASS (this failed on c2b3e97: `test_cell_cycle_genes.py` did not exist; Tasks 2-4 added it) |
+| `uv run pytest tests/api/test_robustness_trust.py -q; echo $?` | `0` | `17 passed in 26.75s` | PASS |
+| the calibration/verification `python -c` command | `0` | `benchmarks/results/verdict-calibration-2026-11-17.json True benchmarks/results/verdict-verification-2026-11-17.json False` | **FAIL**: the second value is `False`, not `True` |
+| `grep -c '^\[tree_support.calibrated\]' benchmarks/thresholds.toml` | `0` | `1` | PASS |
+| `uv run pytest tests/unit/test_trust_constants.py tests/unit/test_verdict_calibration.py -q` | `1` | `1 failed, 35 passed in 708.58s (0:11:48)`; the failure is `test_verification_on_fresh_seeds` | **FAIL** |
+| `git merge-base --is-ancestor $(git log --format=%h -1 --grep='Declare the T-cell robustness') $(git log --format=%h --reverse -- 'benchmarks/results/verdict-*.json' | head -1); echo $?` | `0` | c8a50d9 is an ancestor of 0d0608a | PASS |
+| this file has "Security review (phase 2)" that records each finding as resolved or recorded | n/a | present: S5 to S10, the checked-and-sound list, and the Tasks 2-4 items, all closed | PASS |
+
+Why the two FAILs: the verification of the verdict on fresh seeds 3-5 failed (28 of 31 control runs supported, max 0). The
+recorded `passed` is `False` and the slow test re-measures the verification and asserts `ver.passed`, so it fails for the same
+reason (`test_the_recorded_verification_follows_from_its_records` passes: the recorded `False` follows from its records).
+Shreyan accepted a provisional-only verdict (ruling (a)): a supported verdict is capped at provisional, and since H-1 a failed
+check is served `weak`. Both would pass only with a verdict rule that passes verification on seeds not used before, which
+needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planned for phase 3.
 
 ## Branches and PRs
 
@@ -1311,13 +1298,14 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/35-cell-cycle-genes` | #39 | merged (squash), phase 2 Task 2 (Tirosh 2016 lists, verified mouse ortholog table) |
 | `pivot/38-phase3-plan-x1` | #41 | merged (squash, 35eadc1), phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
 | `pivot/36-disconnected-knn-error` | #40 | merged (squash), clear error for a disconnected kNN graph (palantir, scfates_ppt) |
-| `pivot/40-daniel-fetch` | open | phase 3 Task 2, Daniel 2022 GEO files recorded (sizes, SHA-256, 23 contig files) |
-| `pivot/39-registry-sources` | open | phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
-| `pivot/37-cell-cycle-stage` | #42 | merged (squash), phase 2 Task 3 (report-only cell_cycle stage, left out of prep_key) |
+| `pivot/40-daniel-fetch` | #44 | merged (squash, 7d7a212), phase 3 Task 2, Daniel 2022 GEO files recorded (sizes, SHA-256, 23 contig files) |
+| `pivot/39-registry-sources` | #43 | merged (squash, 4c05695), phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
+| `pivot/37-cell-cycle-stage` | #42 | merged (squash, 8db251b), phase 2 Task 3 (report-only cell_cycle stage, left out of prep_key) |
 | `pivot/42-cell-cycle-check` | #46 | merged (squash, 570fb5e), phase 2 Task 4 (per-run cell-cycle check, served with run and dataset; final-review doc fixes) |
 | `pivot/41-sheih-verify` | #45 | merged (squash), phase 3 Task 9, Sheih 2020 TCR tables join to cells (PASS, share 0.99) |
 | `pivot/43-daniel-metadata` | #48 | merged (squash), phase 3 Task 3, Daniel 2022 sample records and metadata inspected without touching clones |
 | `pivot/44-contig-clones` | #47 | merged (squash, 6932b67), phase 3 Task 4, paired and TRB-only clone calling from 10x contigs |
+| `pivot/45-phase2-close` | #49 | merged (squash), closes phase 2: Done When recorded on 570fb5e, final state |
 
 ## Phase 3 Task 9 decisions and result
 
