@@ -933,6 +933,16 @@ b0e235a; calibration 0a584d5 after 59d8213; verification 37197c8 after the taus 
 - **Tests.** `tests/unit/test_disconnected_graph.py` (the helper, both methods on `two_groups` 1000 x 500,
   paga_dpt still runs) and `tests/api/test_disconnected_graph.py` (job failure and message through the API).
   Both failed before the change with the internal errors above.
+- **R19 (controller ruling): a stored explicit zero is not an edge.** `require_connected` drops zeros on a
+  copy before counting parts and never changes the caller's matrix. Connectivity is weak (`directed=False`):
+  a one-way chain is one part. The root's part is left out of "largest other part". Pinned by
+  `tests/unit/test_disconnected_graph.py` (zero-join, one-way chain, 4/2/3 blocks, `ValueError` base, a CLI
+  run that exits 2 with the message and no traceback, and Palantir reporting the root's own part).
+- **What a re-run would change.** Re-running the recorded verdict calibration/verification now leaves out
+  every `two_groups` palantir and scfates_ppt run, because they raise `DisconnectedGraphError`. For example
+  palantir seed 5, recorded as a supported control in the 28 of 31, would raise. So the observation that
+  "palantir gives finite pseudotime across two_groups' parts" (C1) describes behaviour before #40. The
+  recorded files stay as they are.
 
 ## Open questions for Shreyan
 

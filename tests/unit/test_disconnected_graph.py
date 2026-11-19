@@ -1,10 +1,15 @@
 """A disconnected kNN graph fails early with a message a user can act on (phase 2 follow-up)."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 from scipy import sparse
+from scipy.sparse.csgraph import connected_components
+from typer.testing import CliRunner
 
 from lumencell.bench.synth_controls import control_root_cell, generate_control
+from lumencell.cli import app
 from lumencell.data.loader import load
 from lumencell.engine.context import InferenceContext
 from lumencell.engine.graph import DisconnectedGraphError, require_connected
@@ -21,6 +26,35 @@ def test_require_connected_counts_parts_and_names_no_cells() -> None:
     msg = str(exc.value)
     assert "3 disconnected parts" in msg and "2 cells in the part holding the root" in msg
     assert "4 in the largest other part" in msg and "Subset" in msg and "neighbours" in msg
+
+
+def test_error_is_a_value_error_so_the_cli_and_api_report_it_cleanly() -> None:
+    assert issubclass(DisconnectedGraphError, ValueError)
+
+
+def test_stored_explicit_zero_is_not_an_edge_and_the_input_is_not_mutated() -> None:
+    rows, cols = [0, 1, 2, 3, 1, 2], [1, 0, 3, 2, 2, 1]
+    data = [1.0, 1.0, 1.0, 1.0, 0.0, 0.0]  # the last two are stored zeros
+    csr = sparse.csr_matrix((data, (rows, cols)), shape=(4, 4))
+    assert csr.nnz == 6
+    with pytest.raises(DisconnectedGraphError, match="2 disconnected parts"):
+        require_connected(csr, root_cell=0, what="kNN graph")
+    assert csr.nnz == 6
+
+
+def test_connectivity_is_weak_so_a_one_way_chain_is_one_part() -> None:
+    chain = sparse.csr_matrix(([1.0, 1.0], ([0, 1], [1, 2])), shape=(3, 3))
+    require_connected(chain, root_cell=0, what="kNN graph")
+    with_isolated = sparse.csr_matrix(([1.0, 1.0], ([0, 1], [1, 2])), shape=(4, 4))
+    with pytest.raises(DisconnectedGraphError, match="2 disconnected parts"):
+        require_connected(with_isolated, root_cell=0, what="kNN graph")
+
+
+def test_largest_other_part_excludes_the_roots_part() -> None:
+    blocks = sparse.block_diag([np.ones((4, 4)), np.ones((2, 2)), np.ones((3, 3))])
+    with pytest.raises(DisconnectedGraphError) as exc:
+        require_connected(blocks, root_cell=0, what="kNN graph")
+    assert "4 cells in the part holding the root and 3 in the largest other part" in str(exc.value)
 
 
 def test_require_connected_accepts_one_part() -> None:
@@ -52,3 +86,31 @@ def test_methods_that_cannot_cross_parts_fail_with_a_clear_error(
 def test_paga_dpt_still_runs_on_the_split_graph(split: tuple[InferenceContext, str]) -> None:
     ctx, root = split
     run_method(ctx, "paga_dpt", CellRoot(root)).validate()
+
+
+def test_palantir_reports_the_part_of_the_run_root(split: tuple[InferenceContext, str]) -> None:
+    pytest.importorskip("palantir")
+    ctx, _ = split
+    _, labels = connected_components(sparse.csr_matrix(ctx.artifacts["connectivities"]), directed=False)
+    sizes = np.bincount(labels)
+    small = int(np.argmin(sizes))
+    root = str(ctx.obs_names[int(np.flatnonzero(labels == small)[0])])
+    with pytest.raises(DisconnectedGraphError) as exc:
+        run_method(ctx, "palantir", CellRoot(root))
+    assert f"{int(sizes[small]):,} cells in the part holding the root" in str(exc.value)
+
+
+def test_cli_run_on_a_disconnected_graph_is_a_clean_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("scFates")
+    monkeypatch.setenv("LUMENCELL_CACHE_DIR", str(tmp_path / "cache"))
+    adata = generate_control("two_groups", n_cells=1000, n_genes=500, seed=0)
+    path = tmp_path / "two_groups.h5ad"
+    adata.write_h5ad(path)
+    result = CliRunner().invoke(
+        app, ["run", str(path), "--method", "scfates_ppt", "--root", f"cell:{control_root_cell(adata)}"]
+    )
+    assert result.exit_code == 2
+    assert "disconnected parts" in result.output
+    assert isinstance(result.exception, SystemExit), "a message, not a traceback"

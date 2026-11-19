@@ -16,7 +16,11 @@ def require_connected(graph: sparse.spmatrix | npt.NDArray[np.float64], root_cel
     The message names counts only (parts, cells in the root's part and in the largest other
     part), never cell names, since it reaches the API, the CLI and job logs.
     """
-    n_parts, labels = connected_components(sparse.csr_matrix(graph), directed=False)
+    # A stored explicit zero is not an edge (ruling R19): drop zeros on a copy, never the caller's matrix.
+    edges = sparse.csr_matrix(graph, copy=True)
+    edges.eliminate_zeros()
+    # Weak connectivity (directed=False) is intended: one-way kNN edges still join cells.
+    n_parts, labels = connected_components(edges, directed=False)
     if n_parts <= 1:
         return
     sizes = np.bincount(labels, minlength=n_parts)
