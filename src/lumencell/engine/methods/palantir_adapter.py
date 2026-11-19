@@ -34,6 +34,7 @@ from pydantic import Field
 from scipy import sparse
 
 from lumencell.engine.context import LEIDEN_KEY, InferenceContext
+from lumencell.engine.graph import require_connected
 from lumencell.engine.methods.base import Availability, MethodParams, ProgressFn
 from lumencell.engine.schema import Lineage, Milestone, Notice, ResolvedRoot, Segment, TrajectoryResult
 from lumencell.engine.topology import cluster_tree, leaf_terminal_cells
@@ -132,6 +133,9 @@ class Palantir:
         with _quiet():
             palantir.utils.run_diffusion_maps(view, n_components=params.n_components, knn=params.knn, seed=0)
             palantir.utils.determine_multiscale_space(view, n_eigs=params.n_eigs)
+        # Palantir's Markov chain cannot reach cells outside the root's part: it ends in an
+        # internal error or, worse, finite times across parts. Check the graph it built.
+        require_connected(view.obsp["DM_Kernel"], root.cell_index, "kNN graph Palantir builds")
         multiscale: pd.DataFrame = view.obsm["DM_EigenVectors_multiscaled"]
         ms_dims = int(multiscale.shape[1])
 
