@@ -9,7 +9,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - **Phase 2 is complete on `main` (570fb5e).** Merged: Tasks 1 (#26), 5 (#27), 6 (#28), 7 (#29), 8 (#32), 9 (#33),
   10 (#31), 11 (#34), 12 (#35), 13 (#36), N2a (#30), and the late Tasks 2 (#39), 3 (#42) and 4 (#46); the start (#25),
   the final review (#37) and the follow-ups H-1 (#38), the disconnected-kNN error (#40) and the X-1 phase 3 plan
-  amendment (#41). Phase 2 PRs are #25 to #46 (with #43 and #44 being phase 3 Tasks 1 and 2). This PR (`pivot/45-phase2-close`)
+  amendment (#41). Phase 2 PRs are #25 to #40, #42 and #46 (#41 is the phase 3 plan amendment; #43 to #45, #47 and #48 are phase 3). This PR (`pivot/45-phase2-close`)
   records the Done When on 570fb5e (see "Done When (phase 2)") and this state.
 - **What failed and was accepted:** the verdict verification (Task 9) failed on fresh seeds 3-5 (28 of 31 control runs
   supported, max 0). Shreyan ruled (a): accept a provisional-only verdict; a supported verdict is capped at
@@ -17,8 +17,10 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   (the verification's `passed` is `False` and the slow test that asserts it); a pre-declared C1/C2 redesign is the only
   way to pass them and is not planned. C2, C3 and C4 were non-discriminating in Task 8, so no tau is set for them. The
   calibrated N2a split is adopted (clonal `metric_version` 2).
-- **Phase 3 is under way** (base 35ac459): Task 1 (#43, multi-file sources, licences, build step) and Task 2 (#44, the nine
-  Daniel 2022 GEO files, sizes and SHA-256) are merged; other phase 3 PRs are open (see the PR table).
+- **Phase 3 is under way** (base 35ac459). Merged: Task 1 (#43, multi-file sources, licences, build step), Task 2 (#44,
+  the nine Daniel 2022 GEO files, sizes and SHA-256), Task 3 (#48, Daniel sample records and metadata; 23 captures),
+  Task 4 (#47, clone calling from 10x contigs) and Task 9 (#45, Sheih 2020 joins at 0.99, so the Cao branch is not
+  taken). Next: Task 5a, then 5b, 6, 7, 8; Task 10 beside them. See each task's decisions section.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
   with the two plan-time amendments under Decisions.
@@ -1113,6 +1115,39 @@ listed in the plan's "Amendments" block.
 - `gzip -t` passed on all eight .gz files. The plan's tests pin no count of 24, so no test changed.
 - **Licence:** the GEO disclaimer page and PMC11225711 both returned a reCAPTCHA page (not bypassed); LICENCE records both as UNVERIFIED.
 
+## Phase 3 Task 3 decisions
+
+- **Branch** `pivot/43-daniel-metadata`. The research note is [research/2026-11-19-daniel2022-metadata.md](research/2026-11-19-daniel2022-metadata.md); the script is `benchmarks/inspection/daniel2022_metadata.py`. Nothing was downloaded; no matrix and no contig file was opened.
+- **No sample lacks a TCR file.** GSE188666 is 23 captures, each with one GEX and one TCR GSM (46 = 2 x 23). The "24" of the spec and the dataset note was a miscount (GSM5687816-GSM5687834 is 19 GSMs, not 20). Task 5a's `len(CAPTURES)` is therefore 23, "the number the note records". Controller ruling P6 stands; nothing is missing.
+- **Two record inconsistencies are left to Task 5a's join check,** not resolved from names: (1) GSM6381667 and GSM6381668 have titles (D5 TetPos_rep1, TetNeg_rep2) that disagree with their attached file names (TetNeg_rep2, TetPos_rep1); (2) the D21 spleen TetNeg/TetPos and their `_rep1` pairs (GSM5687810-13 with GSM5687829-32) cross sequencers when paired by title. The note pairs by title and flags both.
+- **Label column found: `ident`** (11 labels in the main file, 7 in the D5 file; the vocabularies differ). Sample column: `orig.ident`. Task 5a sets `LABEL_COLUMN`; Task 6 applies its rules.
+- **The D5 metadata repeats the chronic spleen D8/D21 cells** (43,820 of them, every one also in the main file) with its own labels and embedding. Found with a scratch script outside the repo that read the two files' index, `orig.ident` and `ident` only (`usecols`), beyond the fixed output of the committed script (now `--compare`, see Fix round 1). It bears on Task 6's Days rule ("processed together", "same vocabulary"), which the records answer "not stated" and the vocabularies answer "no".
+- **Records read beyond the GSMs:** the 46 linked BioSample records (efetch, text; their only attributes are source name and cell type) and the GSE188666/GSE188670 series records. They are sample records, not data files. No mouse identifier is in any of them.
+- **The paper was not read:** PMC is behind a CAPTCHA (Task 2) and Europe PMC has no open full text (`fullTextXML` HTTP 500). The note marks mice per capture and pooling as not stated.
+- **The script refuses a withheld column as `--labels` or `--samples`** (exit 2, no values printed), tested; the plan's two tests are as written, plus one for the tag vocabulary.
+- **Freeze kept:** `tcr_cdr3s_aa` and `tcr_cdr3s_nt` were listed by name and dtype only. No clone x state, clone x capture or clone x lineage count was computed.
+- **Fix round 1 (PR #48 review):**
+  - Every withholding rule is pinned by its own parametrised test (`Clonotype`, `ir_foo`, `airr:x`, `raw_clonotype_id`, `my_cdr3`, `Xclon`, `foo_gene`, upper-case `TRB_V` and `CHAIN_x`): a planted value never reaches stdout or stderr and the column is listed by name only. Four mutants (drop the regex, drop `clon`, drop `_gene`, drop `.lower()`) each fail it.
+  - A `--labels` or `--samples` column absent from a file now exits non-zero with "is not a column of <file>" (it was a soft "cross-tab skipped", exit 0); both flags are tested.
+  - The output shape (value-count order, cross-tab header with samples as rows and labels as columns, the "first index values" line) is pinned.
+  - The 43,820-cell overlap and the main-vs-D5 label cross-tab are now reproducible with `--compare --labels ident --samples orig.ident` on the committed script. It reads only the index and those two columns of each file, applies the same withholding guard, and prints cells in both, only in main, only in D5 and the cross-tab of the shared cells. Tested on synthetic files; not run on the real files. The earlier "scratch script" is superseded by it.
+
+## Phase 3 Task 4 decisions
+
+- **Branch** `pivot/44-contig-clones`, from `main` 7d7a212. Tested on synthetic contig tables only; no Daniel file was read.
+- **Barcodes without a qualifying contig are kept.** Output has one row per distinct `(capture, barcode)` in the input, with counts 0 and NaN ids, so Task 5 can tell "seen, unlabelled" from "absent". Rows are sorted by `(capture, barcode)`.
+- **`raw_clonotype_id` per barcode** is the first non-missing, non-`"None"` value among its contigs in input order, prefixed `capture:`. It ignores contig qualification (it is the 10x label, reported only).
+- **`is_cell`** is parsed with `parse_flag` when the column is present; a missing column is not an error.
+- **Missing required columns** raise `BuildError` naming the column names (ours, not data values).
+- **`read_members` errors** state only a count, never member names (untrusted). A wanted name that is a directory or other non-regular member counts as missing. Duplicate wanted members: the last one wins (tar semantics).
+- **`cdr3_nt` regex** is applied with `fullmatch` and is case-sensitive: lowercase bases do not qualify.
+
+Fix round 1:
+- **Zero contig rows raise `BuildError("no contigs")`**, not an empty frame. The plan fixes no empty-input contract, and an empty contig table in a real build means a wrong or truncated file, so the builder should stop rather than label every cell as unseen. Task 5b maps a cell with no contig to NaN itself.
+- **A blank `raw_clonotype_id`** (empty or whitespace-only) is missing, like `"None"` and NaN.
+- **`read_members`:** a file that is not a tar raises `BuildError` naming the path (ours) and the error class. Wanted names never appear in the "other" list; for a repeated wanted name the last member wins, so a later directory hides an earlier file and the name counts as missing.
+- **Pinned by tests:** the TRA/TRB count rules (3 TRA + 1 TRB, repeated TRA), first non-missing raw id, `parse_flag` near misses, lowercase `cdr3_nt` ignored and `ANA` accepted, sorted index and `other`, no member names in errors, and `is_cell` NaN, `"None"` and numpy bools. Each fix test was checked against a re-applied mutant.
+
 ## Open questions for Shreyan
 
 - **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep
@@ -1267,7 +1302,19 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 | `pivot/39-registry-sources` | #43 | merged (squash, 4c05695), phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
 | `pivot/37-cell-cycle-stage` | #42 | merged (squash, 8db251b), phase 2 Task 3 (report-only cell_cycle stage, left out of prep_key) |
 | `pivot/42-cell-cycle-check` | #46 | merged (squash, 570fb5e), phase 2 Task 4 (per-run cell-cycle check, served with run and dataset; final-review doc fixes) |
-| `pivot/45-phase2-close` | open | closes phase 2: Done When recorded on 570fb5e, final state |
+| `pivot/41-sheih-verify` | #45 | merged (squash), phase 3 Task 9, Sheih 2020 TCR tables join to cells (PASS, share 0.99) |
+| `pivot/43-daniel-metadata` | #48 | merged (squash), phase 3 Task 3, Daniel 2022 sample records and metadata inspected without touching clones |
+| `pivot/44-contig-clones` | #47 | merged (squash, 6932b67), phase 3 Task 4, paired and TRB-only clone calling from 10x contigs |
+| `pivot/45-phase2-close` | #49 | merged (squash), closes phase 2: Done When recorded on 570fb5e, final state |
+
+## Phase 3 Task 9 decisions and result
+
+- **Owner's OK (STOP steps):** Shreyan, in chat on 2026-11-19, "Yes, approve all" (relayed by the parent session). It covered the largest post-infusion Sheih clonotype table, the first line of `GSE125881_raw.expMatrix.csv.gz` (streamed, capped at 16 MB) and the Step 5 whole-matrix fetch (not needed). The Cao 2025 fallback was approved only for its metaData, cells_colnames and aggregated contig files, and only if Sheih failed.
+- **Result: PASS.** CLL-2 d12 (GSM3583882), 5,817 of 5,873 distinct table barcodes found among the matrix cell IDs, share 0.99 (rule: at least 0.5). Mapping: `<16-nt core>-1` becomes `<16-nt core>-<aggr ID>`. The Cao fallback was not needed; nothing from GSE207192 was downloaded.
+- **Approval wording:** the owner's approval named "the largest post-infusion clonotype table" for Task 9 and `GSE125881_RAW.tar` for Task 10. The tables exist only inside that 2 MB tar, so Task 9 fetched the tar; the controller ruled this within the approval (ledger P8).
+- **Listing differs from the plan:** the suppl folder lists only `GSE125881_RAW.tar` (2,048,000 bytes, 16 clonotype tables inside, 6.9 KB to 297 KB each) and the matrix (114,573,707 bytes). The tables exist only inside the tar, so the whole 2 MB tar was fetched (SHA-256 `769fa5b71b12b7efe433f51164d4370e0af00c20bebc647029cc4fbd9a943487`) and read in memory, never extracted. It sits at `/private/tmp/claude-501/-Users-shreyan-lumenCell-V2/453b6f74-ae4a-4614-a97a-fbc583e58d2c/scratchpad/sheih-verify/GSE125881_RAW.tar` with the matrix header beside it (`header.txt`, SHA-256 `23955ade...`), not in the dataset cache; the chosen member's SHA-256 is `93f8ef95...` and the largest table is 305,886 bytes (members run 6,905 to 305,886). Full hashes and a negative control (wrong suffix gives 0.00) are in the research note; Tasks 10 and 11 re-verify the tar's hash when they fetch it again.
+- **Matrix is genes x cells** (62,167 cells, aggr IDs 1-16), so no whole-matrix fetch. Tables are one row per clonotype x chain, `;`-separated barcode lists, no productive flag. Details, the GSM table and the licence lines are in [research/2026-11-19-sheih-verification.md](research/2026-11-19-sheih-verification.md); Tasks 10 and 11 read it.
+- **Script:** `benchmarks/inspection/barcode_join.py` prints headers, dtypes, counts, barcodes and the share, never a receptor value.
 
 ## Verify the current state
 
