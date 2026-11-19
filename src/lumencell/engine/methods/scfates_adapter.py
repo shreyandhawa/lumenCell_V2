@@ -35,6 +35,7 @@ from pydantic import Field
 from scipy import sparse
 
 from lumencell.engine.context import LEIDEN_KEY, InferenceContext
+from lumencell.engine.graph import require_connected
 from lumencell.engine.methods.base import Availability, MethodParams, ProgressFn
 from lumencell.engine.schema import (
     Lineage,
@@ -168,6 +169,9 @@ class ScFates:
             if params.use_rep == "diffmap_ms"
             else np.asarray(ctx.artifacts["pca"], dtype=np.float64)[:, :30]
         )
+        # The principal tree cannot span separate parts (scFates ends in an IndexError), and the
+        # default representation is a diffusion map of this graph.
+        require_connected(ctx.artifacts["connectivities"], root.cell_index, "kNN graph")
         view = ad.AnnData(obs=pd.DataFrame(index=pd.Index([str(n) for n in ctx.obs_names])))
         view.obsm["X_rep"] = rep
 

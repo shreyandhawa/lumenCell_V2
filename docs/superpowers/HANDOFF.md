@@ -45,6 +45,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - Branches `pivot/NN-<slug>`, numbered from 21 in execution order.
   - Ledger (git-ignored, this machine only): `.superpowers/sdd/2026-11-17-phase-2-robustness/progress.md`.
     The phase 1 ledger folder no longer exists on this machine; this file and `git log` are the record.
+- **Phase 3 Task 1** (PR `pivot/39-registry-sources`): multi-file sources and a build step; see "Phase 3 Task 1 decisions".
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
 ## Phase 2 rulings (Shreyan, 2026-11-17: "approve both")
@@ -951,7 +952,7 @@ b0e235a; calibration 0a584d5 after 59d8213; verification 37197c8 after the taus 
 - **Follow-up tasks (not phase 2):** (1) the C1-C4 redesign, folding in X-2, X-4 and a
   `STABILITY_METRIC_VERSION` bump; (2) a clear engine error for a disconnected kNN graph (palantir
   "fate probabilities must sum to 1", scFates IndexError on `two_groups`) before phase 3's T-cell data;
-  (3) the phase 3 plan amendment (X-1); (4) Shreyan's ruling on H-1; (5) the minor doc fixes, in Task 4's PR.
+  (3) the phase 3 plan amendment (X-1, done on `pivot/38-phase3-plan-x1`); (4) Shreyan's ruling on H-1; (5) the minor doc fixes, in Task 4's PR.
 
 ## Phase 2 H-1 decision (Shreyan, 2026-11-19)
 
@@ -966,6 +967,110 @@ b0e235a; calibration 0a584d5 after 59d8213; verification 37197c8 after the taus 
 - **Recorded results unchanged.** `real-2026-11-17.json` has no weak row (one not_supported, eight
   provisional): with every tau None and no clones, nothing in C3-C5 can fail. Nothing was re-run. No rule,
   tau or seed changed.
+
+## Disconnected kNN graph error (phase 2 follow-up)
+
+- **Reproduction** (`two_groups`, seed 0, root = `control_root_cell`). The kNN graph splits into two parts at
+  1000 x 500 (470 + 530 cells), 1500 x 1000 (743 + 757) and 3000 x 2000 (1514 + 1486); full prep passes at
+  all three (Task 5's note that PAGA raises at 1000 x 500 no longer held here). scFates `scfates_ppt` raises
+  `IndexError` (in `scf.tl.pseudotime`: the root tip's milestone is missing) at all three sizes. Palantir
+  fails only sometimes: `InvariantError: fate probabilities must sum to 1` at 1000 x 500, but the same call
+  can pass on a second try, and at the other sizes it ran and gave finite pseudotime across both parts (the
+  C1 finding). `paga_dpt` runs at all sizes (cells in the other part get no pseudotime and a
+  `clusters_cut_off` notice where PAGA has the cluster). Palantir's own graph (`DM_Kernel`, knn 30) has the
+  same two parts as the prep graph.
+- **Rule.** `engine/graph.py::require_connected` raises `DisconnectedGraphError` (a `ValueError`) when the
+  graph has more than one part. `Palantir.run` checks the kernel it just built (the graph it uses), after the
+  diffusion maps and before the Markov chain; `ScFates.run` checks the prep kNN graph before fitting the
+  tree. The message gives the number of parts, the cells in the root's part and in the largest other part,
+  and says to subset to one part or raise the neighbours. It names counts, never obs names.
+- **Why these two, not paga_dpt.** Palantir and scFates either crash internally or return pseudotime across
+  parts they cannot order; paga_dpt handles the split by design (unreachable clusters get no pseudotime and
+  a notice), so its behaviour and recorded results are unchanged. Nothing in a threshold, control or result
+  changed.
+- **How it reaches users.** CLI: `run_method` errors that are `ValueError` already become a
+  `BadParameter`. API: the run is a job, so it ends `failed` with the error text
+  (`lumencell.engine.graph.DisconnectedGraphError: ...`), listed under the run's `error`; no 500.
+- **Tests.** `tests/unit/test_disconnected_graph.py` (the helper, both methods on `two_groups` 1000 x 500,
+  paga_dpt still runs) and `tests/api/test_disconnected_graph.py` (job failure and message through the API).
+  Both failed before the change with the internal errors above.
+- **R19 (controller ruling): a stored explicit zero is not an edge.** `require_connected` drops zeros on a
+  copy before counting parts and never changes the caller's matrix. Connectivity is weak (`directed=False`):
+  a one-way chain is one part. The root's part is left out of "largest other part". Pinned by
+  `tests/unit/test_disconnected_graph.py` (zero-join, one-way chain, 4/2/3 blocks, `ValueError` base, a CLI
+  run that exits 2 with the message and no traceback, and Palantir reporting the root's own part).
+- **What a re-run would change.** Re-running the recorded verdict calibration/verification now leaves out
+  every `two_groups` palantir and scfates_ppt run, because they raise `DisconnectedGraphError`. For example
+  palantir seed 5, recorded as a supported control in the 28 of 31, would raise. So the observation that
+  "palantir gives finite pseudotime across two_groups' parts" (C1) describes behaviour before #40. The
+  recorded files stay as they are.
+
+## Phase 3 plan amendment (X-1)
+
+Docs only, 2026-11-19, checked against `main` at 3f5ab9a (`trust/verdict.py`, `engine/tree_support.py`,
+`bench/runner.py` `stability_row`, `trust/stability.py`, `api/models.py`). Phase 3's goals, datasets, gates
+and download steps are unchanged. Each change in
+`docs/superpowers/plans/2026-11-12-phase-3-tcell-data.md` is marked "(amended 2026-11-19, phase 2 X-1)" and
+listed in the plan's "Amendments" block.
+- **Depends on:** the verdict as shipped (verification failed, `VERDICT_VERIFIED = False`; after H-1 only
+  `supported` is capped; all taus None, so C2-C4 are `excluded`; best level without clones is provisional,
+  a failed C5 with clones gives weak).
+- **Interfaces:** `verdict(..., verified=None)` and `ClonalEvidence` named; `clonal_evidence(c, n_lineages)`
+  and `to_api_tree_support(v)`; `cell_cycle_check` returns `models.CellCycleCheck` and matches phase 2
+  Task 4 as specified, but `trust/cell_cycle.py` is not on `main` yet, so "as Task 4 lands".
+- **Preflight:** asserts `clonal_evidence`'s parameters are `['c', 'n_lineages']`; the `cell_cycle` import
+  passes only after Task 4 merges.
+- **Out of scope (C5 in benchmark rows):** a benchmark row is `provisional` or `not_supported`.
+- **Task 8 Step 6:** Daniel levels are never `supported`; the report says why.
+- **Task 12:** the verdict call is `clonal_evidence(agreement, len(result.lineages))`; skipping stability
+  does not change the level; the levels a run can have are listed; `render_markdown` gets a fixed verdict
+  footnote; the slow test that allowed only `supported`/`weak`/`not_supported` now uses
+  `_assert_capped_verdict` (provisional, weak or not_supported, tied to the checks); a fast cap test is
+  added (with a patched-True case so the cap is what excludes `supported`); Step 6 reads the levels.
+- **Task 13:** the text states the failed verification and the cap; `weak` and `not_supported` still lead
+  a paragraph; `provisional` is "not shown to be a tree"; a test checks the statement and that no unit
+  is `supported`.
+
+## Phase 3 Task 1 decisions
+
+- **Phase 3 base:** `main` at 35ac459. Branch `pivot/39-registry-sources`.
+- **Where:** `bench/download.py` (new) holds `Source`, `Build`, `fetch_source`, `build_dataset`, `build_key`,
+  `local_path`, `is_cached`, `fetch`; `bench/datasets.py` re-exports them. `RealDataset` takes
+  `sources`, `licence`, `build`. The three cached datasets keep their paths and recorded SHA-256s.
+- **Licences (read 2026-11-19, hosting pages only, no data file downloaded):**
+  - pancreas: no licence stated on https://github.com/theislab/scvelo_notebooks (no LICENSE file, badge or README
+    mention; the `data/Pancreas` folder page was not opened). Recorded as "no licence stated"; cite Bastidas-Ponce 2019.
+  - bonemarrow: CC BY 4.0 per the figshare API record of article 14465559 (file 27686835,
+    https://figshare.com/articles/dataset/human_cd34_bone_marrow_h5ad/14465559).
+  - gastrulation_erythroid: CC BY 4.0 per the figshare API record of article 14465562 (file 27686871,
+    https://figshare.com/articles/dataset/Gastrulation_erythroid_lineage/14465562).
+  - The article pages themselves returned 403 to the web fetcher; the figshare API (`api.figshare.com/v2/articles/<id>`)
+    metadata gave the licence and confirmed each file id and byte size.
+- **Decisions on small ambiguities:**
+  - `fetch_source` and `build_dataset` use `os.replace` (atomic, overwrites) rather than `Path.rename`.
+  - `build_dataset` checks each source for: downloaded, recorded checksum, matching checksum, in that order.
+    A changed-bytes source at the same size passes `is_downloaded` and is caught by the checksum.
+  - `build_dataset` does not create `datasets_dir()`; sources exist there already when it runs.
+  - CLI: with every source present and only the derived file missing, it builds with no question.
+    Otherwise it lists only the missing sources and the total, asks once, prints each new file's SHA-256, then builds.
+  - `Fetchable` is a Protocol with read-only properties so `RealDataset` (frozen) satisfies it.
+  - The CLI test reuses the `TwoFile` helper from `tests/unit/test_datasets.py`.
+
+### Fix round 1
+
+- **P3 redirects:** downloads use `build_opener(HTTPSHandler(context), _HttpsOnlyRedirect)`; any redirect whose target
+  is not https raises `FetchError`. Host changes are allowed (figshare to S3). Tested on the handler directly.
+- **P4 empty build:** a builder that leaves the temporary output at 0 bytes raises `FetchError("... empty file")`;
+  no derived file is left.
+- **P5 one directory per download:** `fetch_source` makes a fresh `mkdtemp` directory (`.download-*`) under the datasets
+  directory for each source, writes and verifies the file there, `os.replace`s it into place, and always removes the
+  directory. Two downloads never share a directory.
+- **Unverified files:** `fetch_source` still accepts `sha256=None`; the CLI line then adds "unverified until its
+  SHA-256 is recorded in the registry". The total line now also gives bytes.
+- **`is_cached` with the derived file present but a source missing:** the plan says every source downloaded AND the
+  derived file exists, so it is False; implemented as written. `bench fetch` then re-downloads the missing source only.
+- **Network seam:** `download._open(request)` is the one place a connection is made; tests patch it, and a separate test
+  pins the TLS context (`CERT_REQUIRED`, `cafile=certifi.where()`).
 
 ## Open questions for Shreyan
 
@@ -1109,7 +1214,10 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/33-phase2-final-review` | #37 | merged (squash, 35752e9), phase 2 final review recorded; H-1 asked of Shreyan |
 | `pivot/34-weak-under-cap` | #38 | merged (squash, 53d0dc1), phase 2 H-1 (weak served as is under the verdict cap) |
 | `pivot/35-cell-cycle-genes` | #39 | merged (squash), phase 2 Task 2 (Tirosh 2016 lists, verified mouse ortholog table) |
-| `pivot/37-cell-cycle-stage` | (this PR) | phase 2 Task 3 (report-only cell_cycle stage, left out of prep_key) |
+| `pivot/38-phase3-plan-x1` | #41 | merged (squash, 35eadc1), phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
+| `pivot/36-disconnected-knn-error` | #40 | merged (squash), clear error for a disconnected kNN graph (palantir, scfates_ppt) |
+| `pivot/39-registry-sources` | open | phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
+| `pivot/37-cell-cycle-stage` | #42 | merged (squash), phase 2 Task 3 (report-only cell_cycle stage, left out of prep_key) |
 
 ## Verify the current state
 

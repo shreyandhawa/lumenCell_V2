@@ -2,6 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Amendments (2026-11-19, phase 2 final review finding X-1).** Phase 2 shipped a verdict that differs from the one this plan was written against. Every changed line below carries "(amended 2026-11-19, phase 2 X-1)". Goals, datasets, gates and download steps are unchanged.
+1. *Verdict as shipped* (Depends on): the verification FAILED (`VERDICT_VERIFIED = False`, 2026-11-17). Since owner ruling H-1 (2026-11-19) only `supported` is capped at `provisional`; `weak` and `not_supported` are served as is; unmeasured stays `provisional`. All calibrated taus are None, so C2, C3 and C4 are `excluded`.
+2. *Interfaces* (Depends on): `verdict(coverage, tree_likeness, stability, clonal, thresholds, verified=None)` and `clonal_evidence(c, n_lineages)` are named with their real signatures; `cell_cycle_check` is marked "as Task 4 lands".
+3. *Preflight*: the import line checks `clonal_evidence`'s parameters; the `cell_cycle` import passes only once phase 2 Task 4 is merged.
+4. *Out of scope, C5 in benchmark rows*: says what level a benchmark row can have.
+5. *Task 8 Step 6*: the verdict level of a Daniel row is `provisional` or `not_supported`, never `supported`, and the report says why.
+6. *Task 12 interfaces*: the verdict call is `clonal_evidence(agreement, len(result.lineages))`; skipping stability does not change the level; the level a run can have is stated.
+7. *Task 12 `render_markdown`*: a fixed verdict footnote states the failed verification and the cap.
+8. *Task 12 tests*: the slow test that expected `supported`, `weak` or `not_supported` now checks what can happen (`provisional`, `weak`, `not_supported`) against the checks; a fast test is added for the cap.
+9. *Task 12 Step 6*: the statistics review addresses the verdict reading.
+10. *Task 13 rules*: the text states the failed verification and the cap; `weak` and `not_supported` still lead their paragraph; a `provisional` verdict is not written up as support.
+
 **Goal:** Benchmark the three methods on Daniel 2022 (chronic LCMV, paired TCR), with the subset, namespace, clone definition, truth and gates frozen from metadata before any clone is counted or any method runs. Then publish a reproducible Sheih 2020 CAR-T case study, scored against clones, the three nulls, the baseline, stability, the tree verdict and the cell-cycle check.
 
 **Architecture:** The real-dataset registry gains multi-file sources, licences and a build step. The build step turns verified downloads into one derived `.h5ad` in the cache, named by a hash of its inputs. Per-dataset builders under `bench/builders/` join expression to TCR contigs and call clones through one shared, pure function. Declarations merge as data (registry entries plus `thresholds.toml`) before anything is measured. The real runner and a case-study module then call the phase 1 and phase 2 code unchanged.
@@ -13,11 +25,12 @@
 **Depends on:** phases 1 and 2, merged. Phase 3 consumes their interfaces by name and never redefines them:
 - **Phase 1:** see its plan's Interfaces, `docs/superpowers/plans/2026-11-12-phase-1-clonotypes.md`. Phase 3 uses `clonal/` (`encode_clones`, `score_clonal`, `isolation.RECEPTOR_COLUMN`, `receptor_gene_mask`, `scoring_only_columns`), `InferenceContext.from_prep(..., clonal_columns=…)`, `ClonalRow`, `ClonalRowStatus`, `CaseResult.clonal`, `clonal_row`, the `clonal_*` row fields (including the reported-only `clonal_n_cells`, `clonal_effective_clones`, `clonal_eta_m3` and `clonal_p_m3`) and their gate policy in `check_gates`, `trust.constants` (`ORACLE_ETA_MIN`, `ORACLE_P_MAX`), `api.models` (`ClonalSettings`, `ClonalAgreement`), and `trust.clonal` (`check_settings`, `settings_columns`, `agreement_for_run`).
 - **Phase 2:** see its plan's Interfaces, `docs/superpowers/plans/2026-11-12-phase-2-robustness.md`. Task numbers in brackets are phase 2's.
+  - **The verdict as phase 2 shipped it (amended 2026-11-19, phase 2 X-1).** The verdict rule's verification FAILED (`trust.constants.VERDICT_VERIFIED = False`, `VERDICT_VERIFIED_ON = "2026-11-17"`: 28 of 31 control runs were verdicted supported). By owner ruling H-1 (2026-11-19) only a `supported` result is capped at `provisional`, with a reason naming the failed verification and its date. A failed check is served as is: C1 or C2 failing gives `not_supported`, and C3, C4 or C5 failing gives `weak`. An unmeasured or pending check keeps the level `provisional`. Every calibrated tau (`tau_tree`, `tau_lin`, `tau_pt`) is None, so C2, C3 and C4 are `excluded` and the verdict is C1 plus C5. Without clones (C5 `not_configured` or `not_applicable`) the best level is therefore `provisional`; with clones, a failed C5 gives `weak`, and a passed C5 gives `provisional`. `supported` cannot be served until a redesigned rule passes a new verification. Phase 3 does not change any of this.
   - `engine/stability.py`: `run_stability(ds, prep, params, reference, spec, config=StabilityConfig(), progress=…) -> StabilityResult`, `RunSpec(method, params, terminals, label_key, clonal_columns=())` and `StabilityError` [T6].
-  - `engine/tree_support.py`: `tree_likeness(paga_connectivities, paga_tree)`, `coverage(pseudotime)`, `verdict(...)`, `StabilityEvidence` and `calibrated_thresholds()` [T7, T8].
+  - `engine/tree_support.py`: `tree_likeness(paga_connectivities, paga_tree)`, `coverage(pseudotime)`, `verdict(coverage, tree_likeness, stability, clonal, thresholds, verified=None)` (`verified=None` reads `VERDICT_VERIFIED`; never pass it here), `StabilityEvidence`, `ClonalEvidence` and `calibrated_thresholds()` [T7, T8]. (amended 2026-11-19, phase 2 X-1)
   - `trust/stability.py`: `to_api_stability`, and `not_measured(status, note)` [T10].
-  - `trust/verdict.py`: `stability_evidence`, `clonal_evidence` and `to_api_tree_support` [T11].
-  - `trust/cell_cycle.py`: `cell_cycle_check(primary_lineage, names, cc_phase, cc_info) -> CellCycleCheck` [T4], on the prep artifacts `cc_phase` and `cc_info` [T3].
+  - `trust/verdict.py`: `stability_evidence(s)`, `clonal_evidence(c, n_lineages)` and `to_api_tree_support(v)` [T11]. `clonal_evidence` takes the run's own lineage count, because a failed score has no `primary` to read it from. (amended 2026-11-19, phase 2 X-1)
+  - `trust/cell_cycle.py`: `cell_cycle_check(primary_lineage, names, cc_phase, cc_info) -> models.CellCycleCheck` [T4], on the prep artifacts `cc_phase` and `cc_info` [T3]. This matches phase 2 plan Task 4 as specified; as Task 4 lands, the module is not on `main` yet (at 3f5ab9a only the gene lists exist), so check the signature against the merged code before Task 12. (amended 2026-11-19, phase 2 X-1)
   - `bench/runner.py`: `stability_row(data, prep, params, result, label_key, clonal_columns: tuple[str, ...] = ()) -> StabilityRow`, `CaseResult.stability`, and `run_real_case(dataset_id, method, params, stability=False)`. `bench real` runs stability by default [T12].
 
 **Preflight** (orchestrator, once, on `main` before Task 1):
@@ -25,10 +38,10 @@
 - This command prints `ok`:
 
 ```bash
-uv run python -c "from lumencell.clonal.labels import encode_clones; from lumencell.clonal.scores import score_clonal; from lumencell.clonal.isolation import RECEPTOR_COLUMN, receptor_gene_mask, scoring_only_columns; from lumencell.bench.runner import ClonalRow, ClonalRowStatus, CaseResult, clonal_row; from lumencell.bench.synth_clones import add_clones, DEFAULT_LAYER; from lumencell.trust.clonal import agreement_for_run, settings_columns, check_settings; from lumencell.trust.constants import ORACLE_ETA_MIN, ORACLE_P_MAX; from lumencell.api.models import ClonalSettings, ClonalAgreement; from lumencell.engine.stability import run_stability, RunSpec, StabilityError; from lumencell.engine.tree_support import tree_likeness, coverage, verdict, StabilityEvidence, calibrated_thresholds; from lumencell.trust.stability import to_api_stability, not_measured; from lumencell.trust.verdict import stability_evidence, clonal_evidence, to_api_tree_support; from lumencell.trust.cell_cycle import cell_cycle_check; from lumencell.bench.runner import stability_row; import inspect; assert 'clonal_columns' in inspect.signature(stability_row).parameters; print('ok')"
+uv run python -c "from lumencell.clonal.labels import encode_clones; from lumencell.clonal.scores import score_clonal; from lumencell.clonal.isolation import RECEPTOR_COLUMN, receptor_gene_mask, scoring_only_columns; from lumencell.bench.runner import ClonalRow, ClonalRowStatus, CaseResult, clonal_row; from lumencell.bench.synth_clones import add_clones, DEFAULT_LAYER; from lumencell.trust.clonal import agreement_for_run, settings_columns, check_settings; from lumencell.trust.constants import ORACLE_ETA_MIN, ORACLE_P_MAX; from lumencell.api.models import ClonalSettings, ClonalAgreement; from lumencell.engine.stability import run_stability, RunSpec, StabilityError; from lumencell.engine.tree_support import tree_likeness, coverage, verdict, StabilityEvidence, calibrated_thresholds; from lumencell.trust.stability import to_api_stability, not_measured; from lumencell.trust.verdict import stability_evidence, clonal_evidence, to_api_tree_support; from lumencell.trust.cell_cycle import cell_cycle_check; from lumencell.bench.runner import stability_row; import inspect; assert 'clonal_columns' in inspect.signature(stability_row).parameters; assert list(inspect.signature(clonal_evidence).parameters) == ['c', 'n_lineages']; print('ok')"
 ```
 
-If an import fails, stop and report. Phase 3 does not patch phases 1 or 2.
+If an import fails, stop and report. Phase 3 does not patch phases 1 or 2. The `trust.cell_cycle` import passes only once phase 2 Task 4 is merged, and the `clonal_evidence` assertion checks the shipped `(c, n_lineages)` signature (amended 2026-11-19, phase 2 X-1).
 
 ## Global Constraints
 
@@ -133,7 +146,7 @@ These are five failure modes that the spec implies but no spec test exercises, m
   - days and tissues that Task 6's rules exclude
   - the scATAC data (GSE188669, and the 14.7 GB `GSE188670_RAW.tar`)
   - the paper's pseudotime, velocity or ArchR trajectory, and its clonal-bias calls, as truth
-  - C5 in the verdict of benchmark rows: phase 2's `stability_row` sets it to `not_configured`, and the benchmark's clonal score is in oracle-cells mode, which C5 does not read
+  - C5 in the verdict of benchmark rows: phase 2's `stability_row` sets it to `not_configured`, and the benchmark's clonal score is in oracle-cells mode, which C5 does not read. A benchmark row's level is therefore `provisional` (capped, or an unmeasured check) or `not_supported` (C1 or C2 failed), never `weak` or `supported` (amended 2026-11-19, phase 2 X-1)
 - **Sheih 2020:**
   - re-running Cell Ranger on SRA reads if the tables lack barcodes (the fallback is Cao 2025)
   - gates of any kind, because the case study has no truth
@@ -978,7 +991,7 @@ uv run python -c "from lumencell.bench.datasets import DATASETS; from lumencell.
 - [ ] **Step 6: Report.** For each method on Daniel, give:
   - every gated metric with its pass or fail, as it is
   - the clonal status, ratio, p, `delta_base` and oracle η, with the cells, effective clones, and η and p at m = 3
-  - the stability fields and the verdict level that phase 2 adds to each row
+  - the stability fields and the verdict level that phase 2 adds to each row (amended 2026-11-19, phase 2 X-1): the level is `provisional` or `not_supported` and never `supported`, because the verdict's verification failed on 2026-11-17 and `supported` is capped (C2-C4 are also left out, all taus being None). State this beside the levels, and read a `provisional` level as "not shown to be a tree", not as support
   - when the declaration says not assessable: every Daniel row in the results file has `clonal_status == "not_assessable"` and a `clonal_reason` starting `declared `, and after Step 9, `grep -c "clonal: not assessable (declared" README.md` prints 3 (one per method)
   - the reported fields
   - Run `data:validate-data` on the Daniel rows: values are finite wherever the status is `ok`, ranges are plausible, and the reported fields match their declared definitions.
@@ -1195,12 +1208,13 @@ def test_case_study_is_declared() -> None:
     - **Stability:** `to_api_stability(run_stability(ds, prep, params, result, RunSpec(method, result.params, None, None, settings_columns(settings))))`.
       - It passes the reference run's `result.params`, as the worker passes `graph["params"]`. With `{}`, `method_seed` would be `None`, and the Palantir and scFates reseeds would never reseed, which inflates C3 and C4.
       - A `StabilityError` becomes `not_measured("failed", str(exc))`. With `include_stability=False`, the block is `None`.
-    - **Verdict:** `to_api_tree_support(verdict(coverage(result.pseudotime), tree_likeness(prep.artifacts["paga_connectivities"], prep.artifacts["paga_tree"]), <evidence>, clonal_evidence(agreement), calibrated_thresholds()))`. The evidence is `stability_evidence(<stability block>)`, or `StabilityEvidence("pending")` when stability is skipped, which gives `provisional`.
+    - **Verdict:** `to_api_tree_support(verdict(coverage(result.pseudotime), tree_likeness(prep.artifacts["paga_connectivities"], prep.artifacts["paga_tree"]), <evidence>, clonal_evidence(agreement, len(result.lineages)), calibrated_thresholds()))`, with no `verified=` argument, exactly as the worker and `GET` call it (amended 2026-11-19, phase 2 X-1). The evidence is `stability_evidence(<stability block>)`, or `StabilityEvidence("pending")` when stability is skipped. Under the served taus (all None) C3 and C4 are `excluded` either way, so skipping stability does not change the level.
+      - **What level a run can have** (amended 2026-11-19, phase 2 X-1): the verification failed (2026-11-17), so `supported` is capped. C1 or C2 failing gives `not_supported` (C2 is `excluded`, so in practice C1). A failed C5 (clones that do not agree, or a scored status other than `ok`) gives `weak`, and is not capped (H-1). A passed C5, one lineage, or no clones gives `provisional`, with the failed-verification reason in `reasons`. The report never gets `supported`.
     - **Cell cycle:** `cell_cycle_check(result.primary_lineage, [l.name for l in result.lineages], prep.artifacts["cc_phase"], prep.artifacts["cc_info"])`.
     - **Dataset level:** the tree-likeness value (C2) goes into `report["dataset"]["tree_likeness"]`. A NaN (no PAGA edges) is written as `null`, with `report["dataset"]["tree_likeness_note"] = "no PAGA edges, so tree-likeness is undefined and C2 fails"`. Every other float in the report is finite or already `null`, so `allow_nan=False` never raises on a valid run.
     - It returns `{"dataset": {"name", "n_cells", "n_genes", "fingerprint", "tree_likeness", "tree_likeness_note"}, "settings", "root", "methods": {m: {"n_lineages", "coverage", "runtime_seconds", "clonal", "stability", "tree_support", "cell_cycle"}}, "versions": {"lumencell", "scanpy", "numpy"}}`. Model blocks are `model_dump(mode="json")`.
   - `write_report(report: dict[str, Any], path: Path, commit: str) -> None` adds `generated` and `commit`, writes `json.dumps(..., indent=2, sort_keys=True, allow_nan=False)`, and replaces the file atomically.
-  - `render_markdown(report: dict[str, Any]) -> str` takes a `run_units` report. It renders tables only, with no prose, and prints a missing value as `–`.
+  - `render_markdown(report: dict[str, Any]) -> str` takes a `run_units` report. It renders tables only, with no prose, and prints a missing value as `–`. The one exception is a fixed footnote under the per-patient table (amended 2026-11-19, phase 2 X-1), built from `VERDICT_VERIFIED_ON` in `trust.constants`: "Verdict: the rule failed its verification on <date>, so supported is never shown; a passed check is shown as provisional. Tree-likeness and both stability checks are left out (no calibrated threshold), so the verdict reads coverage and clonal support only. A failed check is shown as weak or not_supported." It is printed only when `VERDICT_VERIFIED` is False.
     - First comes a heading `Per patient (primary)`, holding:
       - one row per patient and method: L, verdict, clonal status, cells, clones, effective clones, strata, η against N1, N2 and N3, headline p, η_base, Δη, p_Δη, η and p at m = 3, purity, and purity without the largest clone
       - a coupling table per patient and method: a, b, observed, z and p_adj
@@ -1251,7 +1265,24 @@ def test_unit_files_are_named_by_hash(tmp_path: Path) -> None:
   - `test_a_nan_tree_likeness_is_written_as_null_with_a_reason`: monkeypatch `case_study.tree_likeness` to return NaN. `write_report` succeeds, the file has `"tree_likeness": null`, and `tree_likeness_note` is non-empty.
   - `@pytest.mark.slow test_reseeds_use_new_method_seeds`: with Palantir on the 600-cell data and `include_stability=True`, every reseed replicate's `method_seed` is not `None` and differs from `result.params["seed"]`.
   - `test_the_declaration_is_read_from_the_thresholds_file`: `load_declaration("sheih2020")` has `unit_key == "patient"` and `pooled_diagnostic is True`.
-  - `@pytest.mark.slow test_stability_and_the_verdict_are_reported`: with `include_stability=True`, `m["stability"]` is set and `m["tree_support"]["level"]` is in `{"supported", "weak", "not_supported"}`.
+  - `@pytest.mark.slow test_stability_and_the_verdict_are_reported` (amended 2026-11-19, phase 2 X-1): with `include_stability=True`, `m["stability"]` is set and `_assert_capped_verdict(m)` holds. The level is never asserted to be `supported` (the cap makes it impossible), and the test is not vacuous because the helper ties the level to the checks.
+  - `test_the_verdict_is_capped_and_the_report_says_so` (amended 2026-11-19, phase 2 X-1): on the `report` fixture, `_assert_capped_verdict(report["methods"]["paga_dpt"])` holds, and `render_markdown` of a `run_units` report contains the footnote's `failed its verification` and `VERDICT_VERIFIED_ON`. A second case patches `VERDICT_VERIFIED` to True in both `lumencell.engine.tree_support` (the verdict) and `lumencell.trust.constants` (the footnote, which `render_markdown` reads at call time as `constants.VERDICT_VERIFIED`, not a name imported at module load) and checks the footnote is absent from `render_markdown` and that `supported` is then possible, so the cap, not the test, is what excludes it.
+
+```python
+def _assert_capped_verdict(m: dict[str, Any]) -> None:  # (amended 2026-11-19, phase 2 X-1)
+    ts = m["tree_support"]
+    state = {c["id"]: c["state"] for c in ts["checks"]}
+    # supported is capped while VERDICT_VERIFIED is False
+    assert ts["level"] in {"provisional", "weak", "not_supported"}
+    assert state["C2"] == state["C3"] == state["C4"] == "excluded"  # every calibrated tau is None
+    if ts["level"] == "provisional":  # C1 passed and C5 did not fail: the cap is the reason
+        assert state["C1"] == "pass" and state["C5"] != "fail"
+        assert any("failed its verification" in r for r in ts["reasons"])
+    if ts["level"] == "weak":
+        assert state["C1"] == "pass" and state["C5"] == "fail"
+    if ts["level"] == "not_supported":
+        assert state["C1"] == "fail"
+```
 - [ ] **Step 2: Run** `uv run pytest tests/unit/test_case_study.py -q`. Expected: FAIL.
 - [ ] **Step 3: Implement** the module, `replace_section` and the script.
 - [ ] **Step 4: Run** `uv run pytest tests/unit/test_case_study.py tests/unit/test_real_clonal.py -q` and `uv run pytest -m slow tests/unit/test_case_study.py -q` (Palantir is installed by `make install`). Expected: PASS.
@@ -1267,6 +1298,7 @@ def test_unit_files_are_named_by_hash(tmp_path: Path) -> None:
   - coupling after Benjamini–Hochberg, read as relatedness only
   - stability medians against minimums
   - cell-cycle warnings
+  - the verdict levels (amended 2026-11-19, phase 2 X-1): count them by level; every `provisional` is read as "not shown to be a tree" and every `weak` as a failed clonal check (C5), because the verification failed and C2-C4 are left out; no level is read as support
 
   Record each conclusion in HANDOFF with its action: none, reported in the write-up, or a reporting bug fixed in this PR (then re-run Step 5). Never change the declaration, the seeds or a threshold because of a result.
 - [ ] **Step 7: C1–C4.** Commit message: `Compute the case-study numbers per patient for all three methods, with a pooled diagnostic, and record them`.
@@ -1287,7 +1319,8 @@ def test_unit_files_are_named_by_hash(tmp_path: Path) -> None:
 - The biology comes from Sheih et al. 2020 and is cited by section or figure. Anything not read in the paper is marked `(unverified)`.
 - The clonal scores are credited to the work they derive from: STARTRAC (Zhang et al. 2018), LRT (Xie et al. 2023) and CoSpar (Wang et al. 2022), with the DOIs from spec §10.
 - No sentence claims direction from clones. Sharing says that states are related, never which came first. Pseudotime direction comes from the declared root, and the text says so.
-- If a method's verdict is `weak` or `not_supported`, that leads its paragraph: "doesn't fit a tree" is a finding.
+- If a method's verdict is `weak` or `not_supported`, that leads its paragraph: "doesn't fit a tree" is a finding. Those levels are served as is, not capped (amended 2026-11-19, phase 2 X-1).
+- The text states the failed verification and the cap plainly (amended 2026-11-19, phase 2 X-1): the verdict rule failed its verification on 2026-11-17 (28 of 31 negative-control runs were verdicted supported), so no run is shown as supported; with tree-likeness and both stability checks left out (no calibrated threshold), the verdict reads coverage and clonal support only. A `provisional` verdict is reported as "not shown to be a tree", never as support. Stability is still reported as numbers.
 - A number in prose appears exactly as it does in the generated section.
 - The sections are:
   - Question
@@ -1356,6 +1389,15 @@ def test_the_paper_the_data_and_the_methods_are_cited() -> None:
         ("CoSpar", "10.1038/s41587-022-01209-1"),
     ):  # spec §10, checked
         assert name in text and doi in text, name
+
+
+def test_the_failed_verification_and_the_cap_are_stated() -> None:  # (amended 2026-11-19, phase 2 X-1)
+    text = DOC.read_text(encoding="utf-8")
+    assert "failed its verification" in text and VERDICT_VERIFIED_ON in text  # from lumencell.trust.constants
+    latest = sorted((REPO / "benchmarks/case_studies/results").glob("sheih2020-*.json"))[-1]
+    report = json.loads(latest.read_text(encoding="utf-8"))
+    levels = {m["tree_support"]["level"] for u in report["units"].values() for m in u["methods"].values()}
+    assert "supported" not in levels  # the cap makes it impossible; the text must not claim it
 
 
 def test_per_patient_results_lead_and_pooled_is_only_a_diagnostic() -> None:
