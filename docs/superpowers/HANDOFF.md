@@ -48,6 +48,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - **Phase 3 Task 9** (PR `pivot/41-sheih-verify`): Sheih 2020 passes the join check; see "Phase 3 Task 9 decisions and result".
 - **Phase 3 Task 1** (PR `pivot/39-registry-sources`): multi-file sources and a build step; see "Phase 3 Task 1 decisions".
 - **Phase 3 Task 2** (PR `pivot/40-daniel-fetch`): the nine Daniel 2022 GEO files, sizes and SHA-256; see "Phase 3 Task 2 decisions and result".
+- **Phase 3 Task 4** (PR `pivot/44-contig-clones`): pure clone calling from 10x contigs in `bench/builders/common.py`; see "Phase 3 Task 4 decisions".
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
 ## Phase 2 rulings (Shreyan, 2026-11-17: "approve both")
@@ -1131,6 +1132,22 @@ listed in the plan's "Amendments" block.
   - GSM6381669_Spleen_Chronic_D5_CD8_TetPos_rep2_tcr_filtered_contig_annotations.csv.gz
 - `gzip -t` passed on all eight .gz files. The plan's tests pin no count of 24, so no test changed.
 - **Licence:** the GEO disclaimer page and PMC11225711 both returned a reCAPTCHA page (not bypassed); LICENCE records both as UNVERIFIED.
+
+## Phase 3 Task 4 decisions
+
+- **Branch** `pivot/44-contig-clones`, from `main` 7d7a212. Tested on synthetic contig tables only; no Daniel file was read.
+- **Barcodes without a qualifying contig are kept.** Output has one row per distinct `(capture, barcode)` in the input, with counts 0 and NaN ids, so Task 5 can tell "seen, unlabelled" from "absent". Rows are sorted by `(capture, barcode)`.
+- **`raw_clonotype_id` per barcode** is the first non-missing, non-`"None"` value among its contigs in input order, prefixed `capture:`. It ignores contig qualification (it is the 10x label, reported only).
+- **`is_cell`** is parsed with `parse_flag` when the column is present; a missing column is not an error.
+- **Missing required columns** raise `BuildError` naming the column names (ours, not data values).
+- **`read_members` errors** state only a count, never member names (untrusted). A wanted name that is a directory or other non-regular member counts as missing. Duplicate wanted members: the last one wins (tar semantics).
+- **`cdr3_nt` regex** is applied with `fullmatch` and is case-sensitive: lowercase bases do not qualify.
+
+Fix round 1:
+- **Zero contig rows raise `BuildError("no contigs")`**, not an empty frame. The plan fixes no empty-input contract, and an empty contig table in a real build means a wrong or truncated file, so the builder should stop rather than label every cell as unseen. Task 5b maps a cell with no contig to NaN itself.
+- **A blank `raw_clonotype_id`** (empty or whitespace-only) is missing, like `"None"` and NaN.
+- **`read_members`:** a file that is not a tar raises `BuildError` naming the path (ours) and the error class. Wanted names never appear in the "other" list; for a repeated wanted name the last member wins, so a later directory hides an earlier file and the name counts as missing.
+- **Pinned by tests:** the TRA/TRB count rules (3 TRA + 1 TRB, repeated TRA), first non-missing raw id, `parse_flag` near misses, lowercase `cdr3_nt` ignored and `ANA` accepted, sorted index and `other`, no member names in errors, and `is_cell` NaN, `"None"` and numpy bools. Each fix test was checked against a re-applied mutant.
 
 ## Open questions for Shreyan
 
