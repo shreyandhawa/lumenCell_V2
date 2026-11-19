@@ -945,6 +945,43 @@ b0e235a; calibration 0a584d5 after 59d8213; verification 37197c8 after the taus 
   provisional): with every tau None and no clones, nothing in C3-C5 can fail. Nothing was re-run. No rule,
   tau or seed changed.
 
+## Disconnected kNN graph error (phase 2 follow-up)
+
+- **Reproduction** (`two_groups`, seed 0, root = `control_root_cell`). The kNN graph splits into two parts at
+  1000 x 500 (470 + 530 cells), 1500 x 1000 (743 + 757) and 3000 x 2000 (1514 + 1486); full prep passes at
+  all three (Task 5's note that PAGA raises at 1000 x 500 no longer held here). scFates `scfates_ppt` raises
+  `IndexError` (in `scf.tl.pseudotime`: the root tip's milestone is missing) at all three sizes. Palantir
+  fails only sometimes: `InvariantError: fate probabilities must sum to 1` at 1000 x 500, but the same call
+  can pass on a second try, and at the other sizes it ran and gave finite pseudotime across both parts (the
+  C1 finding). `paga_dpt` runs at all sizes (cells in the other part get no pseudotime and a
+  `clusters_cut_off` notice where PAGA has the cluster). Palantir's own graph (`DM_Kernel`, knn 30) has the
+  same two parts as the prep graph.
+- **Rule.** `engine/graph.py::require_connected` raises `DisconnectedGraphError` (a `ValueError`) when the
+  graph has more than one part. `Palantir.run` checks the kernel it just built (the graph it uses), after the
+  diffusion maps and before the Markov chain; `ScFates.run` checks the prep kNN graph before fitting the
+  tree. The message gives the number of parts, the cells in the root's part and in the largest other part,
+  and says to subset to one part or raise the neighbours. It names counts, never obs names.
+- **Why these two, not paga_dpt.** Palantir and scFates either crash internally or return pseudotime across
+  parts they cannot order; paga_dpt handles the split by design (unreachable clusters get no pseudotime and
+  a notice), so its behaviour and recorded results are unchanged. Nothing in a threshold, control or result
+  changed.
+- **How it reaches users.** CLI: `run_method` errors that are `ValueError` already become a
+  `BadParameter`. API: the run is a job, so it ends `failed` with the error text
+  (`lumencell.engine.graph.DisconnectedGraphError: ...`), listed under the run's `error`; no 500.
+- **Tests.** `tests/unit/test_disconnected_graph.py` (the helper, both methods on `two_groups` 1000 x 500,
+  paga_dpt still runs) and `tests/api/test_disconnected_graph.py` (job failure and message through the API).
+  Both failed before the change with the internal errors above.
+- **R19 (controller ruling): a stored explicit zero is not an edge.** `require_connected` drops zeros on a
+  copy before counting parts and never changes the caller's matrix. Connectivity is weak (`directed=False`):
+  a one-way chain is one part. The root's part is left out of "largest other part". Pinned by
+  `tests/unit/test_disconnected_graph.py` (zero-join, one-way chain, 4/2/3 blocks, `ValueError` base, a CLI
+  run that exits 2 with the message and no traceback, and Palantir reporting the root's own part).
+- **What a re-run would change.** Re-running the recorded verdict calibration/verification now leaves out
+  every `two_groups` palantir and scfates_ppt run, because they raise `DisconnectedGraphError`. For example
+  palantir seed 5, recorded as a supported control in the 28 of 31, would raise. So the observation that
+  "palantir gives finite pseudotime across two_groups' parts" (C1) describes behaviour before #40. The
+  recorded files stay as they are.
+
 ## Phase 3 plan amendment (X-1)
 
 Docs only, 2026-11-19, checked against `main` at 3f5ab9a (`trust/verdict.py`, `engine/tree_support.py`,
@@ -1113,7 +1150,8 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/33-phase2-final-review` | #37 | merged (squash, 35752e9), phase 2 final review recorded; H-1 asked of Shreyan |
 | `pivot/34-weak-under-cap` | #38 | merged (squash, 53d0dc1), phase 2 H-1 (weak served as is under the verdict cap) |
 | `pivot/35-cell-cycle-genes` | #39 | merged (squash), phase 2 Task 2 (Tirosh 2016 lists, verified mouse ortholog table) |
-| `pivot/38-phase3-plan-x1` | (this PR) | phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
+| `pivot/38-phase3-plan-x1` | #41 | merged (squash, 35eadc1), phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
+| `pivot/36-disconnected-knn-error` | #40 | merged (squash), clear error for a disconnected kNN graph (palantir, scfates_ppt) |
 
 ## Verify the current state
 
