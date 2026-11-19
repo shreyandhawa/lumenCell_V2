@@ -276,3 +276,11 @@ def test_report_adds_footnote_only_with_verdicts(monkeypatch: pytest.MonkeyPatch
     assert "The verdict is" not in _render(monkeypatch, _real_data("not_measured"))
     assert "The verdict is" not in _render(monkeypatch, _real_data(""))
     assert "The verdict is" in _render(monkeypatch, _real_data("weak"))
+
+
+def test_the_report_footnote_says_only_supported_is_capped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owner ruling H-1: the footnote is the one user-facing statement of the cap."""
+    text = _render(monkeypatch, _real_data("provisional"))
+    assert "A supported verdict is capped at provisional" in text
+    assert "A weak or not_supported verdict is a real failure and is not capped" in text
+    assert "supported or weak" not in text

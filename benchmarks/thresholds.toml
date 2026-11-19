@@ -248,7 +248,7 @@ non_discriminating = ["C2", "C3", "C4"]
 [tree_support.verified]
 # The recorded outcome of [tree_support.verification], written after the run. passed = false: 28 of
 # 31 control runs were verdicted supported (max 0), so every served verdict that would read
-# supported or weak is capped at provisional, with a note naming this verification and its date.
+# supported is capped at provisional (weak is served as is, H-1 2026-11-19), with a note naming this verification and its date.
 passed = false
 date = "2026-11-17"
 source = "benchmarks/results/verdict-verification-2026-11-17.json"
@@ -327,7 +327,8 @@ max_drop = 0.03
 #             calibration and verification rule, and four negative controls outside the gated
 #             matrix. All are set before any of them was measured. Nothing existing changed.
 #             Also declared: [tree_support.verification] on_failure = "provisional", so a failed
-#             verification caps every served verdict at provisional, with a note naming it.
+#             verification caps every served verdict at provisional, with a note naming it
+#             (amended 2026-11-19 by owner ruling H-1: only supported is capped; see below).
 #
 # 2026-11-17  N2 amendment declared (N2a), before any measurement: a lineage-onset split of N2's
 #             strata (definition, reasons and adoption rule under [clonal]) and its calibration
@@ -363,12 +364,15 @@ max_drop = 0.03
 #             seeds unchanged. Per [tree_support.verification] on_failure, [tree_support.verified]
 #             passed = false and the served verdict is capped at provisional (VERDICT_VERIFIED).
 #
+# 2026-11-19  Owner ruling H-1: while the verification has failed, only supported is capped at
+#             provisional; weak is served as is. No rule, tau or seed changed.
+#
 # 2026-11-17  Stability and the tree verdict reported on the real benchmarks (not gated),
 #             benchmarks/results/real-2026-11-17.json (bench real, 9 of 9 rows, stability ok on all).
 #             Every gated metric and n_clusters is identical to real-2026-11-13.json. C2 is the
-#             default-resolution PAGA tree-likeness. A supported or weak verdict is capped
+#             default-resolution PAGA tree-likeness. A supported verdict is capped
 #             at provisional because its verification failed on fresh seeds (2026-11-17); a
-#             not_supported row is a real failure and is not capped. C2-C4 are non-discriminating,
+#             not_supported row is a real failure and is not capped (H-1, 2026-11-19: nor is weak). C2-C4 are non-discriminating,
 #             so these levels are not evidence of a tree. C3 / C4 / tree-likeness / level:
 #             bonemarrow paga_dpt 0.200 / 0.998 / 0.703 / not_supported (coverage 0.914);
 #             bonemarrow palantir 0.200 / 0.996 / 0.703 / provisional;

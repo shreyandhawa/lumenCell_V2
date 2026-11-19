@@ -24,8 +24,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   adopted: the runtime N2 uses the lineage-onset split and the clonal metric_version is 2 (see
   "Phase 2 N2a decisions and result"). Task 8 found C2, C3 and C4 non-discriminating, so no tau is
   set. Task 9 verified the verdict on fresh seeds 3-5 and FAILED (28 of 31 control runs supported,
-  max 0), so every served verdict is capped at provisional; Shreyan chose to accept a
-  provisional-only verdict. Task 11 serves stability and the capped verdict without the cell-cycle
+  max 0), so a supported verdict is capped at provisional (a failed check is served weak,
+  H-1, 2026-11-19); Shreyan chose to accept a provisional-only supported level. Task 11 serves stability and the capped verdict without the cell-cycle
   check; Task 12 reported both on the three real datasets (every gated metric identical to phase 1).
   - Task 13 (#36): three Low findings fixed (S5, S6, S9), three recorded; see "Security review
     (phase 2)" and "Done When (phase 2)" (three Done When commands fail, as recorded: the cell-cycle
@@ -86,7 +86,7 @@ One Sonnet scan checked the plan against `main`; its full table is in the ledger
   - Cost: an Opus implementer, a 40-minute run, and one `make bench-synth` to confirm nothing
     regresses.
 - **F14, verification failure is planned for now.** If Task 9 fails, the verdict machinery still
-  ships (Tasks 10-12 go ahead), but every served verdict is capped at `provisional`, with a note
+  ships (Tasks 10-12 go ahead), but every served verdict is capped at `provisional` (amended 2026-11-19 by H-1: only `supported` is capped), with a note
   that the thresholds failed verification on fresh seeds. Task 1 declares this as
   `[tree_support.verification] on_failure = "provisional"`; Task 9 records the outcome as a constant
   (`VERDICT_VERIFIED`), mirrored from the TOML. No rule, seed or control is changed to rescue a
@@ -221,8 +221,9 @@ on that clean tree, 2026-11-17, 6.2 min, once: `benchmarks/results/verdict-verif
   that, so the verdict cannot tell a tree from these controls: supported means "connected", not "a tree".
   Nothing was tuned or re-run; rule, taus (all None), seeds and controls unchanged.
 - **F14 applied.** `[tree_support.verified]` (passed = false, date, source) mirrors into
-  `VERDICT_VERIFIED = False` and `VERDICT_VERIFIED_ON`. In `_level`, while it is False, supported and weak
-  become provisional with a reason naming the failed verification and its date; not_supported is kept.
+  `VERDICT_VERIFIED = False` and `VERDICT_VERIFIED_ON`. In `_level`, while it is False, supported
+  becomes provisional with a reason naming the failed verification and its date; not_supported is kept.
+  (Amended 2026-11-19 by H-1: weak is kept too, see "Phase 2 H-1 decision".)
   `verdict(..., verified=None)` reads the constant; `verify` passes `verified=True` so the rule is measured,
   not the cap. The share of matrix runs supported is reported, not gated. The existing verdict tests run
   with the constant patched True; the capped state has its own tests.
@@ -303,9 +304,10 @@ Fix round 1 (PR #34 review):
   all 9 dataset/method rows (NaN equals NaN). `runtime_seconds` stops before stability (F17) and differs from 2026-11-13 because of a warm cache and
   machine load (not gated). C3, C4, tree-likeness and levels are unchanged from the first run.
 - **Verdict cap (F14, ruling (a)).** `verdict(...)` is called without `verified=` and with
-  `calibrated_thresholds()` (all taus None), so a supported or weak verdict is capped at provisional
+  `calibrated_thresholds()` (all taus None), so a supported verdict is capped at provisional
   because the verification failed on fresh seeds (2026-11-17), and C2-C4 are non-discriminating. A
-  not_supported row is a real failure (bonemarrow paga_dpt: coverage 0.914 < 0.95) and is not capped.
+  not_supported row is a real failure (bonemarrow paga_dpt: coverage 0.914 < 0.95) and is not capped
+  (nor is weak since H-1; no recorded row is weak).
   The changelog and README say so.
   C3/C4 are still numbers. C2 is `tree_likeness` of the prep's PAGA at the default resolution; C5 is
   `ClonalEvidence("not_configured", n_lineages)`.
@@ -862,11 +864,11 @@ One Opus reviewer read the spec, plan, every phase 2 section and recorded file a
 (outside the repo). No blocker. Declare-before-measure holds for every recorded file (N2a 2b15c77 after
 b0e235a; calibration 0a584d5 after 59d8213; verification 37197c8 after the taus in 0d0608a; real run
 99c3786 after both). The fast suite on 1167b2d passes (1009).
-- **H-1, for Shreyan (see Open questions).** `engine/tree_support.py` `_level` caps `weak` at `provisional`
-  as well as `supported`. A failed C5 (clones that do not agree, p 0.5) or a scored `single_lineage` is then
+- **H-1, closed 2026-11-19 (see "Phase 2 H-1 decision").** `engine/tree_support.py` `_level` capped `weak` at
+  `provisional` as well as `supported`. A failed C5 (clones that do not agree, p 0.5) or a scored `single_lineage` is then
   served as provisional. C5's rule passed its own calibration (N2a); the verification failed because the
   rule is too lenient, which says nothing against a weak verdict. The reviewer proposes keeping `weak`
-  when a check fails, as `not_supported` is kept. Not changed: it amends F14 and ruling (a).
+  when a check fails, as `not_supported` is kept. Amended F14 and ruling (a), so it went to Shreyan, who ruled to keep `weak`.
 - **X-1, phase 3 plan amendment needed.** It calls `clonal_evidence(agreement)` (now `(c, n_lineages)`),
   and its slow test and case-study text expect supported/weak levels the cap makes impossible.
 - **X-2, X-4.** `verify` passes no `n_replicates`/`n_failed` and `RunRecord` does not record replicate
@@ -891,11 +893,25 @@ b0e235a; calibration 0a584d5 after 59d8213; verification 37197c8 after the taus 
   "fate probabilities must sum to 1", scFates IndexError on `two_groups`) before phase 3's T-cell data;
   (3) the phase 3 plan amendment (X-1); (4) Shreyan's ruling on H-1; (5) the minor doc fixes, in Task 4's PR.
 
+## Phase 2 H-1 decision (Shreyan, 2026-11-19)
+
+- **Ruling.** Keep `weak`. While `VERDICT_VERIFIED = False`, only a supported verdict is capped at
+  provisional (with the dated failed-verification note). A run whose check fails is served `weak` with its
+  failing checks' reasons and no cap note, as `not_supported` already was. Unmeasured or pending runs stay
+  `provisional`. It amends ruling (a) of 2026-11-17 and F14.
+- **Changed.** `_level` in `engine/tree_support.py`; the unit test that pinned weak -> provisional now
+  checks weak is kept, and a new test serves a failed C5 (p 0.5) as weak under the unverified constant;
+  `TreeSupport` and constant comments; the bench report footnote and README; a dated line in
+  `benchmarks/thresholds.toml`. PR `pivot/34-weak-under-cap`.
+- **Recorded results unchanged.** `real-2026-11-17.json` has no weak row (one not_supported, eight
+  provisional): with every tau None and no clones, nothing in C3-C5 can fail. Nothing was re-run. No rule,
+  tau or seed changed.
+
 ## Open questions for Shreyan
 
-- **H-1 (2026-11-17, phase 2 final review): should a failed check keep `weak` under the cap?** Today a
-  run whose clones disagree (C5 fails) is served `provisional`, like an unmeasured one. Keeping `weak` (and
-  capping only `supported`) would state a real failure plainly; it amends F14 / ruling (a), so it is yours.
+- **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep
+  `weak`; while the verification has failed only `supported` is capped at `provisional`. See "Phase 2 H-1
+  decision".
 
 - **depth_only/N2 (closed 2026-11-17).** The failed check stays recorded as failed; Shreyan
   approved a pre-declared N2 amendment for phase 2 (see "Phase 2 rulings").
@@ -988,7 +1004,7 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `grep -c '^REGRESSION' "$TMPDIR/synth.log"` | `0`: PASS |
 | `uv run pytest tests/unit/test_prep.py tests/unit/test_prep_cache.py tests/unit/test_cell_cycle_genes.py tests/api/test_cache_healing.py -q; echo $?` | `ERROR: file or directory not found: tests/unit/test_cell_cycle_genes.py`, `no tests ran`, exit `4`: **FAILED**. Task 3 creates that file and is not merged. It passes once Tasks 2-4 merge (Task 3 also adds the pinned `prep_key` test). |
 | `uv run pytest tests/api/test_robustness_trust.py -q; echo $?` | `15 passed`, exit `0`: PASS |
-| the calibration/verification `python -c` command | `benchmarks/results/verdict-calibration-2026-11-17.json True benchmarks/results/verdict-verification-2026-11-17.json False`: **FAILED** on the second `True`. The verification of the verdict on fresh seeds 3-5 failed (28 of 31 control runs supported, max 0; Task 9, ruling F14/(a)). Shreyan accepted a provisional-only verdict, so every served level is capped. It would pass only with a rule that passes verification on seeds not used before; none is planned. |
+| the calibration/verification `python -c` command | `benchmarks/results/verdict-calibration-2026-11-17.json True benchmarks/results/verdict-verification-2026-11-17.json False`: **FAILED** on the second `True`. The verification of the verdict on fresh seeds 3-5 failed (28 of 31 control runs supported, max 0; Task 9, ruling F14/(a)). Shreyan accepted a provisional-only verdict, so every supported level is capped (weak is served as is since H-1). It would pass only with a rule that passes verification on seeds not used before; none is planned. |
 | `grep -c '^\[tree_support.calibrated\]' benchmarks/thresholds.toml` | `1`: PASS |
 | `uv run pytest tests/unit/test_trust_constants.py tests/unit/test_verdict_calibration.py -q` | `1 failed, 35 passed in 756.66s`, exit `1`: **FAILED**. The one failure is `test_verification_on_fresh_seeds`, which asserts `ver.passed` and re-measures the verification (12 minutes); it fails for the same reason as the line above. `test_the_recorded_verification_follows_from_its_records` passes (the recorded `passed=False` matches its records). Passes only with the same verified rule. |
 | `git merge-base --is-ancestor $(git log --format=%h -1 --grep='Declare the T-cell robustness') $(git log --format=%h --reverse -- 'benchmarks/results/verdict-*.json' | head -1); echo $?` | `0` (c8a50d9 is an ancestor of 0d0608a): PASS |
@@ -1031,6 +1047,7 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/31-bench-real-stability` | #35 | merged (merge commit, 4961426, keeps the measured commit 99c3786), phase 2 Task 12 |
 | `pivot/32-phase2-security` | #36 | merged (squash, 1167b2d), phase 2 Task 13 (security review; Done When recorded) |
 | `pivot/33-phase2-final-review` | this PR | phase 2 final review recorded; H-1 asked of Shreyan |
+| `pivot/34-weak-under-cap` | (this PR) | open, phase 2 H-1 (weak served as is under the verdict cap) |
 
 ## Verify the current state
 

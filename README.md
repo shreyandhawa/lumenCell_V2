@@ -78,7 +78,7 @@ The clonal gate is not a branch gate: a method that merges two true lineages can
 | Palantir | Spearman 0.73, branch 0.94, terminal 0.99 (pass), verdict provisional | Spearman 0.72, branch –, terminal 0.58 (fail: terminal_share), verdict provisional | Spearman 0.94, branch 0.84, terminal 0.94 (pass), verdict provisional |
 | scFates | Spearman 0.67, branch 0.79, terminal 0.95 (fail: pt_spearman_lineage), verdict provisional | Spearman 0.80, branch –, terminal 0.61 (fail: terminal_share), verdict provisional | Spearman 0.94, branch 0.75, terminal 0.80 (fail: branch_accuracy), verdict provisional |
 
-A supported or weak verdict is capped at provisional, because the verdict's verification failed on fresh seeds (2026-11-17): the tree-likeness and stability checks do not separate trees from loops, sheets or blobs. A not_supported verdict is a real failure and is not capped. The verdict is reported, not gated, and is not evidence of a tree.
+A supported verdict is capped at provisional, because the verdict's verification failed on fresh seeds (2026-11-17): the tree-likeness and stability checks do not separate trees from loops, sheets or blobs. A weak or not_supported verdict is a real failure and is not capped. The verdict is reported, not gated, and is not evidence of a tree.
 <!-- bench:end -->
 
 ## Development

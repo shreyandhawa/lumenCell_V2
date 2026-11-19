@@ -311,7 +311,8 @@ class SupportCheck(Model):
 
 class TreeSupport(Model):
     """How far the run's tree is supported. While the verdict rule has not passed its verification
-    on fresh seeds, no run is shown above provisional, and ``reasons`` says so."""
+    on fresh seeds, a supported run is shown as provisional, and ``reasons`` says so.
+    A failed check is shown as weak."""
 
     level: Literal["supported", "weak", "not_supported", "provisional"]
     checks: list[SupportCheck]
