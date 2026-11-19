@@ -929,7 +929,7 @@ b0e235a; calibration 0a584d5 after 59d8213; verification 37197c8 after the taus 
 - **Follow-up tasks (not phase 2):** (1) the C1-C4 redesign, folding in X-2, X-4 and a
   `STABILITY_METRIC_VERSION` bump; (2) a clear engine error for a disconnected kNN graph (palantir
   "fate probabilities must sum to 1", scFates IndexError on `two_groups`) before phase 3's T-cell data;
-  (3) the phase 3 plan amendment (X-1); (4) Shreyan's ruling on H-1; (5) the minor doc fixes, in Task 4's PR.
+  (3) the phase 3 plan amendment (X-1, done on `pivot/38-phase3-plan-x1`); (4) Shreyan's ruling on H-1; (5) the minor doc fixes, in Task 4's PR.
 
 ## Phase 2 H-1 decision (Shreyan, 2026-11-19)
 
@@ -944,6 +944,32 @@ b0e235a; calibration 0a584d5 after 59d8213; verification 37197c8 after the taus 
 - **Recorded results unchanged.** `real-2026-11-17.json` has no weak row (one not_supported, eight
   provisional): with every tau None and no clones, nothing in C3-C5 can fail. Nothing was re-run. No rule,
   tau or seed changed.
+
+## Phase 3 plan amendment (X-1)
+
+Docs only, 2026-11-19, checked against `main` at 3f5ab9a (`trust/verdict.py`, `engine/tree_support.py`,
+`bench/runner.py` `stability_row`, `trust/stability.py`, `api/models.py`). Phase 3's goals, datasets, gates
+and download steps are unchanged. Each change in
+`docs/superpowers/plans/2026-11-12-phase-3-tcell-data.md` is marked "(amended 2026-11-19, phase 2 X-1)" and
+listed in the plan's "Amendments" block.
+- **Depends on:** the verdict as shipped (verification failed, `VERDICT_VERIFIED = False`; after H-1 only
+  `supported` is capped; all taus None, so C2-C4 are `excluded`; best level without clones is provisional,
+  a failed C5 with clones gives weak).
+- **Interfaces:** `verdict(..., verified=None)` and `ClonalEvidence` named; `clonal_evidence(c, n_lineages)`
+  and `to_api_tree_support(v)`; `cell_cycle_check` returns `models.CellCycleCheck` and matches phase 2
+  Task 4 as specified, but `trust/cell_cycle.py` is not on `main` yet, so "as Task 4 lands".
+- **Preflight:** asserts `clonal_evidence`'s parameters are `['c', 'n_lineages']`; the `cell_cycle` import
+  passes only after Task 4 merges.
+- **Out of scope (C5 in benchmark rows):** a benchmark row is `provisional` or `not_supported`.
+- **Task 8 Step 6:** Daniel levels are never `supported`; the report says why.
+- **Task 12:** the verdict call is `clonal_evidence(agreement, len(result.lineages))`; skipping stability
+  does not change the level; the levels a run can have are listed; `render_markdown` gets a fixed verdict
+  footnote; the slow test that allowed only `supported`/`weak`/`not_supported` now uses
+  `_assert_capped_verdict` (provisional, weak or not_supported, tied to the checks); a fast cap test is
+  added (with a patched-True case so the cap is what excludes `supported`); Step 6 reads the levels.
+- **Task 13:** the text states the failed verification and the cap; `weak` and `not_supported` still lead
+  a paragraph; `provisional` is "not shown to be a tree"; a test checks the statement and that no unit
+  is `supported`.
 
 ## Open questions for Shreyan
 
@@ -1087,6 +1113,7 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/33-phase2-final-review` | #37 | merged (squash, 35752e9), phase 2 final review recorded; H-1 asked of Shreyan |
 | `pivot/34-weak-under-cap` | #38 | merged (squash, 53d0dc1), phase 2 H-1 (weak served as is under the verdict cap) |
 | `pivot/35-cell-cycle-genes` | #39 | merged (squash), phase 2 Task 2 (Tirosh 2016 lists, verified mouse ortholog table) |
+| `pivot/38-phase3-plan-x1` | (this PR) | phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
 
 ## Verify the current state
 
