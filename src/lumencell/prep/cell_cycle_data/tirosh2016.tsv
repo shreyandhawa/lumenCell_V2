@@ -1,0 +1,104 @@
+# Tirosh et al. 2016, Science 352:189-196, doi:10.1126/science.aad0501. Table S5 "Cell cycle gene-sets", Sheet1, columns "G1/S" (A8:A50) and "G2/M" (B8:B62), leading spaces stripped.
+# source: PMC author manuscript NIHMS791837, supplement 5 (NIHMS791837-supplement-5.xlsx), downloaded by hand by the owner on 2026-11-19; sha256 3b51070702338214bf8bb824a397dd1e04e8a57e2abefc442e15c1182922bb93
+# cross-check: scanpy/Seurat copy regev_lab_cell_cycle_genes.txt, extracted 2026-11-17 from https://www.dropbox.com/s/3dby3bjsaf5arrw/cell_cycle_vignette_files.zip?dl=1 (zip sha256 6557fe2a2761d1550d41edf61b26c6d5ec9b42b4933d56c3161164a595f145ab); file sha256 eb666ba4f7b7a8b2845e1586d42687feaf813e9fa1fdadba89dacd4093411ac0
+# renames: hgnc_complete_set.txt (https://storage.googleapis.com/public-download-files/hgnc/tsv/tsv/hgnc_complete_set.txt, retrieved 2026-11-19T19:23Z, sha256 6df77ac3cbaeb86a6dce5e17d851ebb27b6b3cdcd2471a211a3d8464f00c54c4)
+# verified: the paper has 43 G1/S cells (43 unique) and 55 G2/M cells (54 unique): HJURP is entered twice (cells B35 and B36), a duplicate cell and not a different count, so it is listed once. The S list matches the scanpy copy in content and order. The G2M list matches it in content, and in order once the duplicate is dropped. 43 S and 54 G2M, no gene in both.
+# verified: renames since 2016, found as the Approved HGNC entry whose prev_symbol holds the published symbol (alias_symbol was not needed): MLF1IP -> CENPU (S), FAM64A -> PIMREG (G2M), HN1 -> JPT1 (G2M). Every other published symbol is a current approved symbol. No published symbol maps to more than one current gene or to none.
+phase	symbol	current_symbol
+S	MCM5	
+S	PCNA	
+S	TYMS	
+S	FEN1	
+S	MCM2	
+S	MCM4	
+S	RRM1	
+S	UNG	
+S	GINS2	
+S	MCM6	
+S	CDCA7	
+S	DTL	
+S	PRIM1	
+S	UHRF1	
+S	MLF1IP	CENPU
+S	HELLS	
+S	RFC2	
+S	RPA2	
+S	NASP	
+S	RAD51AP1	
+S	GMNN	
+S	WDR76	
+S	SLBP	
+S	CCNE2	
+S	UBR7	
+S	POLD3	
+S	MSH2	
+S	ATAD2	
+S	RAD51	
+S	RRM2	
+S	CDC45	
+S	CDC6	
+S	EXO1	
+S	TIPIN	
+S	DSCC1	
+S	BLM	
+S	CASP8AP2	
+S	USP1	
+S	CLSPN	
+S	POLA1	
+S	CHAF1B	
+S	BRIP1	
+S	E2F8	
+G2M	HMGB2	
+G2M	CDK1	
+G2M	NUSAP1	
+G2M	UBE2C	
+G2M	BIRC5	
+G2M	TPX2	
+G2M	TOP2A	
+G2M	NDC80	
+G2M	CKS2	
+G2M	NUF2	
+G2M	CKS1B	
+G2M	MKI67	
+G2M	TMPO	
+G2M	CENPF	
+G2M	TACC3	
+G2M	FAM64A	PIMREG
+G2M	SMC4	
+G2M	CCNB2	
+G2M	CKAP2L	
+G2M	CKAP2	
+G2M	AURKB	
+G2M	BUB1	
+G2M	KIF11	
+G2M	ANP32E	
+G2M	TUBB4B	
+G2M	GTSE1	
+G2M	KIF20B	
+G2M	HJURP	
+G2M	CDCA3	
+G2M	HN1	JPT1
+G2M	CDC20	
+G2M	TTK	
+G2M	CDC25C	
+G2M	KIF2C	
+G2M	RANGAP1	
+G2M	NCAPD2	
+G2M	DLGAP5	
+G2M	CDCA2	
+G2M	CDCA8	
+G2M	ECT2	
+G2M	KIF23	
+G2M	HMMR	
+G2M	AURKA	
+G2M	PSRC1	
+G2M	ANLN	
+G2M	LBR	
+G2M	CKAP5	
+G2M	CENPE	
+G2M	CTCF	
+G2M	NEK2	
+G2M	G2E3	
+G2M	GAS2L3	
+G2M	CBX5	
+G2M	CENPA	
