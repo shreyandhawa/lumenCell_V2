@@ -26,12 +26,12 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   "Phase 2 N2a decisions and result"). Task 8 found C2, C3 and C4 non-discriminating, so no tau is
   set. Task 9 verified the verdict on fresh seeds 3-5 and FAILED (28 of 31 control runs supported,
   max 0), so a supported verdict is capped at provisional (a failed check is served weak,
-  H-1, 2026-11-19); Shreyan chose to accept a provisional-only supported level. Task 11 serves stability and the capped verdict without the cell-cycle
-  check; Task 12 reported both on the three real datasets (every gated metric identical to phase 1).
+  H-1, 2026-11-19); Shreyan chose to accept a provisional-only supported level. Task 11 serves stability and the capped verdict; the cell-cycle check was added by Task 4 (`pivot/42-cell-cycle-check`); Task 12 reported both on the three real datasets (every gated metric identical to phase 1).
   - Task 13 (#36): three Low findings fixed (S5, S6, S9), three recorded; see "Security review
     (phase 2)" and "Done When (phase 2)" (three Done When commands fail, as recorded: the cell-cycle
     tests do not exist yet, and the verification's `passed` is False).
   - **Task 2 (PR `pivot/35-cell-cycle-genes`):** the Tirosh 2016 lists (43 S, 54 G2M) and the 97-gene mouse ortholog table are shipped and verified; Tasks 3 and 4 are unblocked once it merges.
+  - **Task 3 (PR `pivot/37-cell-cycle-stage`):** the report-only `cell_cycle` prep stage is in and left out of `prep_key`, so no run id changes; Task 4 is unblocked once it merges.
   - **Blocked: Tasks 2, 3, 4** (Tirosh lists, cell-cycle stage, cell-cycle check). They wait on the
     Tirosh 2016 supplement, which Shreyan must download by hand: PMC and science.org are behind a
     CAPTCHA. Task 4 adds the cell-cycle fields Task 11 left out. Their security items are pending
@@ -47,6 +47,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
     The phase 1 ledger folder no longer exists on this machine; this file and `git log` are the record.
 - **Phase 3 Task 9** (PR `pivot/41-sheih-verify`): Sheih 2020 passes the join check; see "Phase 3 Task 9 decisions and result".
 - **Phase 3 Task 1** (PR `pivot/39-registry-sources`): multi-file sources and a build step; see "Phase 3 Task 1 decisions".
+- **Phase 3 Task 2** (PR `pivot/40-daniel-fetch`): the nine Daniel 2022 GEO files, sizes and SHA-256; see "Phase 3 Task 2 decisions and result".
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
 ## Phase 2 rulings (Shreyan, 2026-11-17: "approve both")
@@ -371,6 +372,43 @@ Package data: hatchling includes the TSVs in the wheel (checked with `uv build -
   silently dropping or misreading a row. Tests pin the renamed genes' mouse forms (Cenpu, Pimreg, Jpt1),
   `unmapped == ()`, an unknown species raising, and the first var index of any accepted symbol winning.
   An independent re-derivation from the five sources matched both TSVs row for row.
+
+## Phase 2 Task 4 decisions
+
+- **Scope.** The plan's Task 4 plus, by ruling R7, the cell-cycle parts Task 11 deferred: `RunTrust.cell_cycle` and `DatasetInfo.cell_cycle`
+  (no defaults), `DatasetView.cell_cycle_info()`, `Runs.cell_cycle(rid, names)`, the run's cell-cycle warnings appended to
+  `TrajectoryRun.warnings`, `Session.dataset_info()`, `make contract`, and `cell_cycle: null` in the web `dataset()` fixture.
+- **`None` means prep is not loaded.** A prep whose stage was not scored gives a `CellCycleCheck` with `status="not_scored"` and the reason as `note`.
+- **Names.** The check takes the lineage names after renames (list index = lineage id). They reach only the served notice text, never a path or a log line.
+- **`CellCycleInfo.genes_found` and `genes_listed`** sum `cc_info`'s per-list dicts; `source` is `""` if the stage recorded none.
+- **Doc fixes from the final review.** The README/report sentence now says C2 separates blob and sheet from the matrix but not loop or two_groups at x1.0,
+  citing the recorded calibration (README regenerated; no recorded result changed). The phase 2 security review was done by hand.
+
+- **Fix round 1 (ruling R20).** An unreadable run cell file no longer gives `cell_cycle: null` (which the API
+  documents as "prep is not loaded"): `Runs.cell_cycle` serves `not_scored` with the note "the run's cell file
+  could not be read (<ExcType>)" and one stderr line; any non-OSError still propagates. Test:
+  `test_an_unreadable_cell_file_is_reported_not_hidden`.
+
+## Phase 2 Task 3 decisions
+
+- **Stage.** `cell_cycle` is last in `STAGES` with `report_only=True`; `prep_key` hashes only stages with `report_only=False`, and
+  `prep_key(fingerprint "f"*24, PrepParams())` is still `ee3f123928ac0d1c` (checked on 3f5ab9a before and after). `stage_keys`, `status`, `run`
+  and `load_all` cover it, so a cache without it is not ready and one prepare job adds it.
+- **F9.** scanpy returns float64; `cc_s` and `cc_g2m` are cast to float32. When not scored they are all NaN (float32) and `cc_phase` is all `"unscored"`.
+- **Check order** is the binding one in the plan: gene count first (by either species' symbols for `auto`, a gene counted once), then species,
+  then the resolved lists. `total` in "only {k} of {total}" is the number of genes listed (97 = 43 + 54), so synthetic `G00000` symbols read "0 of 97".
+- **Never fails prep.** Any `Exception` while checking or scoring becomes `not_scored` with `scoring failed: {Type}: {msg}` and one stderr line.
+  Duplicate symbols are scored once: `match_genes` takes the first, and the view's var names go through `make_index_unique`.
+- **Renamed genes.** In the human test the paper's symbols (for example MLF1IP) are used; Task 2's two accepted symbols make them match.
+- **F8 (accepted).** The stage key covers only `cc_species` and `cc_gene_set`, so a later edit to the list or seed leaves a stale, report-only
+  result until `PIPELINE_VERSION` moves.
+- **F22.** Every existing prep cache lacks `cell_cycle`, so the first server start re-runs that one cheap stage (`test_a_cache_from_before_the_cell_cycle_stage_is_completed_by_one_prepare`).
+- Two existing tests were adjusted to the new last stage: `test_existing_embedding_skips_umap` looks `umap` up by name, and the receptor-exclusion
+  key test exempts `cell_cycle`, which reads only `lognorm`.
+- **Fix round 1.** The stage setup (`gene_symbols`, both `load_gene_set` calls, the default info) now sits inside the `try`, so a broken
+  shipped TSV gives `not_scored` with the error named and one stderr line instead of failing prep. Pinned by tests: the 10 S + 10 G2M versus
+  9 S + 10 G2M boundary ("only 19 of 97"), an empty phase list (25 S, 0 G2M: the gene-count reason, no stderr), `random_state == CELL_CYCLE_SEED`,
+  the never-raise test over four exception types, and the CLI "scored as human from 97 of 97" line.
 
 ## Phase 2 Task 1 decisions
 
@@ -1052,6 +1090,48 @@ listed in the plan's "Amendments" block.
 - **Network seam:** `download._open(request)` is the one place a connection is made; tests patch it, and a separate test
   pins the TLS context (`CERT_REQUIRED`, `cafile=certifi.where()`).
 
+
+## Phase 3 Task 2 decisions and result
+
+- **Branch** `pivot/40-daniel-fetch`. Owner OK for this STOP step: Shreyan, in chat on 2026-11-19, "Yes, approve all" (relayed by the parent session): Daniel 2022, GEO GSE188666, nine files; not the 14.7 GB GSE188670_RAW.tar.
+- **HEAD sizes** all 200; total 1,168,794,468 bytes (1.169 GB, inside 1.0-1.2 GB). The plan's 574 and 519 "MB" for the two mtx files are MiB (602,240,886 and 544,512,106 bytes).
+- **SHA-256 as recorded on first download (2026-11-19):**
+  - GSE188666_scRNA_LCMV.mtx.gz: be4a6e2825d9cdffbb4bebb094e43be00ed388faa11a5bac95c2418bdd576ed6
+  - GSE188666_scRNA_LCMV_barcodes.tsv.gz: c75bc8d63c793b4c74215d46d40d243118b5fb8f4e1aff248af0451ee15196fe
+  - GSE188666_scRNA_LCMV_features.tsv.gz: dee1b30b23a9ceae7117d71b894ec7e4d5441fc934fbcb242493ef57b2e06e2d
+  - GSE188666_scRNA_LCMV_metadata.tsv.gz: 0594a0463b0d667307736fa45453d9aae9ed761ce105d53b3a24c30dffa46393
+  - GSE188666_scRNA_D5_LCMV.mtx.gz: 14bc8bf47f68d11b27dbabfc8ec6613385f58a83578a0a81b7187817602657b3
+  - GSE188666_scRNA_D5_LCMV_barcodes.tsv.gz: 3ec9ca5d7650e5ab428121161c7533d1da42d72ca1187dd9941e8de0207151c8
+  - GSE188666_scRNA_D5_LCMV_features.tsv.gz: e3367683bbf603ef45124593bcc9a2868ffe393e422df1a5a035c24e7e76a576
+  - GSE188666_scRNA_D5_LCMV_metadata.txt.gz: 9f8943dea624e8f56c894421eaad3b723b9e2698a3f8d148122fa516bab7c4ec
+  - GSE188666_RAW.tar: db4932008b1b9e603c2f076aa7cf60302f38d8b66108188f3827a121a676c9a9
+- **Tar members: 23, not the plan's 24** (controller ruling P6: accept; GSE188666_RAW.tar is the approved file and what GEO serves; no other source, including GSE188670, is approved). All end in `_tcr_filtered_contig_annotations.csv.gz`: GSM5687816-GSM5687834 and GSM6381666-GSM6381669. Which sample lacks a TCR file is left to Task 3 / 5a. The tar was never extracted. Members:
+  - GSM5687816_Liver_Chronic_D21_CD8_TetNeg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687817_Liver_Chronic_D21_CD8_TetPos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687818_Lung_Chronic_D21_CD8_TetNeg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687819_Lung_Chronic_D21_CD8_TetPos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687820_Spleen_Acute_D21_CD8_TetNeg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687821_Spleen_Acute_D21_CD8_TetPos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687822_Spleen_Acute_D8_CD8_TetNeg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687823_Spleen_Acute_D8_CD8_TetPos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687824_Spleen_Chronic_D21_CD8_CX3CR1Neg_Slamf6Pos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687825_Spleen_Chronic_D21_CD8_CX3CR1Neg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687826_Spleen_Chronic_D21_CD8_CX3CR1Pos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687827_Spleen_Chronic_D21_CD8_PD1Pos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687828_Spleen_Chronic_D21_CD8_TetMid_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687829_Spleen_Chronic_D21_CD8_TetNeg_rep1_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687830_Spleen_Chronic_D21_CD8_TetNeg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687831_Spleen_Chronic_D21_CD8_TetPos_rep1_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687832_Spleen_Chronic_D21_CD8_TetPos_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687833_Spleen_Chronic_D8_CD8_TetNeg_tcr_filtered_contig_annotations.csv.gz
+  - GSM5687834_Spleen_Chronic_D8_CD8_TetPos_tcr_filtered_contig_annotations.csv.gz
+  - GSM6381666_Spleen_Chronic_D5_CD8_TetNeg_rep1_tcr_filtered_contig_annotations.csv.gz
+  - GSM6381667_Spleen_Chronic_D5_CD8_TetNeg_rep2_tcr_filtered_contig_annotations.csv.gz
+  - GSM6381668_Spleen_Chronic_D5_CD8_TetPos_rep1_tcr_filtered_contig_annotations.csv.gz
+  - GSM6381669_Spleen_Chronic_D5_CD8_TetPos_rep2_tcr_filtered_contig_annotations.csv.gz
+- `gzip -t` passed on all eight .gz files. The plan's tests pin no count of 24, so no test changed.
+- **Licence:** the GEO disclaimer page and PMC11225711 both returned a reCAPTCHA page (not bypassed); LICENCE records both as UNVERIFIED.
+
 ## Open questions for Shreyan
 
 - **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep
@@ -1109,7 +1189,7 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 
 ## Security review (phase 2)
 
-Reviewed by hand along the brief's untrusted-input paths, on the diff `2217f76..HEAD` (phase 1's last
+Reviewed by hand (the security-review skill was not invoked) along the brief's untrusted-input paths, on the diff `2217f76..HEAD` (phase 1's last
 merge to `main`, c2b3e97 as the head). Tasks 2-4 (Tirosh lists, cell-cycle stage, cell-cycle check) are not
 merged, so their inputs are listed as pending below.
 
@@ -1196,8 +1276,11 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/35-cell-cycle-genes` | #39 | merged (squash), phase 2 Task 2 (Tirosh 2016 lists, verified mouse ortholog table) |
 | `pivot/38-phase3-plan-x1` | #41 | merged (squash, 35eadc1), phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
 | `pivot/36-disconnected-knn-error` | #40 | merged (squash), clear error for a disconnected kNN graph (palantir, scfates_ppt) |
+| `pivot/40-daniel-fetch` | open | phase 3 Task 2, Daniel 2022 GEO files recorded (sizes, SHA-256, 23 contig files) |
 | `pivot/39-registry-sources` | open | phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
-| `pivot/41-sheih-verify` | open | phase 3 Task 9, Sheih 2020 TCR tables join to cells (PASS, share 0.99) |
+| `pivot/37-cell-cycle-stage` | #42 | merged (squash), phase 2 Task 3 (report-only cell_cycle stage, left out of prep_key) |
+| `pivot/42-cell-cycle-check` | #46 | merged (squash, 570fb5e), phase 2 Task 4 (per-run cell-cycle check, served with run and dataset; final-review doc fixes) |
+| `pivot/41-sheih-verify` | #45 | merged (squash), phase 3 Task 9, Sheih 2020 TCR tables join to cells (PASS, share 0.99) |
 
 ## Phase 3 Task 9 decisions and result
 

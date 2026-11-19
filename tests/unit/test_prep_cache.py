@@ -2,6 +2,8 @@ import os
 import shutil
 import time
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 from unittest import mock
 
 import numpy as np
@@ -10,7 +12,7 @@ import pytest
 from lumencell.bench.synth import generate
 from lumencell.data.loader import Dataset, load
 from lumencell.prep import cache as cache_mod
-from lumencell.prep.cache import PrepCache, stage_keys
+from lumencell.prep.cache import CacheMiss, PrepCache, prep_key, stage_keys
 from lumencell.prep.pipeline import run_pipeline
 from lumencell.prep.stages import STAGES, PrepParams
 
@@ -316,4 +318,36 @@ def test_changing_the_receptor_exclusion_recomputes_hvg_and_downstream(ds: Datas
     off = stage_keys(ds, PrepParams(exclude_receptor_genes=False))
     assert on["normalize"] == off["normalize"]
     for stage in STAGES[1:]:
-        assert on[stage.name] != off[stage.name], stage.name
+        if stage.name != "cell_cycle":  # reads only lognorm
+            assert on[stage.name] != off[stage.name], stage.name
+    assert on["cell_cycle"] == off["cell_cycle"]
+
+
+def test_prep_key_is_what_it_was_before_the_cell_cycle_stage() -> None:
+    fake = cast(Dataset, SimpleNamespace(fingerprint="f" * 24))
+    assert prep_key(fake, PrepParams()) == "ee3f123928ac0d1c"
+
+
+def test_report_only_stages_are_left_out_of_prep_key(ds: Dataset) -> None:
+    assert prep_key(ds, PrepParams()) == prep_key(ds, PrepParams(cc_species="mouse"))
+    base = stage_keys(ds, PrepParams())["cell_cycle"]
+    assert base != stage_keys(ds, PrepParams(cc_species="mouse"))["cell_cycle"]
+
+
+def test_changing_cell_cycle_params_recomputes_only_that_stage(ds: Dataset, tmp_path: Path) -> None:
+    PrepCache(ds, tmp_path).run()
+    res = PrepCache(ds, tmp_path).run(PrepParams(cc_species="human"))
+    states = {r.name: r.state for r in res.stages}
+    assert states.pop("cell_cycle") == "done"
+    assert set(states.values()) == {"cached"}
+
+
+def test_report_only_stages_count_towards_readiness(ds: Dataset, tmp_path: Path) -> None:
+    cache = PrepCache(ds, tmp_path)
+    cache.run()
+    stage = next(s for s in STAGES if s.name == "cell_cycle")
+    cache.invalidate(stage, cache.keys(PrepParams())["cell_cycle"])
+    assert cache.status(PrepParams())["cell_cycle"] == "pending"
+    with pytest.raises(CacheMiss) as exc:
+        cache.load_all(PrepParams())
+    assert exc.value.stage == "cell_cycle"
