@@ -487,6 +487,7 @@ def bench_fetch(
 ) -> None:
     """Download a real benchmark dataset (asks first; shows source and size)."""
     from lumencell.bench.datasets import DATASETS, FetchError, fetch, is_cached, local_path, sha256_of
+    from lumencell.bench.download import build_dataset, is_downloaded, source_path
 
     ids = list(DATASETS) if dataset == "all" else [dataset]
     unknown = [i for i in ids if i not in DATASETS]
@@ -497,16 +498,36 @@ def bench_fetch(
         if is_cached(ds):
             typer.echo(f"{ds.id}: already at {local_path(ds)}")
             continue
-        typer.echo(f"{ds.id}: {ds.title} ({ds.citation})")
-        typer.echo(f"  from {ds.url}\n  {ds.size / 1e6:,.1f} MB -> {local_path(ds)}")
-        if not yes and not typer.confirm("  download it?", default=False):
-            typer.echo("  skipped")
-            continue
+        missing = [s for s in ds.sources if not is_downloaded(s)]
         try:
-            path = fetch(ds)
+            if not missing:
+                # Nothing to download: only the derived file is missing, so build without asking.
+                typer.echo(f"{ds.id}: building {local_path(ds)}")
+                build_dataset(ds)
+                typer.echo("  built")
+                continue
+            typer.echo(f"{ds.id}: {ds.title} ({ds.citation})")
+            typer.echo(f"  licence: {ds.licence}")
+            for s in missing:
+                typer.echo(f"  from {s.url}\n    {s.size / 1e6:,.1f} MB -> {source_path(s)}")
+            total = sum(s.size for s in missing)
+            typer.echo(f"  total {total / 1e6:,.1f} MB ({total:,} bytes)")
+            if not yes and not typer.confirm("  download it?", default=False):
+                typer.echo("  skipped")
+                continue
+            from lumencell.bench.download import fetch_source
+
+            for s in missing:
+                digest = sha256_of(fetch_source(s))
+                note = "" if s.sha256 else " (unverified until its SHA-256 is recorded in the registry)"
+                typer.echo(f"  {s.filename}: sha256 {digest}{note}")
+            if ds.build is not None:
+                typer.echo(f"  building {local_path(ds)}")
+            fetch(ds)
+            if ds.build is not None:
+                typer.echo("  built")
         except FetchError as exc:
             raise typer.BadParameter(str(exc)) from exc
-        typer.echo(f"  done, sha256 {sha256_of(path)}")
 
 
 @bench_app.command("real")

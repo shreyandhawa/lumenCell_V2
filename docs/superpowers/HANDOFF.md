@@ -44,6 +44,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - Branches `pivot/NN-<slug>`, numbered from 21 in execution order.
   - Ledger (git-ignored, this machine only): `.superpowers/sdd/2026-11-17-phase-2-robustness/progress.md`.
     The phase 1 ledger folder no longer exists on this machine; this file and `git log` are the record.
+- **Phase 3 Task 1** (PR `pivot/39-registry-sources`): multi-file sources and a build step; see "Phase 3 Task 1 decisions".
 - **Handoffs:** at the end of every phase, and whenever the session nears 35% of its context.
 
 ## Phase 2 rulings (Shreyan, 2026-11-17: "approve both")
@@ -1008,6 +1009,47 @@ listed in the plan's "Amendments" block.
   a paragraph; `provisional` is "not shown to be a tree"; a test checks the statement and that no unit
   is `supported`.
 
+## Phase 3 Task 1 decisions
+
+- **Phase 3 base:** `main` at 35ac459. Branch `pivot/39-registry-sources`.
+- **Where:** `bench/download.py` (new) holds `Source`, `Build`, `fetch_source`, `build_dataset`, `build_key`,
+  `local_path`, `is_cached`, `fetch`; `bench/datasets.py` re-exports them. `RealDataset` takes
+  `sources`, `licence`, `build`. The three cached datasets keep their paths and recorded SHA-256s.
+- **Licences (read 2026-11-19, hosting pages only, no data file downloaded):**
+  - pancreas: no licence stated on https://github.com/theislab/scvelo_notebooks (no LICENSE file, badge or README
+    mention; the `data/Pancreas` folder page was not opened). Recorded as "no licence stated"; cite Bastidas-Ponce 2019.
+  - bonemarrow: CC BY 4.0 per the figshare API record of article 14465559 (file 27686835,
+    https://figshare.com/articles/dataset/human_cd34_bone_marrow_h5ad/14465559).
+  - gastrulation_erythroid: CC BY 4.0 per the figshare API record of article 14465562 (file 27686871,
+    https://figshare.com/articles/dataset/Gastrulation_erythroid_lineage/14465562).
+  - The article pages themselves returned 403 to the web fetcher; the figshare API (`api.figshare.com/v2/articles/<id>`)
+    metadata gave the licence and confirmed each file id and byte size.
+- **Decisions on small ambiguities:**
+  - `fetch_source` and `build_dataset` use `os.replace` (atomic, overwrites) rather than `Path.rename`.
+  - `build_dataset` checks each source for: downloaded, recorded checksum, matching checksum, in that order.
+    A changed-bytes source at the same size passes `is_downloaded` and is caught by the checksum.
+  - `build_dataset` does not create `datasets_dir()`; sources exist there already when it runs.
+  - CLI: with every source present and only the derived file missing, it builds with no question.
+    Otherwise it lists only the missing sources and the total, asks once, prints each new file's SHA-256, then builds.
+  - `Fetchable` is a Protocol with read-only properties so `RealDataset` (frozen) satisfies it.
+  - The CLI test reuses the `TwoFile` helper from `tests/unit/test_datasets.py`.
+
+### Fix round 1
+
+- **P3 redirects:** downloads use `build_opener(HTTPSHandler(context), _HttpsOnlyRedirect)`; any redirect whose target
+  is not https raises `FetchError`. Host changes are allowed (figshare to S3). Tested on the handler directly.
+- **P4 empty build:** a builder that leaves the temporary output at 0 bytes raises `FetchError("... empty file")`;
+  no derived file is left.
+- **P5 one directory per download:** `fetch_source` makes a fresh `mkdtemp` directory (`.download-*`) under the datasets
+  directory for each source, writes and verifies the file there, `os.replace`s it into place, and always removes the
+  directory. Two downloads never share a directory.
+- **Unverified files:** `fetch_source` still accepts `sha256=None`; the CLI line then adds "unverified until its
+  SHA-256 is recorded in the registry". The total line now also gives bytes.
+- **`is_cached` with the derived file present but a source missing:** the plan says every source downloaded AND the
+  derived file exists, so it is False; implemented as written. `bench fetch` then re-downloads the missing source only.
+- **Network seam:** `download._open(request)` is the one place a connection is made; tests patch it, and a separate test
+  pins the TLS context (`CERT_REQUIRED`, `cafile=certifi.where()`).
+
 ## Open questions for Shreyan
 
 - **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep
@@ -1152,6 +1194,7 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/35-cell-cycle-genes` | #39 | merged (squash), phase 2 Task 2 (Tirosh 2016 lists, verified mouse ortholog table) |
 | `pivot/38-phase3-plan-x1` | #41 | merged (squash, 35eadc1), phase 3 plan amended to the verdict and interfaces phase 2 shipped (X-1) |
 | `pivot/36-disconnected-knn-error` | #40 | merged (squash), clear error for a disconnected kNN graph (palantir, scfates_ppt) |
+| `pivot/39-registry-sources` | open | phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
 
 ## Verify the current state
 
