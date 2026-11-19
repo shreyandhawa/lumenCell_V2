@@ -236,14 +236,15 @@ def _c5(c: ClonalEvidence, t: Thresholds) -> Check:
 def _unverified_note() -> str:
     return (
         f"The verdict rule failed its verification on {VERDICT_VERIFIED_ON}: control runs were "
-        "verdicted supported. Until it passes, no run is shown above provisional, unless it is not supported."
+        "verdicted supported. Until it passes, no run is shown as supported; a failed check is still shown."
     )
 
 
 def _level(checks: tuple[Check, ...], verified: bool) -> tuple[Level, str | None]:
     """The one place that decides the level, and the note when it is capped (a failed verification).
 
-    A failed C1 or C2 stays not_supported: that is a real failure whether or not the rule is verified.
+    A failed C1 or C2 stays not_supported and a failed C3-C5 stays weak: those are real failures whether
+    or not the rule is verified (owner ruling H-1). Only supported is capped at provisional.
     """
     first_two = checks[:2]  # C1 and C2 are never "unavailable"
     if any(c.state == "fail" for c in first_two):
@@ -253,10 +254,11 @@ def _level(checks: tuple[Check, ...], verified: bool) -> tuple[Level, str | None
     rest = checks[2:]
     if any(c.state in ("pending", "unavailable") for c in rest) and not any(c.state == "fail" for c in rest):
         return "provisional", None
-    level: Level = "weak" if any(c.state == "fail" for c in rest) else "supported"
+    if any(c.state == "fail" for c in rest):
+        return "weak", None
     if not verified:
         return "provisional", _unverified_note()
-    return level, None
+    return "supported", None
 
 
 def verdict(

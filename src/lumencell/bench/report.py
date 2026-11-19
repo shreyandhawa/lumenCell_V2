@@ -109,10 +109,11 @@ def render() -> str:
             for r in cases.values()
         ):
             out.append(
-                "\nA supported or weak verdict is capped at provisional, because the verdict's verification "
+                "\nA supported verdict is capped at provisional, because the verdict's verification "
                 "failed on fresh seeds (2026-11-17): the tree-likeness and stability checks do not "
-                "separate trees from loops, sheets or blobs. A not_supported verdict is a real failure "
-                "and is not capped. The verdict is reported, not gated, and is not evidence of a tree."
+                "separate trees from loops, sheets or blobs. A weak or not_supported verdict is a real "
+                "failure and is not capped. The verdict is reported, not gated, "
+                "and is not evidence of a tree."
             )
     return "\n".join(out) + "\n"
 

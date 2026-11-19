@@ -274,13 +274,22 @@ def _v_verified():  # type: ignore[no-untyped-def]
     return verdict(1.0, 0.9, GOOD_STAB, OK_CLONAL, TAU, verified=True)
 
 
-def test_an_unverified_verdict_caps_weak_at_provisional(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_an_unverified_verdict_keeps_weak_without_a_cap_note(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owner ruling H-1: a failed check is a real failure, so only supported is capped."""
     low = StabilityEvidence("done", lineage=0.1, pseudotime=0.95)
     assert _v(stab=low).level == "weak"
     _unverified(monkeypatch)
     v = _v(stab=low)
-    assert v.level == "provisional"
-    assert any("failed its verification" in r for r in v.reasons)
+    assert v.level == "weak"
+    assert not any("failed its verification" in r for r in v.reasons)
+
+
+def test_an_unverified_failed_c5_is_served_weak(monkeypatch: pytest.MonkeyPatch) -> None:
+    _unverified(monkeypatch)
+    v = _v(clonal=ClonalEvidence("scored", 3, status="ok", p=0.5, delta_eta=0.0))
+    assert _check(v, "C5").state == "fail"
+    assert v.level == "weak"
+    assert not any("failed its verification" in r for r in v.reasons)
 
 
 def test_an_unverified_verdict_keeps_not_supported(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -2788,7 +2788,7 @@
       },
       "TreeSupport": {
         "additionalProperties": false,
-        "description": "How far the run's tree is supported. While the verdict rule has not passed its verification\non fresh seeds, no run is shown above provisional, and ``reasons`` says so.",
+        "description": "How far the run's tree is supported. While the verdict rule has not passed its verification\non fresh seeds, a supported run is shown as provisional, and ``reasons`` says so.\nA failed check is shown as weak.",
         "properties": {
           "checks": {
             "items": {

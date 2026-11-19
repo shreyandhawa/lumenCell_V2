@@ -32,7 +32,7 @@ TAU_TREE: float | None = None
 TAU_LIN: float | None = None
 TAU_PT: float | None = None
 # [tree_support.verified] (2026-11-17): the recorded verification on fresh seeds. While it is False
-# the served verdict is capped at provisional (ruling F14).
+# the served supported verdict is capped at provisional (ruling F14, amended by H-1).
 VERDICT_VERIFIED = False
 VERDICT_VERIFIED_ON = "2026-11-17"
 
