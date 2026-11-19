@@ -148,3 +148,103 @@ def test_tar_members_are_read_in_memory(tmp_path: Path) -> None:
         read_members(tar_path, ["missing"])
     with pytest.raises(BuildError):
         read_members(tar_path, ["d"])
+
+
+def test_zero_contig_rows_raise_a_build_error() -> None:
+    with pytest.raises(BuildError, match="no contigs"):
+        call_clones(frame())
+
+
+@pytest.mark.parametrize("blank", ["", "  ", "\t", "None", np.nan, None])
+def test_blank_raw_clonotype_ids_are_missing(blank: object) -> None:
+    out = call_clones(frame(contig("A", "b1", "TRB", "CCC", raw_clonotype_id=blank)))
+    assert pd.isna(out.loc[("A", "b1")].raw_clonotype_id)
+
+
+def test_raw_clonotype_comes_from_the_first_non_missing_contig() -> None:
+    def raw(*ids: object) -> object:
+        rows = [contig("A", "b1", "TRB", "CCC", raw_clonotype_id=i) for i in ids]
+        return call_clones(frame(*rows)).loc[("A", "b1")].raw_clonotype_id
+
+    assert raw("c1", "c2") == "A:c1"
+    assert raw("None", "c2") == "A:c2"
+    assert raw("", np.nan, "c2") == "A:c2"
+
+
+def test_three_distinct_tras_with_one_trb_leave_only_the_trb_clone() -> None:
+    rows = [contig("A", "b1", "TRA", nt) for nt in ("AAA", "ACA", "AGA")] + [contig("A", "b1", "TRB", "CCC")]
+    row = call_clones(frame(*rows)).loc[("A", "b1")]
+    assert pd.isna(row.clone_id) and row.clone_id_trb == h("b", ["TRB:CCC"]) and row.receptor_n_tra == 3
+
+
+def test_the_same_tra_on_two_contigs_counts_once() -> None:
+    rows = [contig("A", "b1", "TRA", "AAA"), contig("A", "b1", "TRA", "AAA"), contig("A", "b1", "TRB", "CCC")]
+    row = call_clones(frame(*rows)).loc[("A", "b1")]
+    assert row.receptor_n_tra == 1 and row.clone_id == h("c", ["TRA:AAA", "TRB:CCC"])
+
+
+@pytest.mark.parametrize("bad", ["yes", "Yes", "T", "TRUE1", "tRue", "1.0"])
+def test_flag_parser_rejects_near_misses(bad: str) -> None:
+    assert parse_flag(pd.Series([bad], dtype=object)).tolist() == [False]
+
+
+def test_lowercase_cdr3_is_ignored_and_ana_qualifies() -> None:
+    rows = [contig("A", "b1", "TRB", "ccc"), contig("A", "b2", "TRB", "ANA")]
+    out = call_clones(frame(*rows))
+    assert out.loc[("A", "b1")].receptor_n_trb == 0
+    assert out.loc[("A", "b2")].clone_id_trb == h("b", ["TRB:ANA"])
+
+
+def test_output_index_is_sorted_for_any_input_order() -> None:
+    rows = [contig(c, b, "TRB", "CCC") for c, b in (("B", "z"), ("A", "y"), ("B", "a"), ("A", "b"))]
+    out = call_clones(frame(*rows))
+    assert list(out.index) == [("A", "b"), ("A", "y"), ("B", "a"), ("B", "z")]
+
+
+def test_is_cell_nan_none_and_numpy_bools_go_through_call_clones() -> None:
+    rows = [contig("A", f"b{i}", "TRB", "CCC") for i in range(4)]
+    df = frame(*rows)
+    df["is_cell"] = pd.Series([np.True_, np.False_, np.nan, "None"], dtype=object)
+    out = call_clones(df)
+    assert out["receptor_n_trb"].tolist() == [1, 0, 0, 0]
+
+
+def test_error_messages_never_carry_member_names(tmp_path: Path) -> None:
+    tar_path = tmp_path / "t.tar"
+    with tarfile.open(tar_path, "w") as tf:
+        info = tarfile.TarInfo("SECRET_stray.csv")
+        info.size = 1
+        tf.addfile(info, io.BytesIO(b"z"))
+    with pytest.raises(BuildError) as e:
+        read_members(tar_path, ["SECRET_wanted.csv"])
+    assert "SECRET" not in str(e.value)
+
+
+def test_a_non_tar_file_raises_a_build_error_naming_the_path(tmp_path: Path) -> None:
+    p = tmp_path / "notatar.tar"
+    p.write_bytes(b"this is not a tar" * 100)
+    with pytest.raises(BuildError, match=r"notatar\.tar"):
+        read_members(p, ["x"])
+
+
+def test_repeated_wanted_names_follow_last_one_wins(tmp_path: Path) -> None:
+    def make(name: str, *members: tuple[bytes | None, bool]) -> Path:
+        path = tmp_path / name
+        with tarfile.open(path, "w") as tf:
+            for data, is_file in members:
+                info = tarfile.TarInfo("w")
+                if is_file:
+                    assert data is not None
+                    info.size = len(data)
+                    tf.addfile(info, io.BytesIO(data))
+                else:
+                    info.type = tarfile.DIRTYPE
+                    tf.addfile(info)
+        return path
+
+    got, other = read_members(make("a.tar", (b"1", True), (b"2", True)), ["w"])
+    assert got == {"w": b"2"} and other == []
+    got, other = read_members(make("b.tar", (None, False), (b"2", True)), ["w"])
+    assert got == {"w": b"2"} and other == []
+    with pytest.raises(BuildError):
+        read_members(make("c.tar", (b"1", True), (None, False)), ["w"])

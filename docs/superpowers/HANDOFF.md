@@ -1126,6 +1126,12 @@ listed in the plan's "Amendments" block.
 - **`read_members` errors** state only a count, never member names (untrusted). A wanted name that is a directory or other non-regular member counts as missing. Duplicate wanted members: the last one wins (tar semantics).
 - **`cdr3_nt` regex** is applied with `fullmatch` and is case-sensitive: lowercase bases do not qualify.
 
+Fix round 1:
+- **Zero contig rows raise `BuildError("no contigs")`**, not an empty frame. The plan fixes no empty-input contract, and an empty contig table in a real build means a wrong or truncated file, so the builder should stop rather than label every cell as unseen. Task 5b maps a cell with no contig to NaN itself.
+- **A blank `raw_clonotype_id`** (empty or whitespace-only) is missing, like `"None"` and NaN.
+- **`read_members`:** a file that is not a tar raises `BuildError` naming the path (ours) and the error class. Wanted names never appear in the "other" list; for a repeated wanted name the last member wins, so a later directory hides an earlier file and the name counts as missing.
+- **Pinned by tests:** the TRA/TRB count rules (3 TRA + 1 TRB, repeated TRA), first non-missing raw id, `parse_flag` near misses, lowercase `cdr3_nt` ignored and `ANA` accepted, sorted index and `other`, no member names in errors, and `is_cell` NaN, `"None"` and numpy bools. Each fix test was checked against a re-applied mutant.
+
 ## Open questions for Shreyan
 
 - **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep

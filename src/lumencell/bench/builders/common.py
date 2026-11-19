@@ -46,19 +46,25 @@ def read_members(tar_path: Path, wanted: Collection[str]) -> tuple[dict[str, byt
     """Bytes of the wanted regular-file members, and the sorted names of all others.
 
     Member names are only compared to `wanted`, never used as paths; nothing is extracted.
+    Wanted names are never in the second list. For a repeated name the last member wins.
     """
     want = set(wanted)
     found: dict[str, bytes] = {}
     other: list[str] = []
-    with tarfile.open(tar_path, "r:") as tf:
-        for m in tf:
-            if m.name in want and m.isreg():
-                f = tf.extractfile(m)
-                if f is None:
-                    raise BuildError("tar member could not be read")
-                found[m.name] = f.read()
-            else:
-                other.append(m.name)
+    try:
+        with tarfile.open(tar_path, "r:") as tf:
+            for m in tf:
+                if m.name not in want:
+                    other.append(m.name)
+                elif m.isreg():
+                    f = tf.extractfile(m)
+                    if f is None:
+                        raise BuildError("tar member could not be read")
+                    found[m.name] = f.read()
+                else:
+                    found.pop(m.name, None)  # last one wins: a later non-file hides an earlier file
+    except tarfile.TarError as e:
+        raise BuildError(f"{tar_path} is not a readable tar file ({type(e).__name__})") from e
     missing = sorted(want - found.keys())
     if missing:
         raise BuildError(f"{len(missing)} wanted tar member(s) missing or not regular files")
@@ -77,6 +83,8 @@ def call_clones(contigs: pd.DataFrame) -> pd.DataFrame:
     `clone_id` needs 1-2 distinct TRA and 1-2 distinct TRB; `clone_id_trb` needs 1-2 TRB.
     No namespace is in the id strings: the caller keys clones by (capture, id).
     """
+    if len(contigs) == 0:
+        raise BuildError("no contigs")
     need = ["capture", *CONTIG_COLUMNS]
     absent = [c for c in need if c not in contigs.columns]
     if absent:
@@ -96,7 +104,7 @@ def call_clones(contigs: pd.DataFrame) -> pd.DataFrame:
     for cap, bc, rc in zip(d["capture"], d["barcode"], d["raw_clonotype_id"], strict=True):
         key = (cap, bc)
         raw.setdefault(key, np.nan)
-        if pd.notna(rc) and str(rc) != "None" and pd.isna(raw[key]):
+        if pd.notna(rc) and str(rc).strip() not in ("", "None") and pd.isna(raw[key]):
             raw[key] = f"{cap}:{rc}"
 
     index = pd.MultiIndex.from_tuples(sorted(raw), names=["capture", "barcode"])
