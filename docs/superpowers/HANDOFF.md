@@ -30,6 +30,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   - Task 13 (#36): three Low findings fixed (S5, S6, S9), three recorded; see "Security review
     (phase 2)" and "Done When (phase 2)" (three Done When commands fail, as recorded: the cell-cycle
     tests do not exist yet, and the verification's `passed` is False).
+  - **Task 2 (PR `pivot/35-cell-cycle-genes`):** the Tirosh 2016 lists (43 S, 54 G2M) and the 97-gene mouse ortholog table are shipped and verified; Tasks 3 and 4 are unblocked once it merges.
   - **Blocked: Tasks 2, 3, 4** (Tirosh lists, cell-cycle stage, cell-cycle check). They wait on the
     Tirosh 2016 supplement, which Shreyan must download by hand: PMC and science.org are behind a
     CAPTCHA. Task 4 adds the cell-cycle fields Task 11 left out. Their security items are pending
@@ -330,6 +331,43 @@ Fix round 1 (PR #34 review):
 C4 sits at 0.95-1.00 everywhere, as Task 8 found. C3 is low (0.2-0.4) for PAGA+DPT and Palantir on
 bonemarrow and pancreas: their lineages rarely match at Jaccard 0.6 across replicates. Real gate failures
 are unchanged from phase 1 and no gate changed.
+
+## Phase 2 Task 2 decisions and result
+
+Sources (all untrusted data kept outside the repo, never committed; scripts ran with `python -I`, the xlsx was read with
+stdlib `zipfile` and `ElementTree`; SHA-256 recomputed and matched on 2026-11-19):
+- Tirosh et al. 2016, doi:10.1126/science.aad0501, Table S5, PMC author manuscript NIHMS791837 supplement 5
+  (`NIHMS791837-supplement-5.xlsx`), downloaded by Shreyan by hand on 2026-11-19, the primary source.
+  SHA-256 `3b51070702338214bf8bb824a397dd1e04e8a57e2abefc442e15c1182922bb93`.
+- scanpy/Seurat copy `regev_lab_cell_cycle_genes.txt` (cross-check), extracted 2026-11-17 from
+  `https://www.dropbox.com/s/3dby3bjsaf5arrw/cell_cycle_vignette_files.zip?dl=1` (scanpy's docs fetch it there; the GitHub path in
+  the plan no longer exists). Zip `6557fe2a2761d1550d41edf61b26c6d5ec9b42b4933d56c3161164a595f145ab`, file
+  `eb666ba4f7b7a8b2845e1586d42687feaf813e9fa1fdadba89dacd4093411ac0`.
+- MGI `HOM_MouseHumanSequence.rpt`, `https://www.informatics.jax.org/downloads/reports/HOM_MouseHumanSequence.rpt`, 2026-11-17T13:51Z,
+  `0b8eb746eb41eb9505b3bf3c5c8b986aba8a51e6a75df77642dcac34322aeb06`.
+- HCOP `human_mouse_hcop_fifteen_column.txt.gz`, `https://storage.googleapis.com/public-download-files/hcop/human_mouse_hcop_fifteen_column.txt.gz`,
+  2026-11-17T13:51Z, `0cfb78e4eb273751e0557e8230445a60e844bfaf958e32740d4a266fb41cdb35` (current HGNC symbols only).
+- HGNC `hgnc_complete_set.txt`, `https://storage.googleapis.com/public-download-files/hgnc/tsv/tsv/hgnc_complete_set.txt`,
+  2026-11-19T19:23Z, `6df77ac3cbaeb86a6dce5e17d851ebb27b6b3cdcd2471a211a3d8464f00c54c4` (used for `prev_symbol`).
+
+Lists verification: the paper's G1/S column has 43 cells (43 unique); its G2/M column has 55 cells and 54 unique genes, because
+HJURP is entered twice (cells B35 and B36). Ruling R18: the plan's counts are gene counts, so the test stays at 43 and 54 and the
+duplicate cell is recorded, not counted. The S list matches the scanpy copy in content and order; the G2M list matches in content,
+and in order once the duplicate is dropped. No gene is in both lists. A test asserts no symbol is repeated in the shipped TSVs.
+
+Renames since 2016, found by Approved-entry `prev_symbol` (alias_symbol was not needed): MLF1IP -> CENPU (S), FAM64A -> PIMREG
+(G2M), HN1 -> JPT1 (G2M). All three are in `current_symbol`. No symbol maps to more than one gene or to none.
+
+Orthologs verification: all 97 genes (by current HGNC symbol) sit in an MGI class with exactly one human and one mouse gene, so 97
+are mapped and 0 unmapped. HCOP cross-check: 97 agree, 0 disagree, 0 absent.
+
+Package data: hatchling includes the TSVs in the wheel (checked with `uv build --wheel`); `importlib.resources` reads them.
+
+- **Fix round 1 (after review).** `_rows` now checks the header row and the column count of every
+  row and strips fields, so a missing header or a short row is refused naming the line instead of
+  silently dropping or misreading a row. Tests pin the renamed genes' mouse forms (Cenpu, Pimreg, Jpt1),
+  `unmapped == ()`, an unknown species raising, and the first var index of any accepted symbol winning.
+  An independent re-derivation from the five sources matched both TSVs row for row.
 
 ## Phase 2 Task 1 decisions
 
@@ -1046,8 +1084,9 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/30-robustness-api` | #34 | merged (squash), phase 2 Task 11 (stability and the capped verdict served; cell cycle deferred to Task 4) |
 | `pivot/31-bench-real-stability` | #35 | merged (merge commit, 4961426, keeps the measured commit 99c3786), phase 2 Task 12 |
 | `pivot/32-phase2-security` | #36 | merged (squash, 1167b2d), phase 2 Task 13 (security review; Done When recorded) |
-| `pivot/33-phase2-final-review` | this PR | phase 2 final review recorded; H-1 asked of Shreyan |
-| `pivot/34-weak-under-cap` | (this PR) | open, phase 2 H-1 (weak served as is under the verdict cap) |
+| `pivot/33-phase2-final-review` | #37 | merged (squash, 35752e9), phase 2 final review recorded; H-1 asked of Shreyan |
+| `pivot/34-weak-under-cap` | #38 | merged (squash, 53d0dc1), phase 2 H-1 (weak served as is under the verdict cap) |
+| `pivot/35-cell-cycle-genes` | #39 | merged (squash), phase 2 Task 2 (Tirosh 2016 lists, verified mouse ortholog table) |
 
 ## Verify the current state
 
