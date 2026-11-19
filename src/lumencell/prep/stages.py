@@ -13,10 +13,11 @@ only for display, and only when the file has no 2-D embedding of its own.
 """
 
 import logging
+import sys
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Literal
 
 import anndata as ad
 import numpy as np
@@ -27,6 +28,8 @@ from scipy import sparse
 
 from lumencell.clonal.isolation import receptor_gene_mask
 from lumencell.data.loader import Dataset, DatasetError, looks_like_ensembl
+from lumencell.prep.cell_cycle_genes import load_gene_set, match_genes, resolve_species
+from lumencell.trust.constants import CELL_CYCLE_MIN_GENES, CELL_CYCLE_SEED
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +49,14 @@ class PrepParams:
     n_diffmap: int = 15
     seed: int = 0
     recompute_umap: bool = False
+    cc_species: Literal["auto", "human", "mouse"] = "auto"
+    cc_gene_set: Literal["tirosh2016"] = "tirosh2016"
+
+    def __post_init__(self) -> None:
+        if self.cc_species not in ("auto", "human", "mouse"):
+            raise ValueError(f"cc_species must be 'auto', 'human' or 'mouse', not {self.cc_species!r}")
+        if self.cc_gene_set != "tirosh2016":
+            raise ValueError(f"cc_gene_set must be 'tirosh2016', not {self.cc_gene_set!r}")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -60,6 +71,9 @@ class Stage:
     run: Callable[[Dataset, Artifacts, PrepParams], dict[str, Any]]
     # Returns False when the stage should be skipped for this dataset.
     applies: Callable[[Dataset, PrepParams], bool] = lambda _ds, _p: True
+    # Report-only stages are shown to the user but never read by inference. They count towards
+    # readiness, but their key is left out of ``prep_key``, so no run id depends on them.
+    report_only: bool = False
 
 
 # ---- helpers ----------------------------------------------------------------------
@@ -305,6 +319,88 @@ def _needs_umap(ds: Dataset, p: PrepParams) -> bool:
     return p.recompute_umap or not ds.embeddings
 
 
+def _cell_cycle(ds: Dataset, art: Artifacts, p: PrepParams) -> dict[str, Any]:
+    """Tirosh 2016 S and G2/M scores and phase calls. Report only: this never raises."""
+    n = ds.n_obs
+    symbols = list(ds.gene_symbols)
+    human = load_gene_set(p.cc_gene_set, "human")
+    mouse = load_gene_set(p.cc_gene_set, "mouse")
+    listed = {"s": len(human.s), "g2m": len(human.g2m)}
+    found = {"s": 0, "g2m": 0}
+    info: dict[str, Any] = {
+        "status": "not_scored",
+        "reason": None,
+        "requested_species": p.cc_species,
+        "species": None,
+        "gene_set": p.cc_gene_set,
+        "genes_found": found,
+        "genes_listed": listed,
+        "source": human.source,
+        "seed": CELL_CYCLE_SEED,
+    }
+
+    def not_scored(reason: str) -> dict[str, Any]:
+        info["reason"] = reason
+        return {
+            "cc_s": np.full(n, np.nan, dtype=np.float32),
+            "cc_g2m": np.full(n, np.nan, dtype=np.float32),
+            "cc_phase": np.full(n, "unscored", dtype="<U8"),
+            "cc_info": info,
+        }
+
+    def too_few(k: int) -> str:
+        return (
+            f"only {k} of {sum(listed.values())} Tirosh 2016 genes were found; "
+            f"at least {CELL_CYCLE_MIN_GENES} are needed"
+        )
+
+    try:
+        # 1. the gene count, by either species' symbols for "auto"
+        sets = [human, mouse] if p.cc_species == "auto" else [load_gene_set(p.cc_gene_set, p.cc_species)]
+        for key in ("s", "g2m"):
+            hits: set[int] = set()
+            for g in sets:
+                hits.update(match_genes(symbols, getattr(g, key)))
+            found[key] = len(hits)
+        if sum(found.values()) < CELL_CYCLE_MIN_GENES:
+            return not_scored(too_few(sum(found.values())))
+        # 2. the species
+        species = resolve_species(symbols, p.cc_species, p.cc_gene_set)
+        if species is None:
+            return not_scored("the species could not be told from the gene symbols")
+        # 3. the resolved species' lists
+        genes = load_gene_set(p.cc_gene_set, species)
+        listed.update(s=len(genes.s), g2m=len(genes.g2m))
+        s_idx = match_genes(symbols, genes.s)
+        g_idx = match_genes(symbols, genes.g2m)
+        found.update(s=len(s_idx), g2m=len(g_idx))
+        if len(s_idx) + len(g_idx) < CELL_CYCLE_MIN_GENES or not s_idx or not g_idx:
+            return not_scored(too_few(len(s_idx) + len(g_idx)))
+        info["species"] = species
+        # 4. scoring
+        names = ad.utils.make_index_unique(pd.Index(symbols))
+        view = ad.AnnData(X=art["lognorm"], obs=pd.DataFrame(index=pd.RangeIndex(n).astype(str)))
+        view.var_names = names
+        sc.tl.score_genes_cell_cycle(
+            view,
+            s_genes=[names[i] for i in s_idx],
+            g2m_genes=[names[i] for i in g_idx],
+            random_state=CELL_CYCLE_SEED,
+        )
+        out = {
+            "cc_s": view.obs["S_score"].to_numpy(dtype=np.float32),
+            "cc_g2m": view.obs["G2M_score"].to_numpy(dtype=np.float32),
+            "cc_phase": view.obs["phase"].astype(str).to_numpy().astype("<U8"),
+        }
+    except Exception as exc:  # a report-only stage never fails prep
+        reason = f"scoring failed: {type(exc).__name__}: {exc}"
+        print(f"lumencell: cell-cycle scoring failed ({reason})", file=sys.stderr)
+        info["species"] = None
+        return not_scored(reason)
+    info["status"] = "scored"
+    return {**out, "cc_info": info}
+
+
 STAGES: tuple[Stage, ...] = (
     Stage("normalize", (), ("lognorm",), (), _normalize),
     Stage("hvg", ("lognorm",), ("hvg", "hvg_info"), ("n_top_genes", "exclude_receptor_genes"), _hvg),
@@ -340,6 +436,14 @@ STAGES: tuple[Stage, ...] = (
         ("seed", "recompute_umap"),
         _umap,
         applies=_needs_umap,
+    ),
+    Stage(
+        "cell_cycle",
+        ("lognorm",),
+        ("cc_s", "cc_g2m", "cc_phase", "cc_info"),
+        ("cc_species", "cc_gene_set"),
+        _cell_cycle,
+        report_only=True,
     ),
 )
 

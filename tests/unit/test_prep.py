@@ -11,6 +11,7 @@ from scipy import sparse
 from lumencell.bench.synth import generate
 from lumencell.clonal.isolation import receptor_gene_mask
 from lumencell.data.loader import Dataset, load
+from lumencell.prep.cell_cycle_genes import load_gene_set
 from lumencell.prep.pipeline import PrepResult, run_pipeline
 from lumencell.prep.stages import STAGES, PrepParams, multiscale_space
 
@@ -96,7 +97,7 @@ def test_existing_embedding_skips_umap(tmp_path: Path) -> None:
     ds = _dataset(tmp_path, n_cells=300, umap=True)
     res = run_pipeline(ds)
     assert "umap" not in res.artifacts
-    assert res.stages[-1].state == "skipped"
+    assert {r.name: r.state for r in res.stages}["umap"] == "skipped"
     assert "umap" in run_pipeline(ds, PrepParams(recompute_umap=True)).artifacts
 
 
@@ -298,3 +299,119 @@ def test_paga_with_no_edge_between_clusters_is_an_all_zero_graph(tmp_path: Path)
     assert art["paga_tree"].nnz == 0
     assert art["paga_pos"].shape == (k, 2)
     assert np.isfinite(art["paga_pos"]).all()
+
+
+# ---- the report-only cell_cycle stage -------------------------------------------------
+
+
+def test_no_inference_stage_reads_a_report_only_output() -> None:
+    report = {o for s in STAGES if s.report_only for o in s.outputs}
+    assert report
+    for stage in STAGES:
+        if not stage.report_only:
+            assert not (set(stage.inputs) & report), stage.name
+
+
+def test_cell_cycle_is_not_scored_on_synthetic_genes(result: tuple[Dataset, PrepResult]) -> None:
+    info = result[1].artifacts["cc_info"]
+    assert info["status"] == "not_scored"
+    assert info["species"] is None
+    assert "0 of 97" in info["reason"]
+    assert "species" not in info["reason"]
+
+
+def _cc_dataset(
+    tmp_path: Path, symbols: list[str], boost: bool = False, n_cells: int = 600, name: str = "cc.h5ad"
+) -> Dataset:
+    adata = generate("bifurcation", "realistic", n_cells=n_cells, n_genes=400, seed=0)
+    var = list(adata.var_names)
+    var[: len(symbols)] = symbols
+    adata.var_names = var
+    if boost:
+        x = adata.X.toarray() if sparse.issparse(adata.X) else np.array(adata.X)
+        x[0:150, 0:43] *= 8
+        x[150:300, 43:97] *= 8
+        adata.X = sparse.csr_matrix(x)
+    path = tmp_path / name
+    adata.write_h5ad(path)
+    return load(path)
+
+
+def _human() -> list[str]:
+    genes = load_gene_set("tirosh2016", "human")
+    return [g[0].upper() for g in genes.s + genes.g2m]
+
+
+def _mouse() -> list[str]:
+    genes = load_gene_set("tirosh2016", "mouse")
+    return [g[0] for g in genes.s + genes.g2m]
+
+
+def test_an_unresolved_species_is_reported(tmp_path: Path) -> None:
+    human = _human()
+    symbols = [h if i % 2 == 0 else h.capitalize() for i, h in enumerate(human[:30])]
+    ds = _cc_dataset(tmp_path, symbols + [f"X{i}" for i in range(67)])
+    art = run_pipeline(ds).artifacts
+    assert art["cc_info"]["status"] == "not_scored"
+    assert "species could not be told" in art["cc_info"]["reason"]
+    assert art["cc_s"].dtype == np.float32 and art["cc_g2m"].dtype == np.float32
+    assert art["cc_s"].shape == (ds.n_obs,) and np.isnan(art["cc_s"]).all() and np.isnan(art["cc_g2m"]).all()
+    assert (art["cc_phase"] == "unscored").all()
+
+
+def test_cell_cycle_scores_human_symbols(tmp_path: Path) -> None:
+    art = run_pipeline(_cc_dataset(tmp_path, _published_human(), boost=True)).artifacts
+    info = art["cc_info"]
+    assert info["status"] == "scored", info
+    assert info["species"] == "human"
+    assert info["genes_found"] == {"s": 43, "g2m": 54}
+    assert art["cc_s"].dtype == np.float32 and art["cc_g2m"].dtype == np.float32
+    phase = art["cc_phase"]
+    assert (phase[:150] == "S").mean() >= 0.8
+    assert (phase[150:300] == "G2M").mean() >= 0.8
+    assert (phase[300:] == "G1").mean() > (phase[:300] == "G1").mean()
+
+
+def _published_human() -> list[str]:
+    # The symbols as the paper printed them: for a renamed gene, the 2016 one.
+    genes = load_gene_set("tirosh2016", "human")
+    return [g[0] for g in genes.s + genes.g2m]
+
+
+def test_cell_cycle_resolves_mouse_from_symbol_case(tmp_path: Path) -> None:
+    art = run_pipeline(_cc_dataset(tmp_path, _mouse(), boost=True)).artifacts
+    info = art["cc_info"]
+    assert info["status"] == "scored", info
+    assert info["species"] == "mouse"
+    assert info["genes_found"] == {"s": 43, "g2m": 54}
+
+
+def test_duplicate_symbols_are_scored_once(tmp_path: Path) -> None:
+    symbols = _published_human()
+    symbols.append(symbols[0])  # the first S gene appears twice
+    art = run_pipeline(_cc_dataset(tmp_path, symbols, boost=True)).artifacts
+    info = art["cc_info"]
+    assert info["status"] == "scored", info
+    assert info["genes_found"]["s"] == 43
+
+
+def test_a_scoring_error_is_reported_and_prep_still_completes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def boom(*_a: Any, **_k: Any) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(sc.tl, "score_genes_cell_cycle", boom)
+    res = run_pipeline(_cc_dataset(tmp_path, _published_human()))
+    info = res.artifacts["cc_info"]
+    assert info["status"] == "not_scored"
+    assert "RuntimeError: boom" in info["reason"]
+    assert all(r.state in ("done", "skipped") for r in res.stages)
+    assert "RuntimeError: boom" in capsys.readouterr().err
+
+
+def test_unknown_cell_cycle_params_are_refused() -> None:
+    with pytest.raises(ValueError):
+        PrepParams(cc_species="dog")  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        PrepParams(cc_gene_set="other")  # type: ignore[arg-type]

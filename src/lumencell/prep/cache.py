@@ -130,8 +130,12 @@ def stage_keys(ds: Dataset, params: PrepParams) -> dict[str, str]:
 
 
 def prep_key(ds: Dataset, params: PrepParams) -> str:
-    """One key for the whole prep: changes whenever any stage would."""
+    """One key for the whole prep: changes whenever an inference stage would.
+
+    Report-only stages are left out, so adding or changing one never changes a run id.
+    """
     keys = stage_keys(ds, params)
+    keys = {s.name: keys[s.name] for s in STAGES if not s.report_only}
     return hashlib.sha256(json.dumps(keys, sort_keys=True).encode()).hexdigest()[:16]
 
 

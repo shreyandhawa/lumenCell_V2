@@ -39,6 +39,12 @@ def test_prepare_then_cached(data: Path) -> None:
     assert "cached" in second.output
 
 
+def test_prepare_reports_the_cell_cycle_status(data: Path) -> None:
+    result = runner.invoke(app, ["prepare", str(data)])
+    assert result.exit_code == 0, result.output
+    assert "cell cycle: not scored (only 0 of 97" in result.output
+
+
 def test_roots_prints_suggestions(data: Path) -> None:
     result = runner.invoke(app, ["roots", str(data)])
     assert result.exit_code == 0, result.output

@@ -4,6 +4,7 @@ Each test's job manager is started only after the assertions about the damaged s
 so the heal job cannot finish early and race them.
 """
 
+import shutil
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -163,3 +164,33 @@ def test_a_stage_that_stays_unreadable_is_not_prepared_again_and_again(
     assert len(_prepare_jobs(session)) == 1, "no second automatic prepare job"
     assert "not trying again" in capsys.readouterr().err
     assert client.get("/api/v1/prepare").json()["state"] == "missing", "the app offers to prepare it"
+
+
+def test_a_cache_from_before_the_cell_cycle_stage_is_completed_by_one_prepare(
+    jobs: JobManager, tmp_path: Path
+) -> None:
+    path = tmp_path / "d.h5ad"
+    generate("bifurcation", "realistic", n_cells=400, n_genes=300, seed=0).write_h5ad(path)
+    cache = PrepCache(load(path), tmp_path / "cache")
+    cache.run(PrepParams())
+    earlier = cache.manifest()
+    assert earlier is not None
+    (folder,) = cache.stages_dir.glob("cell_cycle-*")
+    shutil.rmtree(folder)
+
+    session = Session(path, jobs, cache_root=tmp_path / "cache", state_dir=tmp_path / "state")
+    assert session.prep_ready() is False
+    before = session.prep_key
+    session.start_prep()
+    (job,) = session.jobs.of_kind("prepare")
+    session.jobs.start()
+    assert session.jobs.wait(job.job_id, timeout=120).state == "done"
+
+    assert session.prep_ready() is True
+    manifest = session.cache.manifest()
+    assert manifest is not None
+    assert manifest["stages"]["cell_cycle"]["state"] == "done"
+    for name, entry in earlier["stages"].items():
+        if name != "cell_cycle":
+            assert manifest["stages"][name] == entry, "kept as it was: not computed again"
+    assert session.prep_key == before
