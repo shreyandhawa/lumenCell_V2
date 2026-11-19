@@ -88,16 +88,21 @@ def test_paga_dpt_still_runs_on_the_split_graph(split: tuple[InferenceContext, s
     run_method(ctx, "paga_dpt", CellRoot(root)).validate()
 
 
-def test_palantir_reports_the_part_of_the_run_root(split: tuple[InferenceContext, str]) -> None:
-    pytest.importorskip("palantir")
+@pytest.mark.parametrize("method", ["palantir", "scfates_ppt"])
+def test_the_message_reports_the_part_of_the_run_root(
+    split: tuple[InferenceContext, str], method: str
+) -> None:
+    """Rooted in the part that does NOT hold cell 0, so a check passed index 0 reports the wrong part."""
+    pytest.importorskip("palantir" if method == "palantir" else "scFates")
     ctx, _ = split
     _, labels = connected_components(sparse.csr_matrix(ctx.artifacts["connectivities"]), directed=False)
     sizes = np.bincount(labels)
-    small = int(np.argmin(sizes))
-    root = str(ctx.obs_names[int(np.flatnonzero(labels == small)[0])])
+    other = int(np.flatnonzero(np.arange(len(sizes)) != labels[0])[0])
+    assert sizes[other] != sizes[labels[0]]  # the two parts differ in size, so the count tells them apart
+    root = str(ctx.obs_names[int(np.flatnonzero(labels == other)[0])])
     with pytest.raises(DisconnectedGraphError) as exc:
-        run_method(ctx, "palantir", CellRoot(root))
-    assert f"{int(sizes[small]):,} cells in the part holding the root" in str(exc.value)
+        run_method(ctx, method, CellRoot(root))
+    assert f"{int(sizes[other]):,} cells in the part holding the root" in str(exc.value)
 
 
 def test_cli_run_on_a_disconnected_graph_is_a_clean_error(
