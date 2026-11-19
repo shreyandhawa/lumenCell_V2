@@ -25,8 +25,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   "Phase 2 N2a decisions and result"). Task 8 found C2, C3 and C4 non-discriminating, so no tau is
   set. Task 9 verified the verdict on fresh seeds 3-5 and FAILED (28 of 31 control runs supported,
   max 0), so a supported verdict is capped at provisional (a failed check is served weak,
-  H-1, 2026-11-19); Shreyan chose to accept a provisional-only supported level. Task 11 serves stability and the capped verdict without the cell-cycle
-  check; Task 12 reported both on the three real datasets (every gated metric identical to phase 1).
+  H-1, 2026-11-19); Shreyan chose to accept a provisional-only supported level. Task 11 serves stability and the capped verdict; the cell-cycle check was added by Task 4 (`pivot/42-cell-cycle-check`); Task 12 reported both on the three real datasets (every gated metric identical to phase 1).
   - Task 13 (#36): three Low findings fixed (S5, S6, S9), three recorded; see "Security review
     (phase 2)" and "Done When (phase 2)" (three Done When commands fail, as recorded: the cell-cycle
     tests do not exist yet, and the verification's `passed` is False).
@@ -371,6 +370,22 @@ Package data: hatchling includes the TSVs in the wheel (checked with `uv build -
   silently dropping or misreading a row. Tests pin the renamed genes' mouse forms (Cenpu, Pimreg, Jpt1),
   `unmapped == ()`, an unknown species raising, and the first var index of any accepted symbol winning.
   An independent re-derivation from the five sources matched both TSVs row for row.
+
+## Phase 2 Task 4 decisions
+
+- **Scope.** The plan's Task 4 plus, by ruling R7, the cell-cycle parts Task 11 deferred: `RunTrust.cell_cycle` and `DatasetInfo.cell_cycle`
+  (no defaults), `DatasetView.cell_cycle_info()`, `Runs.cell_cycle(rid, names)`, the run's cell-cycle warnings appended to
+  `TrajectoryRun.warnings`, `Session.dataset_info()`, `make contract`, and `cell_cycle: null` in the web `dataset()` fixture.
+- **`None` means prep is not loaded.** A prep whose stage was not scored gives a `CellCycleCheck` with `status="not_scored"` and the reason as `note`.
+- **Names.** The check takes the lineage names after renames (list index = lineage id). They reach only the served notice text, never a path or a log line.
+- **`CellCycleInfo.genes_found` and `genes_listed`** sum `cc_info`'s per-list dicts; `source` is `""` if the stage recorded none.
+- **Doc fixes from the final review.** The README/report sentence now says C2 separates blob and sheet from the matrix but not loop or two_groups at x1.0,
+  citing the recorded calibration (README regenerated; no recorded result changed). The phase 2 security review was done by hand.
+
+- **Fix round 1 (ruling R20).** An unreadable run cell file no longer gives `cell_cycle: null` (which the API
+  documents as "prep is not loaded"): `Runs.cell_cycle` serves `not_scored` with the note "the run's cell file
+  could not be read (<ExcType>)" and one stderr line; any non-OSError still propagates. Test:
+  `test_an_unreadable_cell_file_is_reported_not_hidden`.
 
 ## Phase 2 Task 3 decisions
 
@@ -1172,7 +1187,7 @@ Run on the stack head `pivot/19-phase1-security` first, then re-run on `main` (a
 
 ## Security review (phase 2)
 
-Reviewed by hand along the brief's untrusted-input paths, on the diff `2217f76..HEAD` (phase 1's last
+Reviewed by hand (the security-review skill was not invoked) along the brief's untrusted-input paths, on the diff `2217f76..HEAD` (phase 1's last
 merge to `main`, c2b3e97 as the head). Tasks 2-4 (Tirosh lists, cell-cycle stage, cell-cycle check) are not
 merged, so their inputs are listed as pending below.
 
@@ -1262,6 +1277,7 @@ itself failed (Task 9, ruling F14/(a)). Nothing was changed to make any of them 
 | `pivot/40-daniel-fetch` | open | phase 3 Task 2, Daniel 2022 GEO files recorded (sizes, SHA-256, 23 contig files) |
 | `pivot/39-registry-sources` | open | phase 3 Task 1, multi-file sources, licences, build step (phase 3 base 35ac459) |
 | `pivot/37-cell-cycle-stage` | #42 | merged (squash), phase 2 Task 3 (report-only cell_cycle stage, left out of prep_key) |
+| `pivot/42-cell-cycle-check` | open | phase 2 Task 4 (per-run cell-cycle check, served with run and dataset; final-review doc fixes) |
 
 ## Verify the current state
 

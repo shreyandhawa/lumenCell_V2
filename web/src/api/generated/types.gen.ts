@@ -5,6 +5,88 @@ export type ClientOptions = {
 };
 
 /**
+ * CellCycleCheck
+ *
+ * Which lineages are made mostly of cycling cells. Null in a run's trust while prep is not loaded.
+ */
+export type CellCycleCheck = {
+    /**
+     * Dataset Share
+     */
+    dataset_share: number | null;
+    /**
+     * Lineages
+     */
+    lineages: Array<LineageCycling>;
+    /**
+     * Note
+     */
+    note: string | null;
+    /**
+     * Ratio Min
+     */
+    ratio_min: number;
+    /**
+     * Share Min
+     */
+    share_min: number;
+    /**
+     * Status
+     */
+    status: 'scored' | 'not_scored';
+    /**
+     * Warnings
+     */
+    warnings: Array<Notice>;
+};
+
+/**
+ * CellCycleInfo
+ *
+ * How the dataset's cells were scored for cell cycle (Tirosh 2016). Report only.
+ */
+export type CellCycleInfo = {
+    /**
+     * Gene Set
+     */
+    gene_set: string;
+    /**
+     * Genes Found
+     */
+    genes_found: number;
+    /**
+     * Genes Listed
+     */
+    genes_listed: number;
+    /**
+     * Reason
+     */
+    reason: string | null;
+    /**
+     * Requested Species
+     */
+    requested_species: 'auto' | 'human' | 'mouse';
+    /**
+     * Share Cycling
+     *
+     * Share of all cells called S or G2M; null when not scored.
+     */
+    share_cycling: number | null;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Species
+     */
+    species: 'human' | 'mouse' | null;
+    /**
+     * Status
+     */
+    status: 'scored' | 'not_scored';
+};
+
+/**
  * CellRoot
  */
 export type CellRoot = {
@@ -302,6 +384,10 @@ export type Curves = {
  * DatasetInfo
  */
 export type DatasetInfo = {
+    /**
+     * Null while prep is not loaded.
+     */
+    cell_cycle: CellCycleInfo | null;
     clonal: ClonalSettingsOutput | null;
     /**
      * Clonal Candidates
@@ -657,6 +743,36 @@ export type LineageCurve = {
         number,
         number
     ]>;
+};
+
+/**
+ * LineageCycling
+ */
+export type LineageCycling = {
+    /**
+     * Flagged
+     */
+    flagged: boolean;
+    /**
+     * Lineage
+     */
+    lineage: number;
+    /**
+     * N Cells
+     *
+     * Cells on this lineage alone.
+     */
+    n_cells: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Share Cycling
+     *
+     * Null when no cell is on this lineage alone.
+     */
+    share_cycling: number | null;
 };
 
 /**
@@ -1133,6 +1249,7 @@ export type RunSummary = {
  * RunTrust
  */
 export type RunTrust = {
+    cell_cycle: CellCycleCheck | null;
     clonal: ClonalAgreement | null;
     stability: Stability | null;
     tree_support: TreeSupport | null;

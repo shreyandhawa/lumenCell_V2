@@ -1,6 +1,165 @@
 {
   "components": {
     "schemas": {
+      "CellCycleCheck": {
+        "additionalProperties": false,
+        "description": "Which lineages are made mostly of cycling cells. Null in a run's trust while prep is not loaded.",
+        "properties": {
+          "dataset_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Share"
+          },
+          "lineages": {
+            "items": {
+              "$ref": "#/components/schemas/LineageCycling"
+            },
+            "title": "Lineages",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "ratio_min": {
+            "title": "Ratio Min",
+            "type": "number"
+          },
+          "share_min": {
+            "title": "Share Min",
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "scored",
+              "not_scored"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "dataset_share",
+          "ratio_min",
+          "share_min",
+          "lineages",
+          "warnings",
+          "note"
+        ],
+        "title": "CellCycleCheck",
+        "type": "object"
+      },
+      "CellCycleInfo": {
+        "additionalProperties": false,
+        "description": "How the dataset's cells were scored for cell cycle (Tirosh 2016). Report only.",
+        "properties": {
+          "gene_set": {
+            "title": "Gene Set",
+            "type": "string"
+          },
+          "genes_found": {
+            "title": "Genes Found",
+            "type": "integer"
+          },
+          "genes_listed": {
+            "title": "Genes Listed",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "requested_species": {
+            "enum": [
+              "auto",
+              "human",
+              "mouse"
+            ],
+            "title": "Requested Species",
+            "type": "string"
+          },
+          "share_cycling": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of all cells called S or G2M; null when not scored.",
+            "title": "Share Cycling"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "species": {
+            "anyOf": [
+              {
+                "enum": [
+                  "human",
+                  "mouse"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Species"
+          },
+          "status": {
+            "enum": [
+              "scored",
+              "not_scored"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "requested_species",
+          "species",
+          "gene_set",
+          "genes_found",
+          "genes_listed",
+          "source",
+          "share_cycling"
+        ],
+        "title": "CellCycleInfo",
+        "type": "object"
+      },
       "CellRoot": {
         "additionalProperties": false,
         "properties": {
@@ -573,6 +732,17 @@
       "DatasetInfo": {
         "additionalProperties": false,
         "properties": {
+          "cell_cycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CellCycleInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null while prep is not loaded."
+          },
           "clonal": {
             "anyOf": [
               {
@@ -723,7 +893,8 @@
           "versions",
           "clonal",
           "clonal_candidates",
-          "tree_likeness"
+          "tree_likeness",
+          "cell_cycle"
         ],
         "title": "DatasetInfo",
         "type": "object"
@@ -1259,6 +1430,49 @@
           "fidelity"
         ],
         "title": "LineageCurve",
+        "type": "object"
+      },
+      "LineageCycling": {
+        "additionalProperties": false,
+        "properties": {
+          "flagged": {
+            "title": "Flagged",
+            "type": "boolean"
+          },
+          "lineage": {
+            "title": "Lineage",
+            "type": "integer"
+          },
+          "n_cells": {
+            "description": "Cells on this lineage alone.",
+            "title": "N Cells",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "share_cycling": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when no cell is on this lineage alone.",
+            "title": "Share Cycling"
+          }
+        },
+        "required": [
+          "lineage",
+          "name",
+          "n_cells",
+          "share_cycling",
+          "flagged"
+        ],
+        "title": "LineageCycling",
         "type": "object"
       },
       "LineageMatch": {
@@ -2120,6 +2334,16 @@
       "RunTrust": {
         "additionalProperties": false,
         "properties": {
+          "cell_cycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CellCycleCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "clonal": {
             "anyOf": [
               {
@@ -2154,7 +2378,8 @@
         "required": [
           "clonal",
           "stability",
-          "tree_support"
+          "tree_support",
+          "cell_cycle"
         ],
         "title": "RunTrust",
         "type": "object"

@@ -166,6 +166,7 @@ class Session:
             clonal=self._clonal,
             clonal_candidates=clonal_candidates(self.ds.obs.columns),
             tree_likeness=None if tree is None or math.isnan(tree) else tree,
+            cell_cycle=self.view.cell_cycle_info(),
         )
 
     # ---- clonal settings -----------------------------------------------------------------

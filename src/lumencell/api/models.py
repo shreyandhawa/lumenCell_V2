@@ -319,10 +319,47 @@ class TreeSupport(Model):
     reasons: list[str]
 
 
+class CellCycleInfo(Model):
+    """How the dataset's cells were scored for cell cycle (Tirosh 2016). Report only."""
+
+    status: Literal["scored", "not_scored"]
+    reason: str | None
+    requested_species: Literal["auto", "human", "mouse"]
+    species: Literal["human", "mouse"] | None
+    gene_set: str
+    genes_found: int
+    genes_listed: int
+    source: str
+    share_cycling: float | None = Field(
+        description="Share of all cells called S or G2M; null when not scored."
+    )
+
+
+class LineageCycling(Model):
+    lineage: int
+    name: str
+    n_cells: int = Field(description="Cells on this lineage alone.")
+    share_cycling: float | None = Field(description="Null when no cell is on this lineage alone.")
+    flagged: bool
+
+
+class CellCycleCheck(Model):
+    """Which lineages are made mostly of cycling cells. Null in a run's trust while prep is not loaded."""
+
+    status: Literal["scored", "not_scored"]
+    dataset_share: float | None
+    ratio_min: float
+    share_min: float
+    lineages: list[LineageCycling]
+    warnings: list[Notice]
+    note: str | None
+
+
 class RunTrust(Model):
     clonal: ClonalAgreement | None
     stability: Stability | None
     tree_support: TreeSupport | None
+    cell_cycle: CellCycleCheck | None
 
 
 class DatasetInfo(Model):
@@ -346,6 +383,7 @@ class DatasetInfo(Model):
         description="The share of PAGA edge weight on its spanning tree at the default resolution "
         "(check C2). Null while prep is not loaded, or when the cluster graph has no edges."
     )
+    cell_cycle: CellCycleInfo | None = Field(description="Null while prep is not loaded.")
 
 
 class GeneSearchResult(Model):
