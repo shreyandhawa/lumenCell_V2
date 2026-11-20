@@ -50,7 +50,7 @@ from lumencell.prep.stages import PrepParams
 from lumencell.trust import constants
 from lumencell.trust.cell_cycle import cell_cycle_check
 from lumencell.trust.clonal import agreement_for_run, check_settings, settings_columns
-from lumencell.trust.stability import not_measured, to_api_stability
+from lumencell.trust.stability import not_measured, safe_text, to_api_stability
 from lumencell.trust.verdict import clonal_evidence, stability_evidence, to_api_tree_support
 
 TREE_LIKENESS_NOTE = "no PAGA edges, so tree-likeness is undefined and C2 fails"
@@ -128,7 +128,7 @@ def _versions() -> dict[str, str]:
 
 def _method_failed(exc: Exception) -> dict[str, Any]:
     return {
-        "error": f"{type(exc).__name__}: {exc}",
+        "error": safe_text(f"{type(exc).__name__}: {exc}"),
         "n_lineages": None,
         "coverage": None,
         "runtime_seconds": None,

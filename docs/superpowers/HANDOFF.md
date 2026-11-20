@@ -17,29 +17,22 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   (the verification's `passed` is `False` and the slow test that asserts it); a pre-declared C1/C2 redesign is the only
   way to pass them and is not planned. C2, C3 and C4 were non-discriminating in Task 8, so no tau is set for them. The
   calibrated N2a split is adopted (clonal `metric_version` 2).
-- **Phase 3 is under way** (base 35ac459). Merged: Task 1 (#43, multi-file sources, licences, build step), Task 2 (#44,
-  the nine Daniel 2022 GEO files, sizes and SHA-256), Task 3 (#48, Daniel sample records and metadata; 23 captures),
-  Task 4 (#47, clone calling from 10x contigs) and Task 9 (#45, Sheih 2020 joins at 0.99, so the Cao branch is not
-  taken). Task 10 (#51, merged) declares `[case_study.sheih2020]` before any analysis. Task 5a (#50, merged): Daniel
-  file formats and the capture map, all 23 TCR members joined to their cells. Task 11 (#52, merged) fetches the rest
-  of GSE125881 and builds the case-study dataset (62,167 cells, no analysis yet). Task 5b (#53, merged): the Daniel
-  builder, tested on a synthetic layout only; the real derived file is not built. Task 6 (#54, merged): the Daniel
-  declaration (8 chronic spleen D8/D21 captures, namespace = capture, root `TEx_prog`, no gated lineage, clonal
-  declared not assessable), before any clone was counted. Task 7 (#55, merged): clonal scores and reported fields for real
-  datasets, tested on a synthetic `fake` fixture only; a dataset with no gated lineage is shown as not measured, never
-  PASS. Task 8 (#56, merged): the first real run with Daniel rows, `benchmarks/results/real-2026-11-20.json`; no Daniel gate
-  measured. Task 12 (#57, merged with a merge commit, 89c8d78, so the recorded commit 5b4f83f is on `main`): the case-study
-  numbers, 4 patients x 3 methods with stability plus the pooled diagnostic (results
-  `benchmarks/case_studies/results/sheih2020-2026-11-20.json`): 4 provisional and 8 weak per patient, none supported
-  or not_supported. Task 13 (#58, this PR, open): the write-up, `docs/case-studies/sheih-2020.md`, its tables generated
-  from that results file. Next: Task 14 (security review of phase 3). See each task's decisions section.
+- **Phase 3 is complete on `main`** (base 35ac459; head 884cad0 before this PR). PRs by task: T1 #43, T2 #44, T3 #48,
+  T4 #47, T5a #50, T5b #53, T6 #54, T7 #55, T8 #56, T9 #45, T10 #51, T11 #52, T12 #57 (merge commit 89c8d78, so the
+  recorded commit 5b4f83f is on `main`), T13 #58, T14 this PR (`pivot/55-phase3-security`). See each task's decisions section.
+  - **Daniel 2022:** declared not assessable for clones, no gated lineage, so the lineage gates are not measured and the verdict
+    is provisional for all three methods (`benchmarks/results/real-2026-11-20.json`).
+  - **Sheih 2020 case study:** per patient, 8 weak and 4 provisional method runs, none supported, 4 passes of C5
+    (`benchmarks/case_studies/results/sheih2020-2026-11-20.json`; write-up `docs/case-studies/sheih-2020.md`).
+  - **Task 14** (this PR): the security review, S11 to S24 (S11, S12, S13, S15 and S21 fixed test-first, the rest recorded), and the
+    Done When commands run on this branch (see "Done When (phase 3)"). No recorded number changed.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
   with the two plan-time amendments under Decisions.
 - **Plans**, merged in PR #6:
   - [phase 1, clonotypes end to end](plans/2026-11-12-phase-1-clonotypes.md): 17 tasks, done
   - [phase 2, T-cell robustness](plans/2026-11-12-phase-2-robustness.md): 13 tasks plus N2a, done
-  - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks, amended by X-1 (#41); in progress
+  - [phase 3, real T-cell data](plans/2026-11-12-phase-3-tcell-data.md): 15 tasks, amended by X-1 (#41); done
 - **Phase 2 process:** executed task by task with subagents: one implementer per task, TDD, two review seats, one fix round
   and a scoped re-review, then a squash-merge on green CI. Branches `pivot/NN-<slug>`.
   Ledger (git-ignored, this machine only): `.superpowers/sdd/2026-11-17-phase-2-robustness/progress.md`.
@@ -915,7 +908,8 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 
 ## Found along the way
 
-- **Some existing gates are pinned only by the benchmark runs, not by unit tests** (found by PR #51's mutation seat, 2026-11-19): changing `[regression] max_drop`, `pt_spearman_global` or the pancreas `branch_accuracy` in `thresholds.toml` passes the unit tests. Phase 3 changes none of them; noted for the phase 3 security review.
+- **Some existing gates are pinned only by the benchmark runs, not by unit tests** (found by PR #51's mutation seat, 2026-11-19): changing `[regression] max_drop`, `pt_spearman_global` or the pancreas `branch_accuracy` in `thresholds.toml` passes the unit tests. Phase 3 changes none of them; recorded in the phase 3 security review (S16).
+- **README drift is guarded only by the Done When command, not by CI** (controller, phase 3): `bench report --readme && git diff --exit-code README.md`. Recorded as S17.
 - **Local `main` was 13 commits behind `origin/main`** on 2026-11-12. Check
   `git rev-list --left-right --count main...origin/main` before reading code.
 - **`main` has no branch protection.** Keeping work on PRs is discipline, not enforcement.
@@ -1403,6 +1397,61 @@ Shreyan accepted a provisional-only verdict (ruling (a)): a supported verdict is
 check is served `weak`. Both would pass only with a verdict rule that passes verification on seeds not used before, which
 needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planned for phase 3.
 
+## Security review (phase 3)
+
+Reviewed by hand (the security-review skill reviews pending changes on the current branch, so it does not fit a committed range and
+was not invoked), as phase 2 did, on `git diff 35ac459..884cad0` (the phase 3 base to the head of `main` after Task 13), along the
+plan's list. Everything the builders and the fetch read is pinned by size and SHA-256 in the registry, and a build refuses a source
+whose checksum differs, so the untrusted-content paths below are defence in depth against a changed upstream file, not against a
+user's file.
+
+| # | Severity | Where | Finding | Outcome |
+|---|---|---|---|---|
+| S11 | Low | `bench/builders/sheih2020.py` `build` | (a) `uns["lumencell_build"]["ignored_members"]` stored tar member names as they were, while Daniel's replaced a name that is not a plain file name with a placeholder. A name with control characters or `../` would reach the derived file and anything that prints it. | Fixed: `common.listable` (the Daniel rule, `download.SAFE_NAME`, placeholder `UNSAFE_MEMBER`) now serves both builders. Tests: `test_a_join_miss_is_counted` (`../stray.csv.gz` is stored as the placeholder), `test_only_listed_captures_are_kept_and_namespaced` (Daniel, unchanged behaviour). |
+| S12 | Low | `bench/case_study.py` `_method_failed` | (b) A failed method's `error` kept the raw `Class: message`. The message can carry a name from the file, with control characters and no length bound, and it is written to the committed JSON (the rendered tables show only the class name). Same class as S5. | Fixed: wrapped in `safe_text` (one printable line, at most 300 characters). Test: `test_a_failed_methods_error_is_one_escaped_line_of_bounded_length`. No recorded file had an error (`"error": null` throughout), so the committed results are unchanged. |
+| S13 | Low | `bench/download.py` `fetch_source` | A host that streams past the declared size was read to the end of the stream into the download directory, and only then refused. An unbounded stream could fill the disk. | Fixed: each read asks for at most one byte past the size and the download stops there. Test: `test_a_download_longer_than_its_size_is_cut_off_early` (an endless response is read at most 101 bytes and nothing is left behind). Before the fix the test read 16 MiB and was stopped by its own guard. |
+| S14 | Info | `bench/download.py` `build_dataset`, `bench/case_study.py` | (c) Derived files made with `mkstemp` are mode 0600 and keep it after the rename; downloaded sources (written into a `mkdtemp` directory) get the umask default. | Recorded, no change: 0600 is the stricter mode, nothing else reads these files as another user, and a shared cache directory is not a supported setup. |
+| S15 | Info | `bench/datasets.py` `truth_for` | (d) `time_key` was parsed with a first-number regex, so a numeric column holding `1e-05` read as 1. Correctness, not security. | Fixed (trivial, test-first): a value that is wholly a number is read as that number, otherwise the first number in the text, as before. Test: `test_a_numeric_time_column_is_read_as_the_number_it_holds`. The one dataset with a `time_key` (gastrulation, stage text like `E7.75`) reads exactly as before (`test_time_order_for_gastrulation`). |
+| S16 | Info | `thresholds.toml` gates | (e) `[regression] max_drop`, `pt_spearman_global` and the pancreas `branch_accuracy` are pinned only by benchmark runs, not by unit tests (PR #51's review). | Recorded, no change: phase 3 changes none of them, and pinning them by unit test means copying thresholds into tests, which `thresholds.toml` is meant to avoid. Listed in "Found along the way". |
+| S17 | Info | `README.md` tables | (f) README drift from the committed results is guarded by the Done When command (`bench report --readme && git diff --exit-code README.md`), not by CI. | Recorded, no change: CI would need to regenerate the tables from a results file on every run; the command passes below (Done When (phase 3)). |
+| S18 | Info | `cli.py` `bench_fetch` | A dataset whose sources are all downloaded is built without asking (the case study and Daniel, once their files are cached). | Recorded, acceptable: no download happens, the build reads only sources whose size and SHA-256 are re-checked and writes one hashed-name file into the datasets directory; the confirmation exists for the download (`test_bench_fetch_builds_without_asking_when_only_the_derived_file_is_missing`). Any missing source still stops at the prompt. |
+| S19 | Info | `benchmarks/inspection/*.py` | The scripts print column names, label values and tar member names raw to the terminal. A changed upstream file could carry terminal escape sequences. The receptor values are withheld by name and never printed. | Recorded, no change: the inputs are the checksum-pinned files and the runs are done (their output is in the research notes); the scripts take no input that is not a pinned download. They run as `python -I`, read in memory and write nothing (`test_the_inspection_writes_nothing`, `test_the_format_script_writes_nothing`). |
+| S20 | Info | `benchmarks/case_studies/sheih2020.py` `--out`, `--workdir`; `LUMENCELL_DATASETS_DIR` | The output path, the work directory and the datasets directory are written as given, as S3 and S8 record. `--out`'s parent is created when the report is written, after the 14-minute run, so an unwritable path fails late (loudly, with the traceback). A killed process can leave a hidden `.download-*` directory or `.tmp.h5ad` file in the datasets directory. | Recorded, no change: they are set by whoever runs the script, nothing derived from file content reaches them (unit files are named by a hash of the patient, `test_unit_files_are_named_by_hash`), the leftover temp names are never accepted by `is_cached` (a derived file is named by its build hash), and a failed or cancelled build removes its own temp (`test_a_failed_build_leaves_no_derived_file`, `test_a_failed_replace_leaves_no_temp_unit_file`). |
+| S21 | Low | `bench/runner.py` `clonal_row`, `stability_row` | (b) A failed row's `reason` kept the raw `Class: message` and reached the results JSON as `clonal_reason` / `stability_reason`. The message can carry a name from the file, with control characters and no length bound. Same class as S12. | Fixed: wrapped in `safe_text` (one printable line, at most 300 characters). Tests: `test_a_failure_reason_is_one_escaped_line_of_bounded_length` and `test_a_stability_failure_reason_is_one_escaped_line_of_bounded_length`. No recorded row has a free-text reason (they are constants or empty), so the committed results are unchanged. |
+| S22 | Info | `bench/case_study.py`, `bench/runner.py` stderr | The raw exception text is also printed to stderr (the terminal) when a method, the clonal scoring or the stability run fails. Same class as S19. | Recorded, no change: the inputs are the checksum-pinned files, and the text goes to the terminal of whoever runs the benchmark, not to a stored or served file. |
+| S23 | Info | `bench/download.py` `is_downloaded`, `fetch`, `local_path` | `is_downloaded` checks the size only, so a cached non-build source (the h5ad files) of the right size is trusted without a checksum on `fetch` and `local_path`. A build re-checks its sources' checksums. | Recorded, no change: the cache is the user's own datasets directory (S3, S8), and a file there is already the user's to alter; the checksum is verified when the file is downloaded. |
+| S24 | Info | `bench/download.py` `_open` | `_open` has a per-read 60 s timeout but no overall deadline. S13 bounds the bytes read, not the time, so a host that sends one byte a minute holds the fetch open. | Recorded, no change: a fetch is started by hand (`bench fetch`, with its confirmation) and can be interrupted; the size bound still holds. |
+
+Checked and found sound, no change:
+- Tar member names: `read_members` compares a name to the wanted set and never uses it as a path; nothing is extracted (`test_tar_members_are_read_in_memory`), and its errors never carry a name (`test_error_messages_never_carry_member_names`). The wanted names are constants in the builders. A wanted member that is not a regular file is refused. The tar is read fully into memory, bounded by the pinned size of the archive.
+- Barcodes and CSV headers: a barcode is matched by `fullmatch` against `<16 nt>-<n>` before it is used, becomes part of an obs name only as `<gsm>_<16 nt>`, and a clone id is a hash. Sheih's matrix header and each clonotype table's required columns are checked, and a bad row refuses the build rather than being dropped. Daniel's label and sample columns are named by constants (`usecols=[LABEL_COLUMN]`), not read from the file.
+- Metadata values and column names: they reach the derived file as categorical obs values and never a path, a shell command or a regex (`re.escape` on the capture tag). The inspection scripts withhold receptor columns by name (`test_every_withholding_rule_hides_its_values`).
+- Downloads: certifi context (`test_the_tls_context_verifies_certificates_with_certifi`), https-only sources and redirects (`test_a_redirect_to_a_non_https_address_is_refused`, `test_fetch_refuses_a_redirect_end_to_end`), size and SHA-256 checked in a fresh directory per download (`test_each_download_gets_its_own_empty_directory`), then an atomic rename. A build re-checks every source's checksum and refuses a missing one (`test_build_refuses_a_source_whose_checksum_changed`, `test_build_needs_recorded_checksums`).
+- Derived and temporary files: named by `build_key` (a hash of the id, version, params and source checksums), written to a `mkstemp` name in the same directory and renamed; an empty or failed build leaves nothing.
+- The `bench fetch` confirmation: it lists every missing source, the total size and the licence before asking, defaults to no, and `--yes` is the only bypass.
+- The inspection scripts' `-I` runs and the case-study script: both document `uv run python -I`, and the case-study script writes only through `write_report` (strict JSON, atomic rename).
+
+## Done When (phase 3)
+
+Run from the worktree of `pivot/55-phase3-security` (main 884cad0 plus this PR), 2026-11-20, exactly as the plan writes them. Nothing was
+changed to make any of them pass. All pass.
+
+| Command | Exit | Output | Result |
+|---|---|---|---|
+| `make ci; echo $?` | `0` | ruff and mypy passed; `1425 passed, 43 deselected, 3 warnings in 337.80s`; web `36 passed`; web-e2e `1 passed` (run on the fix-round head) | PASS |
+| `uv run pytest tests/unit/test_datasets.py tests/unit/test_daniel2022.py -q; echo $?` | `0` | `102 passed in 1.63s` | PASS |
+| the declaration-before-first-run command (Daniel) | `0` | declaration fb06f05 is an ancestor of the first results commit db190e5 and a different commit | PASS |
+| the `real-*.json` Daniel rows command | n/a | `benchmarks/results/real-2026-11-20.json ['paga_dpt', 'palantir', 'scfates_ppt']` | PASS |
+| `uv run lumencell bench report --readme && git diff --exit-code README.md; echo $?` | `0` | `README.md updated`; no diff | PASS |
+| `DATASETS["daniel2022"].clonal.assessable` | n/a | `False`, so the next two apply | n/a |
+| `grep -c "clonal: not assessable (declared" README.md` | `0` (grep status) | `3` | PASS |
+| `uv run pytest tests/unit/test_real_clonal.py -q -k not_assessable; echo $?` | `0` | `3 passed, 34 deselected in 7.49s` | PASS |
+| the declaration-before-analysis command (case study) | `0` | declaration 5ef3151 is an ancestor of the first case-study results commit ebeba6d and a different commit | PASS |
+| `uv run pytest tests/unit/test_case_study.py tests/unit/test_case_study_writeup.py -q; echo $?` | `0` | `60 passed in 20.36s` (this PR adds one test to `test_case_study.py`; the `make ci` run above includes it) | PASS |
+| the plan's grep for this file's phase 3 security heading | n/a | one line, 1400, the heading of the section above; it lists S11 to S24, each fixed or recorded | PASS |
+
+The Daniel and case-study rows are the plan's commands run from this branch; the two ordering commands read git history, which this PR does not change.
+
 ## Branches and PRs
 
 | Branch | PR | State |
@@ -1460,7 +1509,8 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 | `pivot/51-bench-real-clonal` | #55 | merged (squash, a7d69c4), phase 3 Task 7, clonal scores and reported fields for real datasets (synthetic `fake` fixture only; Daniel not built) |
 | `pivot/52-bench-real-daniel` | #56 | merged, phase 3 Task 8, the real benchmark with Daniel 2022 rows (`real-2026-11-20.json`); gates not measured, clonal not assessable |
 | `pivot/53-case-study-numbers` | #57 | merged (merge commit, 89c8d78), phase 3 Task 12, case-study numbers per patient for all three methods with a pooled diagnostic; the recorded commit 5b4f83f is on `main` |
-| `pivot/54-case-study-writeup` | #58 | open, phase 3 Task 13, the Sheih 2020 write-up from its committed numbers |
+| `pivot/54-case-study-writeup` | #58 | merged, phase 3 Task 13, the Sheih 2020 write-up from its committed numbers |
+| `pivot/55-phase3-security` | #59 | open, phase 3 Task 14, the security review (S11 to S24) and the Done When commands for phase 3 |
 
 ## Phase 3 Task 8 decisions and result
 

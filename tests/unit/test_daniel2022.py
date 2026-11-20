@@ -15,7 +15,7 @@ import scipy.sparse
 import scipy.sparse as sp
 
 from lumencell.bench.builders import daniel2022
-from lumencell.bench.builders.common import CONTIG_COLUMNS, BuildError
+from lumencell.bench.builders.common import CONTIG_COLUMNS, UNSAFE_MEMBER, BuildError
 from lumencell.bench.builders.daniel2022 import (
     BUILD_VERSION,
     CAPTURES,
@@ -25,7 +25,6 @@ from lumencell.bench.builders.daniel2022 import (
     LICENCE,
     MATRIX_ORIENTATION,
     SOURCES,
-    UNSAFE_MEMBER,
     build,
 )
 from lumencell.clonal.isolation import receptor_gene_mask, scoring_only_columns
@@ -735,3 +734,13 @@ def test_reading_an_integer_matrix_makes_no_float_temporaries(tmp_path: Path) ->
         tracemalloc.stop()
     # Measured 28.7 bytes a value now (mmread's 16 plus the CSR's 12); the old float64 check took it to 37.7.
     assert peak < nnz * 33
+
+
+def test_listable_masks_every_name_that_is_not_a_plain_file_name() -> None:
+    from lumencell.bench.builders.common import listable
+    from lumencell.bench.download import SAFE_NAME
+
+    unsafe = ["ok.csv/../../x", "a.csv\x1b[31m", "a.csv\nb", "a" * 300, "", "/abs", "a b.csv"]
+    assert listable(unsafe) == [UNSAFE_MEMBER] * len(unsafe)
+    assert listable(["fine_1.tsv.gz"]) == ["fine_1.tsv.gz"]
+    assert SAFE_NAME.fullmatch(UNSAFE_MEMBER) is None and UNSAFE_MEMBER.isprintable()

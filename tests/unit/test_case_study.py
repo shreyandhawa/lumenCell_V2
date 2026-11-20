@@ -779,3 +779,11 @@ def test_the_verdict_footnote_comes_once_after_the_patients_and_before_the_poole
     assert text.count(note) == 1
     assert text.index("Per patient (primary)") < text.index(note) < text.index("Pooled diagnostic")
     assert text.index(note) < text.index("#### Lineage-pair coupling")
+
+
+def test_a_failed_methods_error_is_one_escaped_line_of_bounded_length() -> None:
+    exc = ValueError("bad column 'a\x1b[31m\nb' " + "x" * 1000)
+    err = case_study._method_failed(exc)["error"]
+    assert err.startswith("ValueError: ")
+    assert err.isprintable() and "\n" not in err and "\x1b" not in err
+    assert len(err) <= 300

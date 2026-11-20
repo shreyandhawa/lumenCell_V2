@@ -140,6 +140,58 @@ def test_fetch_checks_the_checksum_and_cleans_up(tmp_path: Path, monkeypatch: py
     assert fetch(good).read_bytes() == payload
 
 
+class _Endless:
+    """A response that never ends; counts the bytes it was asked for."""
+
+    def __init__(self) -> None:
+        self.served = 0
+
+    def __enter__(self) -> "_Endless":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+    def read(self, n: int = -1) -> bytes:
+        n = (1 << 20) if n < 0 else n
+        self.served += n
+        assert self.served < 1 << 24, "the download was never cut off"
+        return b"x" * n
+
+
+@pytest.mark.parametrize("size", [100, (3 << 20) + 5])
+def test_a_download_longer_than_its_size_is_cut_off_early(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, size: int
+) -> None:
+    monkeypatch.setenv("LUMENCELL_DATASETS_DIR", str(tmp_path))
+    res = _Endless()
+    monkeypatch.setattr(dl, "_open", lambda *a, **k: res)
+    src = Source(url="https://h/fake", filename="fake.h5ad", size=size, sha256=None)
+    with pytest.raises(FetchError, match=f"more than {size:,} bytes"):
+        fetch_source(src)
+    assert res.served <= size + 1, (
+        "reading stops one byte past the declared size, not at the end of the stream"
+    )
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_numeric_time_column_is_read_as_the_number_it_holds() -> None:
+    ds = DATASETS["gastrulation_erythroid"]
+    obs = pd.DataFrame(
+        {
+            "celltype": ["Blood progenitors 1", "Erythroid3", "Erythroid1", "Erythroid1"],
+            "stage": [1e-05, 12.5, "E7.75", "1_0"],
+        }
+    )
+    np.testing.assert_allclose(truth_for(ds, obs).order, [1e-05, 12.5, 7.75, 1.0])
+
+
+def test_a_whitespace_padded_numeric_time_reads_as_the_number() -> None:
+    from lumencell.bench.datasets import _time_value
+
+    assert _time_value(" 1e-05 ") == 1e-05
+
+
 def test_fetch_checks_the_size(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LUMENCELL_DATASETS_DIR", str(tmp_path))
     monkeypatch.setattr(dl, "_open", lambda *a, **k: _FakeResponse(b"short"))

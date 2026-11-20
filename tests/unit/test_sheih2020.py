@@ -11,7 +11,7 @@ import pytest
 
 from lumencell.bench import download as dl
 from lumencell.bench.builders import sheih2020
-from lumencell.bench.builders.common import BuildError
+from lumencell.bench.builders.common import UNSAFE_MEMBER, BuildError
 from lumencell.bench.datasets import CASE_STUDIES, CaseStudyDataset
 from lumencell.bench.download import Build, Source, build_dataset, local_path
 from lumencell.bench.gates import load_thresholds
@@ -201,7 +201,9 @@ def test_a_join_miss_is_counted(built: ad.AnnData) -> None:
     p = b["params"]  # an empty list reads back as an empty array
     assert (p["chains"], p["cdr3"], p["max_per_chain"], len(p["filters"])) == ("paired", "nt", 2, 0)
     assert b["joined_share"]["GSM_A"] == pytest.approx(0.75) and b["joined_share"]["GSM_B"] == 1.0
-    assert b["ignored_members"] == ["../stray.csv.gz"]
+    assert b["ignored_members"] == [UNSAFE_MEMBER], (
+        "a member name that is not a plain file name is never stored"
+    )
     assert not any(MISS.split("-")[0] in n for n in built.obs_names)
 
 

@@ -38,6 +38,7 @@ from lumencell.trust.constants import (
     ORACLE_P_MAX,
     SENSITIVITY_CLONE_SIZE,
 )
+from lumencell.trust.stability import safe_text
 
 ClonalRowStatus = Literal[
     "ok", "single_lineage", "too_few_clones", "not_assessable", "failed", "not_applicable", "not_measured"
@@ -242,8 +243,9 @@ def clonal_row(
             delta_base=method.delta_eta,
         )
     except Exception as exc:
-        reason = f"{type(exc).__name__}: {exc}"
-        print(f"clonal scoring failed: {reason}", file=sys.stderr)
+        raw = f"{type(exc).__name__}: {exc}"
+        print(f"clonal scoring failed: {raw}", file=sys.stderr)
+        reason = safe_text(raw)
         return ClonalRow("failed", reason=reason)
 
 
@@ -279,8 +281,9 @@ def stability_row(
         )
         return StabilityRow("ok", stab.lineage_stability, stab.pseudotime_stability, tree, v.level)
     except Exception as exc:
-        reason = f"{type(exc).__name__}: {exc}"
-        print(f"stability failed: {reason}", file=sys.stderr)
+        raw = f"{type(exc).__name__}: {exc}"
+        print(f"stability failed: {raw}", file=sys.stderr)
+        reason = safe_text(raw)
         return StabilityRow("failed", reason=reason)
 
 

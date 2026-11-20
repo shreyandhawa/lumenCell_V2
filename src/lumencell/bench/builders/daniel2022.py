@@ -21,8 +21,14 @@ import scipy.io
 import scipy.sparse as sp
 from anndata import AnnData
 
-from lumencell.bench.builders.common import CONTIG_COLUMNS, BuildError, call_clones, read_members
-from lumencell.bench.download import SAFE_NAME, Source
+from lumencell.bench.builders.common import (
+    CONTIG_COLUMNS,
+    BuildError,
+    call_clones,
+    listable,
+    read_members,
+)
+from lumencell.bench.download import Source
 
 GEO_SUPPL = "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE188nnn/GSE188666/suppl/"
 
@@ -339,8 +345,6 @@ _METADATA: dict[str, str] = {
     "main": "GSE188666_scRNA_LCMV_metadata.tsv.gz",
     "d5": "GSE188666_scRNA_D5_LCMV_metadata.txt.gz",
 }
-# A tar member name that is not a plain file name is listed as this, never as itself.
-UNSAFE_MEMBER = "<unsafe member name>"
 # After its tag, a cell id is the 16-nt core and "-1" (note section 9). obs names keep the core only.
 _CORE_AND_SUFFIX = r"([ACGT]{16})-1"
 _RECEPTOR_IDS = ("clone_id", "clone_id_trb", "raw_clonotype_id")
@@ -521,7 +525,7 @@ def build(paths: Mapping[str, Path], out: Path, params: Mapping[str, Any]) -> No
     metadata = {w: _read_metadata(paths[_METADATA[w]], _METADATA[w]) for w in used}
     members, others = read_members(paths[TAR], [c.member for c in listed])
     known = {c.member for c in CAPTURES}
-    ignored = [n if SAFE_NAME.fullmatch(n) else UNSAFE_MEMBER for n in others if n not in known]
+    ignored = listable(n for n in others if n not in known)
     calls = call_clones(_contigs(members, listed))
 
     obs_parts: list[pd.DataFrame] = []
