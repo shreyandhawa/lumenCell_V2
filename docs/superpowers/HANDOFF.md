@@ -23,9 +23,11 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   taken). Task 10 (#51, merged) declares `[case_study.sheih2020]` before any analysis. Task 5a (#50, merged): Daniel
   file formats and the capture map, all 23 TCR members joined to their cells. Task 11 (#52, merged) fetches the rest
   of GSE125881 and builds the case-study dataset (62,167 cells, no analysis yet). Task 5b (#53, merged): the Daniel
-  builder, tested on a synthetic layout only; the real derived file is not built. Task 6 (#54, open): the Daniel
+  builder, tested on a synthetic layout only; the real derived file is not built. Task 6 (#54, merged): the Daniel
   declaration (8 chronic spleen D8/D21 captures, namespace = capture, root `TEx_prog`, no gated lineage, clonal
-  declared not assessable), before any clone was counted. Next: 7, 8; Task 12 after 7 and 11. See each task's
+  declared not assessable), before any clone was counted. Task 7 (#55, open): clonal scores and reported fields for real
+  datasets, tested on a synthetic `fake` fixture only; a dataset with no gated lineage is shown as not measured, never
+  PASS. Next: 8; Task 12 after 7 and 11. See each task's
   decisions section.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
@@ -1245,6 +1247,49 @@ Fix round 1:
 - The changelog entry is pinned by `test_the_daniel_changelog_entry_is_dated_and_matches_the_registry`; the research
   note's namespace section no longer quotes Daniel's clonal section.
 
+## Phase 3 Task 7 decisions
+
+- **Branch** `pivot/51-bench-real-clonal`, from `main` fb06f05. Freeze kept: tests use the synthetic `fake` fixture
+  (1500-cell bifurcation with clones, a built Daniel file's columns); the Daniel derived file was not built and
+  nothing ran on real data. Clone, receptor and namespace columns reach `from_prep` and `stability_row` as
+  `clonal_columns` (`ds.clonal.columns()`), so they never reach inference; pinned by two tests.
+- **P14 (controller ruling, rendered).** `datasets.lineage_gates_note(ds)` returns `None` when `ds.gated` is non-empty
+  (pancreas, bone marrow and gastrulation render exactly as before) and otherwise
+  `lineage gates: not measured (no gated lineage, declared <ds.clonal.declared>)`. A dataset with no clonal
+  declaration has no date to cite, so it reads `lineage gates: not measured (no gated lineage)`. It replaces the PASS
+  (CLI) or `pass` (README cell) mark. A real gate failure still prints FAIL or `fail: ...`, never the note. Gates and
+  `check_gates` are untouched (no `nan = "fail"`). The README cell and the CLI line also carry the clonal entry, so a
+  Daniel cell shows both, e.g. `Spearman –, branch –, terminal – (lineage gates: not measured (no gated lineage,
+  declared 2026-11-20)), clonal: not assessable (declared 2026-11-20, <reason>)`. Test:
+  `test_a_dataset_with_no_gated_lineage_is_shown_as_not_measured`.
+- **Reported fields only when they apply.** `reported_day_spearman` is emitted only when the dataset sets
+  `report_time_key` (otherwise a NaN column would appear for pancreas after a re-run); the clone fields only when
+  `ds.clonal` is set. Day values are read as numbers (first number in the text, so `D21` and `21` both work).
+  `reported_labelled_share_of_raw` is cells with a `clone_id` among cells with a raw clonotype, per the Task 6 TOML
+  text. `reported_n_clone_strings` is an integer. The ARI is the Hubert-Arabie index in numpy; with a zero
+  denominator it is 1.0 for identical partitions and 0.0 otherwise.
+- **`clonal_reason` is always a string** (`""` when none): `test_gates.py` expected `None` and now expects `""`. The old
+  `test_a_real_case_row_is_not_applicable` stub dataset gained `clonal=None, report_time_key=None`.
+- **README** regenerates unchanged (no result file has `reported_*` or a clonal status other than not_applicable).
+- **Fix round 1** (controller rulings, each test seen failing on the old code or under its mutant first):
+  - **Day parsing.** A numeric `report_time_key` column is used directly (`pd.to_numeric`, NaN stays NaN); the
+    first-number regex is only for string or object columns (`D5`, `21`). The old code read `1e-05` as 1. Tests: the
+    numeric, string and all-unparsable day tests.
+  - **P16, labelled share.** `reported_labelled_share_of_raw` is the declared text literally: cells with a
+    `clone_id` divided by cells with a `raw_clonotype_id`, NaN with no raw cells. The declaration wins over a
+    bounded version, so it can exceed 1 when cells carry a `clone_id` but no raw id (5/4 in the test). Report it
+    as defined. Test: `test_the_labelled_share_is_clone_cells_over_raw_cells_as_declared_and_can_exceed_one`.
+  - **Recurrence.** Cells whose capture is missing are dropped, not counted as a capture called "nan".
+  - **ARI.** The zero-denominator branch is reachable only for two single clusters or two all-singletons, which
+    are always identical, so the dead 0.0 outcome is removed (it returns 1.0). Tests cover both-single, all
+    singletons, one cluster against singletons (0.0), a partial overlap (-0.5), n = 2, and the exhaustive small-n
+    check of the claim.
+  - **Pinned values.** Tests for `reported_metrics` on hand-built obs (capture-keyed raw ARI, restriction to cells
+    with both ids, TRB-only truth uses `trb_only_key` and the donor column, empty recurrence is `(nan, 0)`),
+    `CaseResult.row` rounding, `truth_for` columns, the report cell variants and the exact "Reported, not gated"
+    header. The P14 test is split so a real failure (`fail:` in the README, FAIL on the CLI line) is asserted
+    on its own.
+
 ## Open questions for Shreyan
 
 - **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep
@@ -1407,7 +1452,8 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 | `pivot/46-daniel-formats` | #50 | merged (squash), phase 3 Task 5a, Daniel 2022 file formats and the capture map (23 members joined) |
 | `pivot/48-sheih-builder` | #52 | merged (squash), phase 3 Task 11, case-study fetch and build (62,167 cells, 42,362 paired-labelled; no analysis) |
 | `pivot/49-daniel-builder` | #53 | merged (squash, 30b98c9), phase 3 Task 5b, the Daniel 2022 builder (contigs joined to cells by capture, clones called; synthetic tests only) |
-| `pivot/50-daniel-declaration` | #54 | open, phase 3 Task 6, the Daniel 2022 declaration before any run (subset, namespace, clone definition, truth, gates; clonal not assessable) |
+| `pivot/50-daniel-declaration` | #54 | merged (squash, fb06f05), phase 3 Task 6, the Daniel 2022 declaration before any run (subset, namespace, clone definition, truth, gates; clonal not assessable) |
+| `pivot/51-bench-real-clonal` | #55 | open, phase 3 Task 7, clonal scores and reported fields for real datasets (synthetic `fake` fixture only; Daniel not built) |
 
 ## Phase 3 Task 9 decisions and result
 

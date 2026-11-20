@@ -569,7 +569,7 @@ def bench_real(
     import subprocess
     from datetime import UTC, datetime
 
-    from lumencell.bench.datasets import DATASETS, is_cached
+    from lumencell.bench.datasets import DATASETS, is_cached, lineage_gates_note
     from lumencell.bench.gates import REPO, check_gates, load_thresholds
     from lumencell.bench.runner import run_real_case
     from lumencell.engine.registry import METHODS
@@ -590,12 +590,14 @@ def bench_real(
             rows.setdefault(method, {})[d] = row
             failed = check_gates(row, cfg[d]["gates"])
             failures += [(method, f) for f in failed]
-            verdict = "PASS" if not failed else "FAIL"
+            # A dataset with no gated lineage measured nothing: never PASS (a failure still shows).
+            verdict = "FAIL" if failed else (lineage_gates_note(DATASETS[d]) or "PASS")
             typer.echo(
                 f"{d:24s} {method:12s} sp={row['pt_spearman_global']:.3f} "
                 f"sp_lin={row['pt_spearman_lineage']:.3f} branch={row['branch_accuracy']:.3f} "
                 f"recall={row['lineage_recall']:.2f} terminal={row['terminal_share']:.3f} "
-                f"verdict={row['tree_support']} {verdict} ({row['runtime_seconds']}s)"
+                f"verdict={row['tree_support']} clonal={row['clonal_status']} {verdict} "
+                f"({row['runtime_seconds']}s)"
             )
     for method, f in failures:
         typer.echo(f"gate     {method}: {f}")

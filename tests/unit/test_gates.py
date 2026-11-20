@@ -188,7 +188,7 @@ def test_row_reports_every_clonal_field_with_its_own_value() -> None:
         "clonal_n_cells": 99,
         "clonal_reason": "x",
     }
-    assert CaseResult("c", "m", _scores(), 1, 0.0).row()["clonal_reason"] is None
+    assert CaseResult("c", "m", _scores(), 1, 0.0).row()["clonal_reason"] == ""
 
 
 def test_status_ok_still_enforces_the_bounds() -> None:

@@ -176,7 +176,7 @@ def _fake_real(monkeypatch: pytest.MonkeyPatch, now: list[float]) -> list[Any]:
     from lumencell.bench.metrics import Scores
     from lumencell.prep import cache
 
-    ds = SimpleNamespace(root_spec="x", label_key="cell_type")
+    ds = SimpleNamespace(root_spec="x", label_key="cell_type", clonal=None, report_time_key=None)
     monkeypatch.setattr(datasets, "DATASETS", {"d": ds})
     monkeypatch.setattr(datasets, "is_cached", lambda d: True)
     monkeypatch.setattr(datasets, "local_path", lambda d: "p")

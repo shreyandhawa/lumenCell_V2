@@ -357,7 +357,7 @@ def test_inference_is_told_the_clone_columns_only_when_the_layer_was_applied(
 
 def test_a_real_case_row_is_not_applicable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     truth = _clone_truth()
-    spec = SimpleNamespace(root_spec="r", label_key=None)
+    spec = SimpleNamespace(root_spec="r", label_key=None, clonal=None, report_time_key=None)
     monkeypatch.setattr("lumencell.bench.datasets.DATASETS", {"d": spec})
     monkeypatch.setattr("lumencell.bench.datasets.is_cached", lambda ds: True)
     monkeypatch.setattr("lumencell.bench.datasets.local_path", lambda ds: tmp_path)
