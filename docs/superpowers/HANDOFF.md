@@ -17,9 +17,9 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   (the verification's `passed` is `False` and the slow test that asserts it); a pre-declared C1/C2 redesign is the only
   way to pass them and is not planned. C2, C3 and C4 were non-discriminating in Task 8, so no tau is set for them. The
   calibrated N2a split is adopted (clonal `metric_version` 2).
-- **Phase 3 is complete on `main`** (base 35ac459; head 884cad0 before this PR). PRs by task: T1 #43, T2 #44, T3 #48,
+- **Phase 3 is complete on `main`** (base 35ac459; last task merged at e67ba0f). PRs by task: T1 #43, T2 #44, T3 #48,
   T4 #47, T5a #50, T5b #53, T6 #54, T7 #55, T8 #56, T9 #45, T10 #51, T11 #52, T12 #57 (merge commit 89c8d78, so the
-  recorded commit 5b4f83f is on `main`), T13 #58, T14 this PR (`pivot/55-phase3-security`). See each task's decisions section.
+  recorded commit 5b4f83f is on `main`), T13 #58, T14 #59; the close-out record is #60. See each task's decisions section.
   - **Daniel 2022:** declared not assessable for clones, no gated lineage, so the lineage gates are not measured and the verdict
     is provisional for all three methods (`benchmarks/results/real-2026-11-20.json`).
   - **Sheih 2020 case study:** per patient, 8 weak and 4 provisional method runs, none supported, 4 passes of C5
@@ -1434,6 +1434,7 @@ Checked and found sound, no change:
 ## Done When (phase 3)
 
 Run from the worktree of `pivot/55-phase3-security` (main 884cad0 plus this PR), 2026-11-20, exactly as the plan writes them. Nothing was
+Re-checked on `main` e67ba0f after #59 merged (2026-11-20): both declaration-order commands print 0, the results file has the three Daniel rows, the README is current (exit 0), the not-assessable grep prints 3, the security-review heading appears once, and the datasets, Daniel, real-clonal, case-study and write-up tests pass (202 passed). `make ci` passed on #59's head in CI.
 changed to make any of them pass. All pass.
 
 | Command | Exit | Output | Result |
@@ -1510,7 +1511,8 @@ The Daniel and case-study rows are the plan's commands run from this branch; the
 | `pivot/52-bench-real-daniel` | #56 | merged, phase 3 Task 8, the real benchmark with Daniel 2022 rows (`real-2026-11-20.json`); gates not measured, clonal not assessable |
 | `pivot/53-case-study-numbers` | #57 | merged (merge commit, 89c8d78), phase 3 Task 12, case-study numbers per patient for all three methods with a pooled diagnostic; the recorded commit 5b4f83f is on `main` |
 | `pivot/54-case-study-writeup` | #58 | merged, phase 3 Task 13, the Sheih 2020 write-up from its committed numbers |
-| `pivot/55-phase3-security` | #59 | open, phase 3 Task 14, the security review (S11 to S24) and the Done When commands for phase 3 |
+| `pivot/55-phase3-security` | #59 | merged (squash, e67ba0f), phase 3 Task 14, the security review (S11 to S24) and the Done When commands for phase 3 |
+| `pivot/56-phase3-close` | #60 | phase 3 close-out: #59 marked merged, the Done When re-checked on `main` e67ba0f |
 
 ## Phase 3 Task 8 decisions and result
 
