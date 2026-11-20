@@ -1,7 +1,18 @@
+import gzip
 import re
+from pathlib import Path
+from typing import Any
 
-from lumencell.bench.builders.common import CONTIG_COLUMNS
+import anndata as ad
+import numpy as np
+import pandas as pd
+import pytest
+import scipy.sparse as sp
+
+from lumencell.bench.builders import daniel2022
+from lumencell.bench.builders.common import CONTIG_COLUMNS, BuildError
 from lumencell.bench.builders.daniel2022 import (
+    BUILD_VERSION,
     CAPTURES,
     COLUMN_RENAMES,
     GEO_SUPPL,
@@ -9,6 +20,22 @@ from lumencell.bench.builders.daniel2022 import (
     LICENCE,
     MATRIX_ORIENTATION,
     SOURCES,
+    UNSAFE_MEMBER,
+    build,
+)
+from lumencell.clonal.isolation import receptor_gene_mask, scoring_only_columns
+from lumencell.data.loader import load
+from tests.unit.daniel_fixture import (
+    B2,
+    BAD_TRA,
+    CORE,
+    GENES,
+    MISSED_CORE,
+    NO_CONTIG,
+    PARAMS,
+    THREE_TRB,
+    patch_captures,
+    write_layout,
 )
 
 EXPECTED = (
@@ -197,3 +224,223 @@ def test_tissue_day_arm_and_gate_agree_with_the_member_name() -> None:
 def test_the_matrix_orientation_and_column_renames_are_pinned() -> None:
     assert MATRIX_ORIENTATION == {"main": "genes_x_cells", "d5": "genes_x_cells"}
     assert COLUMN_RENAMES == {}
+
+
+# ---- Task 5b: the build, on the synthetic layout of tests/unit/daniel_fixture.py ----
+
+
+@pytest.fixture
+def layout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[dict[str, Path], dict[tuple[str, str], np.ndarray]]:
+    patch_captures(monkeypatch)
+    return write_layout(tmp_path / "src")
+
+
+@pytest.fixture
+def counts(
+    layout: tuple[dict[str, Path], dict[tuple[str, str], np.ndarray]],
+) -> dict[tuple[str, str], np.ndarray]:
+    return layout[1]
+
+
+def _build(paths: dict[str, Path], out_dir: Path, params: dict[str, Any] = PARAMS) -> ad.AnnData:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / "daniel.h5ad"
+    build(paths, out, params)
+    return ad.read_h5ad(out)
+
+
+@pytest.fixture
+def built(layout: tuple[dict[str, Path], dict[tuple[str, str], np.ndarray]], tmp_path: Path) -> ad.AnnData:
+    return _build(layout[0], tmp_path / "out")
+
+
+def test_duplicate_barcodes_across_captures_stay_apart(
+    built: ad.AnnData, counts: dict[tuple[str, str], np.ndarray]
+) -> None:
+    a, b = "GSM_A_AAACCTGAGAAGGCCT", "GSM_B_AAACCTGAGAAGGCCT"
+    assert built.obs.loc[a, "clone_id"] != built.obs.loc[b, "clone_id"]
+    np.testing.assert_array_equal(built[a].X.toarray().ravel(), counts[("GSM_A", "AAACCTGAGAAGGCCT")])
+    np.testing.assert_array_equal(built[b].X.toarray().ravel(), counts[("GSM_B", "AAACCTGAGAAGGCCT")])
+
+
+def test_a_barcode_join_miss_is_counted_and_dropped(built: ad.AnnData) -> None:
+    assert built.uns["lumencell_build"]["join_misses"] == {"GSM_A": 1, "GSM_B": 0}
+    assert not any(MISSED_CORE in n for n in built.obs_names)
+
+
+def test_clone_columns_are_scoring_only(built: ad.AnnData) -> None:
+    so = scoring_only_columns(built.obs.columns, ("donor",))
+    assert {"clone_id", "clone_id_trb", "raw_clonotype_id", "receptor_n_tra", "receptor_n_trb", "donor"} <= so
+    assert not {"state", "day", "tissue", "capture", "sort_gate", "arm"} & so
+
+
+def test_the_kept_cells_are_those_in_the_metadata_and_a_listed_capture(built: ad.AnnData) -> None:
+    assert list(built.obs_names) == [f"GSM_A_{c}" for c in (CORE, THREE_TRB, BAD_TRA, NO_CONTIG)] + [
+        f"GSM_B_{c}" for c in (CORE, B2)
+    ]
+    assert built.X.dtype == np.float32 and sp.issparse(built.X) and built.X.format == "csr"
+    assert list(built.var_names) == GENES and "gene_symbols" not in built.var
+    obs = built.obs
+    assert obs.loc[f"GSM_A_{CORE}", "state"] == "Tpex" and obs.loc[f"GSM_B_{B2}", "state"] == "Teff"
+    a = obs.loc[f"GSM_A_{CORE}"]
+    assert (a.capture, a.arm, a.day, a.tissue, a.sort_gate, a.donor) == (
+        "GSM_A",
+        "LCMV-c13",
+        21,
+        "spleen",
+        "CD8+ gp33+ T cells",
+        "m1",
+    )
+    assert obs.loc[f"GSM_B_{CORE}", "day"] == 8 and obs.loc[f"GSM_B_{CORE}", "donor"] == "m2"
+    u = built.uns["lumencell_build"]
+    assert u["version"] == BUILD_VERSION == 1 and u["n_cells"] == 6
+    assert u["contig_barcodes"] == {"GSM_A": 4, "GSM_B": 3}
+    assert (u["labelled_cells"], u["labelled_cells_trb"]) == (3, 4)
+    assert list(u["params"]["captures"]) == ["GSM_A", "GSM_B"]
+    assert dict(u["params"]["namespace"]) == {"GSM_A": "m1", "GSM_B": "m2"}
+
+
+def test_cells_without_contigs_are_unlabelled(built: ad.AnnData) -> None:
+    row = built.obs.loc[f"GSM_A_{NO_CONTIG}"]
+    assert pd.isna(row.clone_id) and pd.isna(row.clone_id_trb) and pd.isna(row.raw_clonotype_id)
+    assert row.receptor_n_tra == 0 and row.receptor_n_trb == 0
+    assert built.obs["receptor_n_tra"].dtype == np.int64 and built.obs["receptor_n_trb"].dtype == np.int64
+
+
+def test_the_clone_call_runs_through_the_build(built: ad.AnnData) -> None:
+    three, bad = built.obs.loc[f"GSM_A_{THREE_TRB}"], built.obs.loc[f"GSM_A_{BAD_TRA}"]
+    assert pd.isna(three.clone_id) and pd.isna(bad.clone_id)
+    assert pd.notna(bad.clone_id_trb) and bad.receptor_n_tra == 0
+    assert three.receptor_n_trb == 3 and pd.isna(three.clone_id_trb)
+    paired = built.obs.loc[f"GSM_A_{CORE}"]
+    assert str(paired.clone_id).startswith("c") and paired.raw_clonotype_id == "GSM_A:clonotype1"
+
+
+def test_only_listed_captures_are_kept_and_namespaced(
+    layout: tuple[dict[str, Path], dict[tuple[str, str], np.ndarray]], tmp_path: Path
+) -> None:
+    one = _build(layout[0], tmp_path / "one", {"captures": ["GSM_A"], "namespace": {"GSM_A": "m1"}})
+    assert set(one.obs["capture"]) == {"GSM_A"} and set(one.obs["donor"]) == {"m1"}
+    assert one.uns["lumencell_build"]["join_misses"] == {"GSM_A": 1}
+    assert list(one.uns["lumencell_build"]["ignored_members"]) == [UNSAFE_MEMBER]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"captures": [], "namespace": {}},
+        {"captures": ["GSM_A", "GSM_Z"], "namespace": {"GSM_A": "m1", "GSM_Z": "m9"}},
+        {"captures": ["GSM_A", "GSM_B"], "namespace": {"GSM_A": "m1"}},
+        {"captures": ["GSM_A"], "namespace": {"GSM_A": "m1", "GSM_B": "m2"}},
+        {"captures": ["GSM_A", "GSM_A"], "namespace": {"GSM_A": "m1"}},
+        {"captures": ["GSM_A"], "namespace": {"GSM_A": ""}},
+        {"captures": "GSM_A", "namespace": {"GSM_A": "m1"}},
+        {"captures": ["GSM_A"]},
+    ],
+    ids=[
+        "empty",
+        "unknown",
+        "namespace-missing",
+        "namespace-extra",
+        "duplicate",
+        "blank-donor",
+        "string",
+        "no-ns",
+    ],
+)
+def test_bad_params_are_refused(
+    layout: tuple[dict[str, Path], dict[tuple[str, str], np.ndarray]], tmp_path: Path, params: dict[str, Any]
+) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    with pytest.raises(BuildError) as e:
+        build(layout[0], out_dir / "daniel.h5ad", params)
+    assert "GSM_Z" not in str(e.value) and list(out_dir.iterdir()) == []
+
+
+def test_the_stray_member_is_ignored_and_nothing_is_written_beside_out(
+    layout: tuple[dict[str, Path], dict[tuple[str, str], np.ndarray]], tmp_path: Path
+) -> None:
+    before = sorted(p.name for p in (tmp_path / "src").iterdir())
+    built = _build(layout[0], tmp_path / "out")
+    ignored = list(built.uns["lumencell_build"]["ignored_members"])
+    assert ignored == [UNSAFE_MEMBER] and not any("stray" in str(n) for n in ignored)
+    assert [p.name for p in (tmp_path / "out").iterdir()] == ["daniel.h5ad"]
+    assert sorted(p.name for p in (tmp_path / "src").iterdir()) == before
+    assert not (tmp_path / "stray.csv.gz").exists()
+
+
+def test_the_output_loads_as_counts_with_receptor_symbols(
+    layout: tuple[dict[str, Path], dict[tuple[str, str], np.ndarray]], tmp_path: Path
+) -> None:
+    _build(layout[0], tmp_path / "out")
+    ds = load(tmp_path / "out" / "daniel.h5ad")
+    assert ds.x_kind == "counts"
+    assert receptor_gene_mask(ds.gene_symbols).sum() == 2
+
+
+def test_a_d5_capture_reads_the_d5_matrix_and_labels(
+    layout: tuple[dict[str, Path], dict[tuple[str, str], np.ndarray]], tmp_path: Path
+) -> None:
+    params = {"captures": ["GSM_A", "GSM_D"], "namespace": {"GSM_A": "m1", "GSM_D": "m1"}}
+    both = _build(layout[0], tmp_path / "both", params)
+    counts = layout[1]
+    a, d = f"GSM_A_{CORE}", f"GSM_D_{CORE}"
+    # GSM_A reads the main matrix even though the D5 matrix repeats its cell (no dedupe, no D5 copy).
+    np.testing.assert_array_equal(both[a].X.toarray().ravel(), counts[("GSM_A", CORE)])
+    np.testing.assert_array_equal(both[d].X.toarray().ravel(), counts[("GSM_D", CORE)])
+    assert both.obs.loc[a, "state"] == "Tpex" and both.obs.loc[d, "state"] == "D5_early"
+    assert both.obs.loc[d, "day"] == 5 and both.n_obs == 5
+    # Same receptors in two captures: the same id string, kept apart by capture and donor columns.
+    assert both.obs.loc[a, "clone_id"] == both.obs.loc[d, "clone_id"]
+    assert both.uns["lumencell_build"]["join_misses"] == {"GSM_A": 1, "GSM_D": 0}
+
+
+def test_matrices_with_different_features_are_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_captures(monkeypatch)
+    paths, _ = write_layout(tmp_path / "src", d5_genes=[*GENES[:-1], "Pdcd1"])
+    params = {"captures": ["GSM_A", "GSM_D"], "namespace": {"GSM_A": "m1", "GSM_D": "m2"}}
+    with pytest.raises(BuildError, match="feature"):
+        _build(paths, tmp_path / "out", params)
+    assert list((tmp_path / "out").iterdir()) == []
+    # One matrix alone needs no comparison.
+    assert _build(paths, tmp_path / "d5", {"captures": ["GSM_D"], "namespace": {"GSM_D": "m2"}}).n_obs == 1
+
+
+def test_features_with_an_id_and_a_symbol_column_keep_both(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    patch_captures(monkeypatch)
+    ids = [f"ENSMUSG{i:011d}\t{g}\tGene Expression" for i, g in enumerate(GENES)]
+    paths, _ = write_layout(tmp_path / "src", features=ids)
+    out = _build(paths, tmp_path / "out")
+    assert list(out.var_names) == [f"ENSMUSG{i:011d}" for i in range(len(GENES))]
+    assert list(out.var["gene_symbols"]) == GENES
+
+
+def test_a_failed_build_leaves_no_output(
+    layout: tuple[dict[str, Path], dict[tuple[str, str], np.ndarray]], tmp_path: Path
+) -> None:
+    paths = dict(layout[0])
+    bad = tmp_path / "bad.mtx.gz"
+    bad.write_bytes(gzip.compress(b"%%MatrixMarket matrix coordinate integer general\n6 8 1\n1 1\n"))
+    paths["GSE188666_scRNA_LCMV.mtx.gz"] = bad
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    with pytest.raises(BuildError):
+        build(paths, out_dir / "daniel.h5ad", PARAMS)
+    assert list(out_dir.iterdir()) == []
+
+
+def test_without_a_label_column_there_is_no_state(
+    layout: tuple[dict[str, Path], dict[tuple[str, str], np.ndarray]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(daniel2022, "LABEL_COLUMN", None)
+    out = _build(layout[0], tmp_path / "out")
+    assert "state" not in out.obs and out.n_obs == 6

@@ -21,7 +21,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   the nine Daniel 2022 GEO files, sizes and SHA-256), Task 3 (#48, Daniel sample records and metadata; 23 captures),
   Task 4 (#47, clone calling from 10x contigs) and Task 9 (#45, Sheih 2020 joins at 0.99, so the Cao branch is not
   taken). Task 10 (#51, merged) declares `[case_study.sheih2020]` before any analysis. Task 5a (#50): Daniel file
-  formats and the capture map, all 23 TCR members joined to their cells. Next: 5b, then 6, 7, 8; Task 11 after
+  formats and the capture map, all 23 TCR members joined to their cells. Task 5b (#53, open): the Daniel builder,
+  tested on a synthetic layout only; the real derived file is not built. Next: 6, then 7, 8; Task 11 after
   Tasks 4 and 10. See each task's decisions section.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
@@ -1171,6 +1172,20 @@ Fix round 1:
   - Tests for the union join (a D5-only tag), a member with 0 barcodes (`n/a`), one unmapped member, `neither` orientation and the exactly-100,000-value integer check.
   - The note's section 10 states that the join share counts every contig row's barcode.
 
+## Phase 3 Task 5b decisions
+
+- **Branch** `pivot/49-daniel-builder`, from `main` ddb39c3. `build` and `BUILD_VERSION = 1` in `bench/builders/daniel2022.py`; fixture `tests/unit/daniel_fixture.py`. Freeze kept: the builder never ran on the real files, no real file was opened (the formats came from the note's sections 2, 9 and 10), and no clone x state, clone x capture or clone x lineage count was computed.
+- **obs names are `<gsm>_<core>`, the core without `-1`.** A cell of capture `c` is a matrix barcode that fullmatches `c.tag + [ACGT]{16} + "-1"`; the core is the 16 nt. Its contigs are those whose barcode is exactly `<core>-1` (so `c.tag + b` is the matrix barcode); a contig barcode of any other shape joins nothing. Every real barcode ends in `-1` (note section 9), so dropping it loses nothing.
+- **Metadata join:** the metadata index is the matrix barcode itself (`<tag><core>-1`, note sections 2 and 9), so cells are matched by exact string. Kept = matrix cells of a listed capture that its own matrix's metadata lists, in matrix order, captures in the listed order. A metadata cell of a listed capture that the matrix lacks is a `BuildError` (the note says each barcode file is its metadata file's cells). Only the index and `LABEL_COLUMN` are read (`usecols`), so `tcr_cdr3s_*` never enter the build; a blank label is NaN. With `LABEL_COLUMN = None` there is no `state` column.
+- **D5 handling:** each capture is read from the matrix and metadata its `Capture.matrix` names, and only matrices a listed capture uses are read. The D5 matrix's copies of the 11 chronic spleen D8/D21 captures are never read (those captures are `main`), so nothing is deduplicated: main and D5 cells are different captures by tag. When both matrices are used, their feature lists (and symbols) must be identical, else `BuildError`.
+- **obs columns:** `capture`, `arm`, `tissue`, `sort_gate`, `state`, `donor` (categorical), `day` (int64), `clone_id`, `clone_id_trb`, `raw_clonotype_id` (NaN without a call), `receptor_n_tra`, `receptor_n_trb` (int64, 0 without a contig). `var_names` are the feature lines (gene symbols); `var["gene_symbols"]` is added only for a features file with a second column. X is CSR float32 cells x genes, from `scipy.io.mmread` on a gzip stream, transposed for `genes_x_cells`, checked for shape against barcodes and features and for non-negative integer values.
+- **`uns["lumencell_build"]`:** exactly the plan's keys (`version`, `params`, `n_cells`, `contig_barcodes`, `join_misses`, `ignored_members`, `labelled_cells`, `labelled_cells_trb`); no extras. `contig_barcodes` counts distinct barcodes over every contig row of the member (Task 5a's denominator). A join miss is a contig barcode with at least one qualifying contig (`receptor_n_tra + receptor_n_trb > 0`) and no kept cell of its own capture; a barcode with only non-qualifying contigs is not a miss.
+- **`ignored_members`:** tar members that belong to no `CAPTURES` entry (members of known but unlisted captures are not listed, and not read). A name matching `download.SAFE_NAME` is stored as is; any other (the fixture's `../stray.csv.gz`) is stored as `"<unsafe member name>"`, so the count is kept and the untrusted string never reaches the file. Same key and type as Sheih's builder (#52), which stores names unfiltered.
+- **Params are refused, never approximated:** keys other than `captures` and `namespace`, a string or empty list, a repeated or unknown GSM, a namespace that misses a listed capture or names an unlisted one, or a blank donor. Errors name counts and our own constants, never a barcode, label, member name or GSM.
+- **Atomic write:** the builder writes to a `mkstemp` file in `out`'s directory and `os.replace`s it onto `out`; on any error the temp file is removed and `out` is not created. Tests check that nothing else is left beside `out` and that a malformed matrix leaves the directory empty.
+- **Beyond the plan's list of tests:** the kept-cell order and the `obs`/`uns` values, a D5 capture read from the D5 matrix while the main capture's repeated cell is read from main, mismatched features refused, a two-column features file, a failed build, and `LABEL_COLUMN = None`.
+- **For Task 6/7:** the real main matrix has 190,891,292 stored values; `mmread` holds them all before the subset, so the real build needs several GB of memory (not measured).
+
 ## Open questions for Shreyan
 
 - **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep
@@ -1331,6 +1346,7 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 | `pivot/45-phase2-close` | #49 | merged (squash), closes phase 2: Done When recorded on 570fb5e, final state |
 | `pivot/47-sheih-declaration` | #51 | merged (squash, 5ef3151), phase 3 Task 10, case-study declaration (clone definition, namespace, strata, root) before any analysis |
 | `pivot/46-daniel-formats` | #50 | merged (squash), phase 3 Task 5a, Daniel 2022 file formats and the capture map (23 members joined) |
+| `pivot/49-daniel-builder` | #53 | open, phase 3 Task 5b, the Daniel 2022 builder (contigs joined to cells by capture, clones called; synthetic tests only) |
 
 ## Phase 3 Task 9 decisions and result
 
