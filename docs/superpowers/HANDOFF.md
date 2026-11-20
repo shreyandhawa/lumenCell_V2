@@ -1506,7 +1506,7 @@ The Daniel and case-study rows are the plan's commands run from this branch; the
 | `pivot/52-bench-real-daniel` | #56 | merged, phase 3 Task 8, the real benchmark with Daniel 2022 rows (`real-2026-11-20.json`); gates not measured, clonal not assessable |
 | `pivot/53-case-study-numbers` | #57 | merged (merge commit, 89c8d78), phase 3 Task 12, case-study numbers per patient for all three methods with a pooled diagnostic; the recorded commit 5b4f83f is on `main` |
 | `pivot/54-case-study-writeup` | #58 | merged, phase 3 Task 13, the Sheih 2020 write-up from its committed numbers |
-| `pivot/55-phase3-security` | PRNUM | open, phase 3 Task 14, the security review (S11 to S20) and the Done When commands for phase 3 |
+| `pivot/55-phase3-security` | #59 | open, phase 3 Task 14, the security review (S11 to S20) and the Done When commands for phase 3 |
 
 ## Phase 3 Task 8 decisions and result
 
