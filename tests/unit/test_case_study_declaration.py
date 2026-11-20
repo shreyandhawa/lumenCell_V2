@@ -11,7 +11,7 @@ import pytest
 
 from lumencell.api.models import ClonalSettings
 from lumencell.bench.builders.common import CONTIG_COLUMNS
-from lumencell.bench.gates import load_thresholds
+from lumencell.bench.gates import THRESHOLDS, load_thresholds
 from lumencell.engine.roots import ClusterRoot, parse_root
 from lumencell.trust.clonal import settings_columns
 
@@ -124,3 +124,13 @@ def test_chains_follow_the_documented_table_format(cs: dict[str, Any]) -> None:
 
 def test_cdr3_is_nucleotide_when_the_tables_carry_it(cs: dict[str, Any]) -> None:
     assert cs["cdr3"] == ("nt" if "cdr3_nts" in SHEIH_TABLE_COLUMNS else "aa") == "nt"
+
+
+def test_the_declaration_has_its_dated_changelog_entry(cs: dict[str, Any]) -> None:
+    """The changelog entry carries the section's date, the assumed root and the per-patient cost."""
+    text = THRESHOLDS.read_text()
+    head = f"# {cs['declared']}  Case study declared: [case_study.sheih2020]"
+    assert text.count(head) == 1
+    entry = text[text.index(head) :]
+    assert "Assumption: IP as the start is assumed" in entry
+    assert "12 runs with stability instead of 3" in entry

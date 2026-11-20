@@ -425,6 +425,8 @@ max_drop = 0.03
 #     values (IP, d12, d21, d28, d29, d38, d83, d89, d102, d112). Every patient (CLL-1, CLL-2,
 #     NHL-6, NHL-7) has an IP sample (aggr IDs 1, 8, 16, 12). The time point is a stratum, so it
 #     stays visible to methods and may define the root (spec §4.2, amended).
+#     Assumption: IP as the start is assumed, not named by the paper; it is the earliest sample
+#     and the source population of Fig. 7.
 #   * chains = "paired" (Daniel's rule: 1 or 2 distinct CDR3s of each of TRA and TRB, the sorted
 #     set). The GEO tables are labelled "unpaired" (one row per clonotype x chain), but every row
 #     names its chain and lists its cells' barcodes, so TRA and TRB rows group by cell barcode.

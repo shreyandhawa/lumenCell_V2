@@ -904,6 +904,7 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 
 ## Found along the way
 
+- **Some existing gates are pinned only by the benchmark runs, not by unit tests** (found by PR #51's mutation seat, 2026-11-19): changing `[regression] max_drop`, `pt_spearman_global` or the pancreas `branch_accuracy` in `thresholds.toml` passes the unit tests. Phase 3 changes none of them; noted for the phase 3 security review.
 - **Local `main` was 13 commits behind `origin/main`** on 2026-11-12. Check
   `git rev-list --left-right --count main...origin/main` before reading code.
 - **`main` has no branch protection.** Keeping work on PRs is discipline, not enforcement.
@@ -1326,6 +1327,7 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 - **Chains `paired`** (Daniel's rule, 1-2 of each of TRA and TRB). Judgement call: the GEO tables are labelled "unpaired" (one row per clonotype x chain), but every row names its chain and lists its cells' barcodes, so the chains group by cell barcode, which is the plan's test for `paired`. The paper also used Cell Ranger vdj's paired clonotype calling. Cost: cells with one chain detected are unlabelled.
 - **CDR3 `nt`** (`cdr3_nts` is present). **Filters `[]`:** productive, high_confidence and full_length (and is_cell) are all absent from the tables; whether the authors kept only productive chains is UNVERIFIED.
 - **Unit:** per patient primary (4 patients x 3 methods = 12 runs with stability, about a quarter of the cells each), patient as the clone namespace, `strata_keys = ["timepoint"]` (N3), pooled run as a labelled diagnostic only.
+- **Review fixes (controller):** the changelog's root bullet now says IP as the start is an assumption, not named by the paper; `test_the_declaration_has_its_dated_changelog_entry` ties the entry's date to `declared` and checks it states the assumption and the per-patient cost (a re-dated entry fails it).
 
 ## Verify the current state
 
