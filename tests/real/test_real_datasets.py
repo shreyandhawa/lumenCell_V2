@@ -52,3 +52,12 @@ def test_the_daniel_build_joins_every_capture() -> None:
     for col in ("state", "day", "capture", "donor", "clone_id", "clone_id_trb"):
         assert col in obs.columns, col
     assert (obs["state"] == ds.root_label).sum() > 0
+    # The build used exactly the declared captures, each has cells, and the columns are populated.
+    assert ds.build is not None
+    assert list(build["params"]["captures"]) == list(ds.build.params["captures"])
+    assert set(obs["capture"].astype(str).unique()) == set(ds.build.params["captures"])
+    assert int(build["n_cells"]) == adata.n_obs
+    for col in ("state", "day", "capture", "donor"):
+        assert obs[col].notna().all(), col
+    for col in ("clone_id", "clone_id_trb"):
+        assert obs[col].notna().sum() > 0, col
