@@ -253,6 +253,32 @@ passed = false
 date = "2026-11-17"
 source = "benchmarks/results/verdict-verification-2026-11-17.json"
 
+# ---- case study (spec docs/superpowers/specs/2026-11-12-tcell-clonotypes-design.md §6.2)
+# Declared before any analysis, from the paper and the file headers only (Task 9's note,
+# docs/superpowers/research/2026-11-19-sheih-verification.md). Nothing was computed from clonotype,
+# CDR3 or gene values. Reasons for each value: the changelog entry of the same date.
+
+[case_study.sheih2020]   # declared before any analysis; see the changelog entry of the same date
+declared = "2026-11-19"
+accession = "GSE125881"
+paper = "Sheih et al. 2020, Nat Commun 11:219, doi:10.1038/s41467-019-13880-1"
+methods = ["paga_dpt", "palantir", "scfates_ppt"]
+root = "cluster:timepoint=IP"   # the infusion product, which the post-infusion repertoire comes from: Results, "Contribution of infused CAR-T clusters to in vivo repertoire", Fig. 7
+clone_key = "clone_id"
+donor_key = "patient"          # namespace: each patient
+single_donor = false
+strata_keys = ["timepoint"]    # N3: clones that expand at one time point are not read as lineage agreement
+chains = "paired"              # both chains' rows carry per-cell barcodes, so TRA and TRB group by cell
+cdr3 = "nt"                    # the tables carry cdr3_nts
+filters = []                   # the tables carry no productive, high_confidence or full_length flag
+max_per_chain = 2
+unit_key = "patient"           # primary analysis: each method runs once per patient (4 x 3 runs, stability on each)
+pooled_diagnostic = true       # one pooled run per method, reported only as a labelled diagnostic, never the headline
+# Clonal parameters are the [clonal] defaults: m = 2 primary, m = 3 sensitivity, B = 1000, seed 0.
+# lumenCell has no batch correction. Pooled patients would let patient structure dominate, and C1/C2
+# would then call a batch artefact "no tree". Cost: 12 runs with stability instead of 3, and about a
+# quarter of the cells in each run.
+
 [regression]
 # CI fails if a synthetic metric falls further than this below benchmarks/baseline.json.
 max_drop = 0.03
@@ -384,3 +410,42 @@ max_drop = 0.03
 #             pancreas palantir 0.400 / 0.999 / 0.666 / provisional;
 #             pancreas scfates_ppt 0.800 / 0.988 / 0.666 / provisional.
 #             No gate changed.
+#
+# 2026-11-19  Case study declared: [case_study.sheih2020], before any analysis and before the
+#             case-study data is fetched (Task 11). Written from the paper (read as Europe PMC's
+#             open full text of PMC6954177) and Task 9's note on the file headers; nothing was
+#             computed from clonotype, CDR3 or gene values. Nothing existing changed.
+#   * root = "cluster:timepoint=IP". The paper names no differentiation root: its Monocle 3
+#     trajectory covers infusion-product cells only and did not give clear trajectories. It treats
+#     the infusion product as the population the in vivo repertoire comes from (Results,
+#     "Contribution of infused CAR-T clusters to in vivo repertoire", Fig. 7; Fig. 5 compares
+#     blood to it). That is also the earliest sample, the plan's fallback. The order is the trial's
+#     (cells are sampled from blood after the product is infused), never read from clones. "IP"
+#     is GEO's "time point" spelling as written; Task 11 writes obs timepoint with exactly GEO's
+#     values (IP, d12, d21, d28, d29, d38, d83, d89, d102, d112). Every patient (CLL-1, CLL-2,
+#     NHL-6, NHL-7) has an IP sample (aggr IDs 1, 8, 16, 12). The time point is a stratum, so it
+#     stays visible to methods and may define the root (spec §4.2, amended).
+#     Assumption: IP as the start is assumed, not named by the paper; it is the earliest sample
+#     and the source population of Fig. 7.
+#   * chains = "paired" (Daniel's rule: 1 or 2 distinct CDR3s of each of TRA and TRB, the sorted
+#     set). The GEO tables are labelled "unpaired" (one row per clonotype x chain), but every row
+#     names its chain and lists its cells' barcodes, so TRA and TRB rows group by cell barcode.
+#     The paper also used Cell Ranger vdj's paired clonotype calling. Cost: a cell with only one
+#     chain detected gets no clone label.
+#   * cdr3 = "nt": the tables carry cdr3_nts.
+#   * filters = []. The tables carry none of productive, high_confidence and full_length (nor
+#     is_cell): they are clonotype tables, not 10x contig annotations. Whether the authors kept
+#     only productive chains is UNVERIFIED; the paper does not say.
+#   * max_per_chain = 2, as Daniel; a cell with more distinct CDR3s on a chain is unlabelled.
+#   * donor_key = unit_key = "patient", single_donor = false: the patient is the clone namespace,
+#     so the same receptor in two patients is two clones. strata_keys = ["timepoint"], so N3
+#     shuffles within patient x time point and the headline p includes it.
+#   * Per patient is primary: each method runs once per patient, with stability on each.
+#     lumenCell has no batch correction, and pooled patients would let patient structure dominate,
+#     so C1/C2 could call a batch artefact "no tree". Each run then holds one donor, so N1-N3 are
+#     within that patient. Cost: 12 runs with stability instead of 3, and about a quarter of the
+#     cells in each run. A patient with too few clones reports too_few_clones; patients are never
+#     merged to rescue a score. pooled_diagnostic = true: one pooled run per method, reported only
+#     as a labelled diagnostic, never the headline.
+#   * methods: all three; clonal parameters are the [clonal] defaults (m = 2 primary, m = 3
+#     sensitivity, B = 1000, seed 0). No threshold is added or changed.
