@@ -82,7 +82,8 @@ bench-real:
 
 # ---- Everything -----------------------------------------------------------
 
-ci: py-ci contract-check web-ci web-e2e
+# web-dist first: tests/test_wheel.py needs the built app.
+ci: web-dist py-ci contract-check web-ci web-e2e
 
 fmt:
 	uv run ruff format .
