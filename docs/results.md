@@ -54,7 +54,7 @@ k-means clustering baseline (Δη) is above 0. Four of the 12 runs pass it.
 - **The direction comes from an assumed root.** The paper's main text and Methods name no trajectory root (the supplementary figures were not read).
 - **It is four patients.** Two have CLL and two have NHL. Nothing here applies beyond them.
 - **There is no batch correction.** Pooled runs may mix patient structure into the lineages, so the pooled run is a diagnostic only.
-- **Clone scores fall under stricter nulls.** Against the time-point and pseudotime-depth nulls, the clone score is below half its value against the within-patient null, in every per-patient run.
+- **Clone scores fall under stricter nulls.** In every per-patient run, the clone score against the time-point null or the pseudotime-depth null is below half its value against the within-patient null.
 - **The lineages add little.** Expression clustering matches most of the clone score. Δη is at most 0.050 in absolute value.
 - **Each method scores its own cells.** So the three methods are not compared like for like.
 - **Blood only.** The infusion product is a cultured, stimulated cell population.

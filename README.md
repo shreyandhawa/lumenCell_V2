@@ -71,13 +71,8 @@ Picking the project up? Start with [`docs/HANDOFF.md`](docs/HANDOFF.md): state, 
 From a clone, with Python 3.13, [uv](https://docs.astral.sh/uv/) and Node 22+:
 
 ```bash
-make install     # Python (all methods) and web dependencies
-make web-dist    # build the web app into the package
-uv run lumencell launch your-data.h5ad --root "cluster:clusters=Ductal"
-```
-
-```bash
 make install   # uv sync --all-extras + npm ci (the palantir/scfates extras are optional)
+make web-dist  # build the web app into the package
 make ci        # lint, types, tests, API contract check, web build, end-to-end test
 make dev-server   # API on :8765 with a synthetic dataset; then `make dev-web` for the app on :5173
 ```
