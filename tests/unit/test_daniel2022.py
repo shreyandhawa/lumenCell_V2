@@ -1,4 +1,15 @@
-from lumencell.bench.builders.daniel2022 import GEO_SUPPL, LICENCE, SOURCES
+import re
+
+from lumencell.bench.builders.common import CONTIG_COLUMNS
+from lumencell.bench.builders.daniel2022 import (
+    CAPTURES,
+    COLUMN_RENAMES,
+    GEO_SUPPL,
+    LABEL_COLUMN,
+    LICENCE,
+    MATRIX_ORIENTATION,
+    SOURCES,
+)
 
 EXPECTED = (
     "GSE188666_scRNA_LCMV.mtx.gz",
@@ -72,3 +83,117 @@ def test_the_files_come_from_geo() -> None:
 def test_the_licence_says_what_could_not_be_read() -> None:
     assert LICENCE.count("UNVERIFIED") == 2
     assert "not bypassed" in LICENCE
+
+
+def test_captures_match_the_inspection() -> None:
+    # 23, not 24: the number the Task 3 note records (one TCR member per capture).
+    assert len(CAPTURES) == 23
+    assert len({c.gsm for c in CAPTURES}) == len({c.member for c in CAPTURES}) == 23
+    assert len({c.tag for c in CAPTURES}) == 23  # one expression capture per TCR member
+    assert all(c.member.endswith("_tcr_filtered_contig_annotations.csv.gz") for c in CAPTURES)
+    assert all(c.member.startswith(c.gsm + "_") for c in CAPTURES)
+    assert all(c.tag.endswith("_gex_") for c in CAPTURES)
+    assert {c.matrix for c in CAPTURES} == {"main", "d5"}
+    assert all((c.matrix == "d5") == (c.day == 5) for c in CAPTURES)
+    assert set(MATRIX_ORIENTATION) == {"main", "d5"}
+    assert set(MATRIX_ORIENTATION.values()) <= {"genes_x_cells", "cells_x_genes"}
+    assert LABEL_COLUMN == "ident"
+    assert set(COLUMN_RENAMES.values()) <= set(CONTIG_COLUMNS)
+
+
+def test_the_two_record_conflicts_follow_the_join() -> None:
+    # Settled by the barcode shares of Task 5a (the note's Join check), not by the GSM titles.
+    by_gsm = {c.gsm: c for c in CAPTURES}
+    d5 = "Spleen_Chronic_D5_CD8_"
+    # Titled TetPos_rep1 / TetNeg_rep2; their barcodes are the TetNeg_rep2 / TetPos_rep1 cells.
+    assert (by_gsm["GSM6381667"].tag, by_gsm["GSM6381667"].sort_gate) == (
+        f"{d5}TetNeg_rep2_gex_",
+        "CD8+ gp33- T cells",
+    )
+    assert (by_gsm["GSM6381668"].tag, by_gsm["GSM6381668"].sort_gate) == (
+        f"{d5}TetPos_rep1_gex_",
+        "CD8+ gp33+ T cells",
+    )
+    # The D21 spleen replicates pair by title, not by sequencer.
+    d21 = "Spleen_Chronic_D21_CD8_"
+    assert [by_gsm[f"GSM56878{n}"].tag for n in (29, 30, 31, 32)] == [
+        f"{d21}{s}_gex_" for s in ("TetNeg_rep1", "TetNeg", "TetPos_rep1", "TetPos")
+    ]
+
+
+# ---- The 23 captures, written out by hand from the Task 3 note (sections 1, 4 and 10) ----
+# gsm -> (file-name stem, matrix, arm, day, tissue, sort gate). Member is `<gsm>_<stem>` + _END,
+# and tag `<stem>_gex_`. GSM6381667/68 follow their file names (note section 10), not their titles.
+_C13, _ARM = "LCMV-c13", "LCMV-Armstrong"
+_NEG, _POS, _MID = "CD8+ gp33- T cells", "CD8+ gp33+ T cells", "CD8+ gp33 mid T cells"
+PINNED = {
+    "GSM5687816": ("Liver_Chronic_D21_CD8_TetNeg", "main", _C13, 21, "liver", _NEG),
+    "GSM5687817": ("Liver_Chronic_D21_CD8_TetPos", "main", _C13, 21, "liver", _POS),
+    "GSM5687818": ("Lung_Chronic_D21_CD8_TetNeg", "main", _C13, 21, "lung", _NEG),
+    "GSM5687819": ("Lung_Chronic_D21_CD8_TetPos", "main", _C13, 21, "lung", _POS),
+    "GSM5687820": ("Spleen_Acute_D21_CD8_TetNeg", "main", _ARM, 21, "spleen", _NEG),
+    "GSM5687821": ("Spleen_Acute_D21_CD8_TetPos", "main", _ARM, 21, "spleen", _POS),
+    "GSM5687822": ("Spleen_Acute_D8_CD8_TetNeg", "main", _ARM, 8, "spleen", _NEG),
+    "GSM5687823": ("Spleen_Acute_D8_CD8_TetPos", "main", _ARM, 8, "spleen", _POS),
+    "GSM5687824": (
+        "Spleen_Chronic_D21_CD8_CX3CR1Neg_Slamf6Pos",
+        "main",
+        _C13,
+        21,
+        "spleen",
+        "CD8+ CX3CR1- SLAMF6+ T cells",
+    ),
+    "GSM5687825": ("Spleen_Chronic_D21_CD8_CX3CR1Neg", "main", _C13, 21, "spleen", "CD8+ CX3CR1- T cells"),
+    "GSM5687826": ("Spleen_Chronic_D21_CD8_CX3CR1Pos", "main", _C13, 21, "spleen", "CD8+ CX3CR1+ T cells"),
+    "GSM5687827": ("Spleen_Chronic_D21_CD8_PD1Pos", "main", _C13, 21, "spleen", "CD8+ PD1+ T cells"),
+    "GSM5687828": ("Spleen_Chronic_D21_CD8_TetMid", "main", _C13, 21, "spleen", _MID),
+    "GSM5687829": ("Spleen_Chronic_D21_CD8_TetNeg_rep1", "main", _C13, 21, "spleen", _NEG),
+    "GSM5687830": ("Spleen_Chronic_D21_CD8_TetNeg", "main", _C13, 21, "spleen", _NEG),
+    "GSM5687831": ("Spleen_Chronic_D21_CD8_TetPos_rep1", "main", _C13, 21, "spleen", _POS),
+    "GSM5687832": ("Spleen_Chronic_D21_CD8_TetPos", "main", _C13, 21, "spleen", _POS),
+    "GSM5687833": ("Spleen_Chronic_D8_CD8_TetNeg", "main", _C13, 8, "spleen", _NEG),
+    "GSM5687834": ("Spleen_Chronic_D8_CD8_TetPos", "main", _C13, 8, "spleen", _POS),
+    "GSM6381666": ("Spleen_Chronic_D5_CD8_TetNeg_rep1", "d5", _C13, 5, "spleen", _NEG),
+    "GSM6381667": ("Spleen_Chronic_D5_CD8_TetNeg_rep2", "d5", _C13, 5, "spleen", _NEG),
+    "GSM6381668": ("Spleen_Chronic_D5_CD8_TetPos_rep1", "d5", _C13, 5, "spleen", _POS),
+    "GSM6381669": ("Spleen_Chronic_D5_CD8_TetPos_rep2", "d5", _C13, 5, "spleen", _POS),
+}
+_END = "_tcr_filtered_contig_annotations.csv.gz"
+
+
+def test_all_captures_are_pinned_literally() -> None:
+    assert len(PINNED) == len(CAPTURES) == 23
+    got = {c.gsm: (c.member, c.tag, c.matrix, c.arm, c.day, c.tissue, c.sort_gate) for c in CAPTURES}
+    want = {
+        g: (f"{g}_{stem}{_END}", f"{stem}_gex_", matrix, arm, day, tissue, gate)
+        for g, (stem, matrix, arm, day, tissue, gate) in PINNED.items()
+    }
+    assert got == want
+
+
+_GATES = {
+    "TetPos": "CD8+ gp33+ T cells",
+    "TetNeg": "CD8+ gp33- T cells",
+    "TetMid": "CD8+ gp33 mid T cells",
+    "CX3CR1Neg": "CD8+ CX3CR1- T cells",
+    "CX3CR1Neg_Slamf6Pos": "CD8+ CX3CR1- SLAMF6+ T cells",
+    "CX3CR1Pos": "CD8+ CX3CR1+ T cells",
+    "PD1Pos": "CD8+ PD1+ T cells",
+}
+
+
+def test_tissue_day_arm_and_gate_agree_with_the_member_name() -> None:
+    for c in CAPTURES:
+        m = re.fullmatch(rf"{c.gsm}_(\w+?)_(Acute|Chronic)_D(\d+)_CD8_(\w+?)(?:_rep\d)?{_END}", c.member)
+        assert m, c.member
+        tissue, arm, day, gate = m.groups()
+        assert c.tissue == tissue.lower()
+        assert c.day == int(day)
+        assert c.arm == {"Acute": "LCMV-Armstrong", "Chronic": "LCMV-c13"}[arm]
+        assert c.sort_gate == _GATES[gate]
+        assert c.tag == c.member.removeprefix(c.gsm + "_").removesuffix(_END) + "_gex_"
+
+
+def test_the_matrix_orientation_and_column_renames_are_pinned() -> None:
+    assert MATRIX_ORIENTATION == {"main": "genes_x_cells", "d5": "genes_x_cells"}
+    assert COLUMN_RENAMES == {}

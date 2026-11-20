@@ -20,8 +20,9 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - **Phase 3 is under way** (base 35ac459). Merged: Task 1 (#43, multi-file sources, licences, build step), Task 2 (#44,
   the nine Daniel 2022 GEO files, sizes and SHA-256), Task 3 (#48, Daniel sample records and metadata; 23 captures),
   Task 4 (#47, clone calling from 10x contigs) and Task 9 (#45, Sheih 2020 joins at 0.99, so the Cao branch is not
-  taken). Task 10 (#51, open) declares `[case_study.sheih2020]` before any analysis.
-  Next: Task 5a, then 5b, 6, 7, 8; Task 11 after Tasks 4 and 10. See each task's decisions section.
+  taken). Task 10 (#51, merged) declares `[case_study.sheih2020]` before any analysis. Task 5a (#50): Daniel file
+  formats and the capture map, all 23 TCR members joined to their cells. Next: 5b, then 6, 7, 8; Task 11 after
+  Tasks 4 and 10. See each task's decisions section.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
   with the two plan-time amendments under Decisions.
@@ -1150,6 +1151,26 @@ Fix round 1:
 - **`read_members`:** a file that is not a tar raises `BuildError` naming the path (ours) and the error class. Wanted names never appear in the "other" list; for a repeated wanted name the last member wins, so a later directory hides an earlier file and the name counts as missing.
 - **Pinned by tests:** the TRA/TRB count rules (3 TRA + 1 TRB, repeated TRA), first non-missing raw id, `parse_flag` near misses, lowercase `cdr3_nt` ignored and `ANA` accepted, sorted index and `other`, no member names in errors, and `is_cell` NaN, `"None"` and numpy bools. Each fix test was checked against a re-applied mutant.
 
+## Phase 3 Task 5a decisions
+
+- **Branch** `pivot/46-daniel-formats`, from `main` df236f5. Script `benchmarks/inspection/daniel2022_formats.py`; the Formats and Join check are sections 9 and 10 of [research/2026-11-19-daniel2022-metadata.md](research/2026-11-19-daniel2022-metadata.md). Nothing was downloaded; the tar was read in memory, never extracted.
+- **Formats:** both matrices are MatrixMarket coordinate integer, genes x cells (31,053 x 96,750 and 31,053 x 77,614); features are one gene-symbol column and the D5 list equals the main one; barcodes are `<tag><16-nt core>-1`; the 23 contig headers are the 10x layout and already match `CONTIG_COLUMNS` (`COLUMN_RENAMES = {}`). `chain` holds Multi, TRA, TRB, TRD, TRG; every flag is `True`/`False`; `high_confidence` and `is_cell` are always True. `LABEL_COLUMN = "ident"`.
+- **The D5 matrix repeats the chronic spleen D8/D21 cells:** 43,820 of its barcodes are also main barcodes, matching the metadata (Task 3).
+- **Capture map:** a contig barcode `b` is the cell `tag + b`; the tag is the GEX title plus `_`. Every member joins its own tag at 0.58-0.96, every other tag at 0.02 or less (table in the note).
+- **Conflict 1 (GSM6381667/68) resolved by the join, toward the file names:** by title 0.01 and 0.01; by file name 0.75 and 0.84. The `Capture` tags and label fields (`sort_gate` gp33- for GSM6381667, gp33+ for GSM6381668) follow the file names, because the labels must describe the cells the barcodes join; the TCR GSMs' own titles and characteristics describe each other's file. `gsm` stays the GSM the file is attached to.
+- **Conflict 2 (GSM5687829-32) resolved by the join, toward the title pairing:** own shares 0.95, 0.85, 0.96, 0.87; the sequencer pairing's tags get at most 0.02. The sequencers simply differ.
+- **`matrix`:** `d5` for the four D5 captures, `main` for the other 19 (the main matrix holds all of them; D5 lacks 24 of the 11 shared captures' cells). Whether D5's copies are used is Task 6's.
+- **Withholding is an allow-list:** of a contig member only `barcode`, `chain`, `productive`, `high_confidence`, `full_length` and `is_cell` are read (`usecols`). Each of the 12 other real columns and an unknown column is pinned by a planted-value test. Map errors give counts only, never member names.
+- **Beyond the plan:** the script also prints the orientation it reads from the size line, the barcode suffixes and the D5-in-main barcode count; `test_the_capture_map_joins_on_the_real_files` (`real_data`, `slow`) re-checks the 0.5 and best-other rule from `CAPTURES` on the cached files (passes locally).
+- **Freeze kept:** no value of `cdr3`, `cdr3_nt`, `v/d/j/c_gene`, `raw_clonotype_id`, `raw_consensus_id`, `reads`, `umis`, `contig_id` or `length` was read. The shares count barcodes only. No clone x state, clone x capture or clone x lineage count was computed.
+- **Fix round 1:**
+  - The format script validates every contig member's header (it must contain `barcode`) before printing anything from a member; a headerless member is an error naming a count and position, never the member name or its first line.
+  - A member that is not valid gzip or UTF-8 gives the script's error, with no bytes echoed.
+  - D5-equals-main is tested for reordered features and for one changed name of equal length (both False).
+  - All 23 `CAPTURES` are pinned literally from the note, plus a test that tissue, day, arm and sort gate agree with the member name; `MATRIX_ORIENTATION` and `COLUMN_RENAMES` are pinned.
+  - Tests for the union join (a D5-only tag), a member with 0 barcodes (`n/a`), one unmapped member, `neither` orientation and the exactly-100,000-value integer check.
+  - The note's section 10 states that the join share counts every contig row's barcode.
+
 ## Open questions for Shreyan
 
 - **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep
@@ -1308,7 +1329,8 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 | `pivot/43-daniel-metadata` | #48 | merged (squash), phase 3 Task 3, Daniel 2022 sample records and metadata inspected without touching clones |
 | `pivot/44-contig-clones` | #47 | merged (squash, 6932b67), phase 3 Task 4, paired and TRB-only clone calling from 10x contigs |
 | `pivot/45-phase2-close` | #49 | merged (squash), closes phase 2: Done When recorded on 570fb5e, final state |
-| `pivot/47-sheih-declaration` | #51 | open, phase 3 Task 10, case-study declaration (clone definition, namespace, strata, root) before any analysis |
+| `pivot/47-sheih-declaration` | #51 | merged (squash, 5ef3151), phase 3 Task 10, case-study declaration (clone definition, namespace, strata, root) before any analysis |
+| `pivot/46-daniel-formats` | #50 | merged (squash), phase 3 Task 5a, Daniel 2022 file formats and the capture map (23 members joined) |
 
 ## Phase 3 Task 9 decisions and result
 
