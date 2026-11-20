@@ -74,3 +74,123 @@ def test_per_patient_results_lead_and_pooled_is_only_a_diagnostic() -> None:
     for sentence in re.split(r"(?<=[.!?])\s+", head + rest.split(END, 1)[1]):
         if "pooled" in sentence.lower():
             assert "diagnostic" in sentence.lower(), sentence
+
+
+# Fix round 1: guards for the rest of the plan's rules for the text.
+
+
+def _parts() -> tuple[str, str, str]:
+    """The text before the generated section, the generated section, and the text after it."""
+    head, rest = DOC.read_text(encoding="utf-8").split(START, 1)
+    generated, tail = rest.split(END, 1)
+    return head, generated, tail
+
+
+def _sentences(text: str) -> list[str]:
+    return re.split(r"(?<=[.!?])\s+", text)
+
+
+def _section(text: str, heading: str) -> str:
+    """One `## ` section's body, up to the next `## ` heading."""
+    body = text.split(f"\n## {heading}\n", 1)[1]
+    return re.split(r"^## ", body, maxsplit=1, flags=re.M)[0]
+
+
+NUMBER = re.compile(r"(?<![\w.#-])-?\d[\d,]*(?:\.\d+)?(?!\w)")
+NOT_IN_TABLES = {
+    "0.01",  # the declared C5 bar, [clonal] in benchmarks/thresholds.toml
+    "1.0",  # coverage, each method's "coverage" in the results file
+    "4.3",  # a section number: spec §4.3
+}
+
+
+def test_every_decimal_in_the_reading_appears_in_the_generated_section() -> None:
+    _, generated, tail = _parts()
+    in_tables = {n.lstrip("-") for n in NUMBER.findall(generated)}
+    reading = _section(tail, "Reading")
+    decimals = {n.lstrip("-") for n in NUMBER.findall(reading) if "." in n}
+    assert not decimals - in_tables - NOT_IN_TABLES, sorted(decimals - in_tables - NOT_IN_TABLES)
+
+
+DIRECTION_MORE = (
+    "expanded from",
+    "originat",
+    "progress",
+    "lineage of origin",
+    "descend",
+    "arise",
+    "upstream",
+    "downstream",
+    "precede",
+    "transition",
+    "convert",
+    "lead to",
+    "leads to",
+    "ancestor",
+)
+
+
+def test_no_sentence_about_clones_uses_a_broader_direction_word() -> None:
+    head, _, tail = _parts()
+    for sentence in _sentences(head + tail):
+        low = sentence.lower()
+        if any(w in low for w in CLONAL_WORDS):
+            assert not any(p in low for p in DIRECTION_MORE), sentence
+
+
+SUPPORT = re.compile(r"\bsupport(?:s|ed|ing)?\b")
+NEGATION = re.compile(r"\b(?:not|never|no|none|cannot)\b")
+
+
+def test_provisional_is_never_called_support() -> None:
+    head, _, tail = _parts()
+    for sentence in _sentences(head + tail):
+        low = sentence.lower()
+        if "provisional" not in low:
+            continue
+        for match in SUPPORT.finditer(low):
+            clause = re.split(r"[,;:]", low[: match.start()])[-1]  # from the last clause break to the word
+            assert NEGATION.search(clause), sentence
+
+
+def test_the_prose_itself_states_the_failed_verification() -> None:  # not only the generated note
+    head, _, tail = _parts()
+    assert "failed its verification" in head + tail and VERDICT_VERIFIED_ON in head + tail
+
+
+def test_the_plans_five_limits_are_stated() -> None:
+    limits = _section(_parts()[2], "Limits")
+    for item in (
+        "quarter of the cells",
+        "no batch correction",
+        "Unpaired chains",
+        "Only four patients",
+        "infusion product is manufactured",
+    ):
+        assert item in limits, item
+
+
+SECTIONS = (
+    "Question",
+    "Data",
+    "Declaration",
+    "What the paper reports",
+    "Results",
+    "Reading",
+    "Limits",
+    "Reproduce",
+)
+
+
+def test_the_plans_sections_unverified_marks_and_the_root_statement() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    headings = re.findall(r"^## (.+)$", text, flags=re.M)
+    assert all(s in headings for s in SECTIONS), headings
+    head, _, tail = _parts()
+    assert "(unverified" in head + tail
+    assert re.search(r"pseudotime direction\W+comes from the declared root", (head + tail).lower())
+
+
+def test_the_reading_comes_after_the_results() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert text.index("\n## Results\n") < text.index(START) < text.index(END) < text.index("\n## Reading\n")

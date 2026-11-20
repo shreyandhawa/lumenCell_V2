@@ -78,9 +78,10 @@ paper and the file headers only.
   clones.
 - **Strata:** `strata_keys = ["timepoint"]`. The third null (N3) shuffles labels within patient and
   time point, so clones that expand at one time point are not read as lineage agreement.
-- **Root:** `cluster:timepoint=IP`, the infusion-product cells. The paper names no trajectory root.
-  The IP is assumed as the start because it is the earliest sample and the population the paper
-  compares blood against (Fig. 5, Fig. 7). This is an assumption of the declaration. Every
+- **Root:** `cluster:timepoint=IP`, the infusion-product cells. The paper's main text and Methods
+  name no trajectory root (unverified: supplementary figures not read). The IP is assumed as the
+  start because it is the earliest sample and the population the paper compares blood against
+  (Fig. 5, Fig. 7). This is an assumption of the declaration. Every
   pseudotime below runs away from this root because the root was declared, not because of anything
   in the data.
 - **Unit:** each method runs once per patient, with stability on each (4 x 3 = 12 runs), because
@@ -107,8 +108,8 @@ paper and the file headers only.
 - **No trajectory.** Monocle 3 pseudotime and RNA velocity on IP cells did not yield clear
   trajectories to "indicate a developmental relationship between clusters" (Results, "Contribution
   of infused CAR-T clusters to in vivo repertoire"; Supplementary Fig. 4b, 4c). That analysis
-  covers IP cells only (Methods, "Single-cell trajectory analysis"). The paper runs no trajectory
-  across time points and names no root.
+  covers IP cells only (Methods, "Single-cell trajectory analysis"). The main text and Methods run
+  no trajectory across time points and name no root (unverified: supplementary figures not read).
 - **Clones and IP clusters (NHL-6 and NHL-7).** Clonotypes are called IRF or DRF when their relative
   frequency is higher or lower at the early time point than in the IP (Fisher's exact test, FDR 5%;
   Methods). Most IRF clones sit in IP clusters 2 and 4 (85.6% in NHL-6 and 84.6% in NHL-7), which
@@ -354,12 +355,13 @@ negative-control runs were verdicted supported. So no run is shown as supported.
 and both stability checks (C3 and C4) are left out, since none has a calibrated threshold, so the
 verdict reads coverage (C1) and clonal support (C5) only. C1 passed in every run (coverage is 1.0 in
 the results file). C5 passes when the headline p is at most 0.01 and Δη is above 0. A `weak` run is
-one whose clonal check failed: the clones do not back its lineages, and that is the finding. A
-`provisional` run passed both checks that are read, which means "not shown to be a tree"; it is not
+one whose clonal check failed: the clones did not meet the declared bar for backing its lineages,
+and that is the finding. A `provisional` run passed both checks that are read, which means "not shown to be a tree"; it is not
 support. Stability is reported as numbers only.
 
 **Pseudotime direction** comes from the declared root (the IP cells), which is an assumption: the
-paper names no root. Nothing about direction is read from the clones.
+paper's main text and Methods name no root (unverified: supplementary figures not read). Nothing
+about direction is read from the clones.
 
 **One bar per run.** The 0.01 bar is per run and was declared in advance. With B = 1000 the smallest
 possible p is 0.000999, above the Bonferroni bar of 0.01/12 for 12 runs, and the runs are not
@@ -372,15 +374,16 @@ be made. The count below is "4 of 12 runs passed C5", nothing more.
   (p_Δη 0.000999), so C5 passed. η falls from 0.695 against N1 to 0.363 against N2 and 0.247
   against N3, so part of the clonal concentration does not survive the stricter nulls; η_base
   is 0.659, so expression clustering alone matches most of it. The m = 3 check agrees (η 0.626, p
-  0.000999). No lineage pair shares more clones than chance (every p_adj is 1). Reseed Spearman is
-  1.000; subsample share matched has a median of 0.400. Lineage Cluster 5 is flagged as mostly
+  0.000999). No lineage pair shares more clones than chance (every computed p_adj is 1). Reseed
+  Spearman is 1.000; subsample share matched has a median of 0.400. Lineage Cluster 5 is flagged as mostly
   cycling, so clonal agreement there may follow a cycling state rather than a fate.
 - **palantir: weak.** The clonal check failed: the headline p is 0.0759 and Δη is -0.031 (p_Δη
-  0.996), so the clones agree with these lineages neither beyond chance once time point is
-  controlled nor beyond the baseline. η is 0.125 against N1 and 0.020 against N3. Only 3 time points have scored cells. No coupling pair passes (every p_adj is 1).
+  0.996), so the clonal agreement with these lineages meets neither the declared p bar once time
+  point is controlled nor the baseline. η is 0.125 against N1 and 0.020 against N3. Only 3 time points
+  have scored cells. No coupling pair passes (every computed p_adj is 1).
   Reseed Spearman is 0.999, subsample share matched 0.400 (minimum 0.200). No cell-cycle flag.
 - **scfates_ppt: weak.** The clonal check failed on the baseline: the headline p is 0.000999, but
-  Δη is -0.005 (p_Δη 0.766), so the lineages add nothing beyond expression clustering (η 0.571,
+  Δη is -0.005 (p_Δη 0.766), so the lineages do not beat the k-means baseline (η 0.571,
   η_base 0.577). η drops to 0.052 against N2. At m = 3 the p rises to 0.0509. Lineages 1 and 2 share
   more clones than chance (z 3.086, p_adj 0.02), which says they are related, not in what order.
   Reseed Spearman is 0.986, subsample share matched 0.800. Lineage Cluster 8 is flagged as mostly
@@ -409,7 +412,7 @@ be made. The count below is "4 of 12 runs passed C5", nothing more.
 
 - **paga_dpt: weak.** The clonal check failed on the baseline: the headline p is 0.000999 (also
   0.000999 at m = 3), but Δη is -0.008 (p_Δη 0.997): η 0.415 against η_base 0.422. The clones are
-  concentrated (58.793 effective clones from 548), yet expression clustering holds them as well as
+  concentrated (58.793 effective clones from 548), yet the k-means baseline scores them as high as
   the lineages do. Every coupling z is strongly negative (lineage pairs share fewer clones than
   chance) and no pair passes. Reseed Spearman is 1.000, subsample share matched 1.000. No cell-cycle
   flag.
@@ -450,49 +453,58 @@ be made. The count below is "4 of 12 runs passed C5", nothing more.
   `paga_dpt` and `palantir`) fail on Δη at or below 0.
 - **No method holds across patients.** `paga_dpt` passes C5 in CLL-1 and CLL-2 only, `palantir` and
   `scfates_ppt` in NHL-7 only. Every patient had enough clones to score (the fewest is 185).
-- **Expression clustering explains most of the clonal signal.** Δη is at most 0.050 in absolute
-  value in every per-patient run. T-cell clones tend to be transcriptionally alike, which is why the
-  baseline exists (spec §4.3; unverified for this dataset), and here the lineages add little to what
-  any expression partition holds.
-- **Time point and pseudotime depth explain much of it too.** η against N3 or N2 is far below η
-  against N1 in most runs (for example 0.415 to 0.089 in NHL-6 `paga_dpt`, 0.313 to 0.006 in NHL-6
-  `scfates_ppt`). Against N1 alone every run has p 0.000999; every headline p above 0.01 comes from
-  N3 or N2. Two readings fit, and these numbers do not separate them: clones may be specific to a
-  time point, and the lineages may themselves follow time point, since the root is defined by it and
-  pseudotime runs from it. Either way, η against N1 overstates what the lineages add. A repertoire
-  and an expression profile that change with time after infusion are what the paper reports (Fig.
-  1b, 1c, Fig. 5a); lumenCell does not test that link.
+- **Expression clustering matches most of the N1 clonal score.** Δη is at most 0.050 in absolute
+  value in every per-patient run and is at or below 0 in 6 of 12. Relative to η, the exception is
+  NHL-7 `scfates_ppt` (η 0.070, η_base 0.021). T-cell clones tend to be transcriptionally alike,
+  which is why the baseline exists (spec §4.3; unverified for this dataset); here the lineages add
+  little to what the k-means partition scores.
+- **Much of the clonal concentration does not survive the time-point and pseudotime-depth nulls.**
+  η against N2 or N3 is below half of η against N1 in every per-patient run (for example 0.415 to
+  0.089 in NHL-6 `paga_dpt`, 0.313 to 0.006 in NHL-6 `scfates_ppt`). Against N1 alone every run has
+  p 0.000999; every headline p above 0.01 comes from N3 or N2. Two readings fit, and these numbers
+  do not separate them: clones may be specific to a time point, and the lineages may themselves
+  follow time point, since the root is defined by it and pseudotime runs from it. Either way, η
+  against N1 overstates what the lineages add. The paper reports a repertoire that changes after
+  infusion in its bulk TCRB cohort of ten other patients (Fig. 1b, 1c) and, in this cohort,
+  expression that changes with time after infusion (Fig. 5a); lumenCell does not test a link
+  between either and these lineages.
 - **The passes are small and partly fragile.** Of the 4 C5 passes, CLL-2 `paga_dpt` fails at m = 3
   (p 0.154) and NHL-7 `palantir` has Δη 0.010 with p_Δη 0.019.
 - **Cell cycle.** 5 of 12 runs flag a lineage as mostly cycling, and all 4 C5 passes are among them.
   The clonal agreement in those runs may follow a cycling state rather than a fate. The paper's IP
   cluster 4 is a cycling cluster (Supplementary Fig. 4a); whether lumenCell's flagged lineages match
   it was not checked.
-- **No single clone drives a score.** Purity without the largest clone is within 0.02 of purity in
-  every run. Effective clones range from 34.329 (NHL-7 `palantir`) to 649.190 (CLL-2 `paga_dpt`).
+- **The largest clone.** Dropping the largest clone moves purity by at most 0.019 in any
+  per-patient run; η was not re-scored without it. Effective clones range from 34.329 (NHL-7
+  `palantir`) to 649.190 (CLL-2 `paga_dpt`).
 - **Coupling.** 2 per-patient lineage pairs share more clones than chance after Benjamini–Hochberg
   (CLL-1 `scfates_ppt` lineages 1 and 2, NHL-6 `scfates_ppt` lineages 3 and 4, both p_adj 0.02). Most
   z are negative: lineages share fewer clones than chance, as expected when clones sit within one
   lineage. Coupling says two lineages are related, never which came first.
-- **Stability.** Reseeds agree closely (Spearman 0.986 to 1.000 in every per-patient run); subsamples
-  agree less (share matched medians 0.333 to 1.000, minimums down to 0.000). Stability says a result
+- **Stability.** Reseed Spearman medians are 0.986 to 1.000 (minimums 0.983 to 1.000) and subsample
+  Spearman medians 0.898 to 0.991 across the per-patient runs. Subsample share matched minimums fall
+  to 0.000 in CLL-2 `palantir` and `scfates_ppt`, against reseed minimums of 0.333 to 1.000;
+  share matched medians span 0.333 to 1.000 for both reseeds and subsamples. Stability says a result
   is reproducible, not that it is a tree, and it is not in the verdict.
 
 ### Pooled diagnostic
 
-The pooled run is a diagnostic of patient structure, never a finding. It puts all four patients'
-62,167 cells into one run with no batch correction. In the pooled diagnostic, `paga_dpt` is
-provisional (headline p 0.002, Δη 0.034), `palantir` is weak (p 0.0799) and `scfates_ppt` is weak
-(p 0.475, Δη -0.082). The pooled diagnostic disagrees with the patients where they disagree: NHL-7
-`scfates_ppt` alone is provisional, while the pooled `scfates_ppt` diagnostic shows no clonal
-agreement beyond chance. Its stability is far lower than per patient, which points to patient structure
-in the pooled diagnostic: `paga_dpt` has a subsample Spearman median of 0.364 there, against 0.947 to
-0.990 per patient. One pooled lineage pair passes coupling (`palantir` lineages 2 and 4, p_adj
+The pooled run is a diagnostic of patient structure, never a finding. The pooled diagnostic puts all
+four patients' 62,167 cells into one run with no batch correction. In the pooled diagnostic,
+`paga_dpt` is provisional (headline p 0.002, Δη 0.034), `palantir` is weak (p 0.0799) and
+`scfates_ppt` is weak (p 0.475, Δη -0.082). Per patient, `scfates_ppt` is provisional only in NHL-7,
+and the pooled diagnostic run of `scfates_ppt` is weak. The pooled diagnostic's subsample Spearman
+median is 0.364 for `paga_dpt`, against 0.947 to 0.990 per patient, and 0.758 for `scfates_ppt`,
+against 0.908 to 0.991 per patient; for `palantir` the pooled diagnostic value, 0.945, is not lower
+than the per-patient range (0.898 to 0.964). Pooling without batch correction may mix patient
+structure into the lineages; this pooled diagnostic does not test that, and it is a diagnostic
+only. One pooled diagnostic lineage pair passes coupling (`palantir` lineages 2 and 4, p_adj
 0.00999), and like the rest of the pooled diagnostic it is not read as a result.
 
 ## Limits
 
-- **Each per-patient run holds about a quarter of the cells** (8,522 to 21,762 of 62,167), and the
+- **Each per-patient run holds on average a quarter of the cells** (14% to 35%: 8,522 to 21,762
+  of 62,167), and the
   clonal scores rest on fewer still (1584 to 9539 scored cells).
 - **Each method scores its own cells.** Only cells in exactly one of a run's lineages are scored, so
   the three methods are scored on different cells of the same patient and their numbers are not a
@@ -518,10 +530,10 @@ in the pooled diagnostic: `paga_dpt` has a subsample Spearman median of 0.364 th
 ## Reproduce
 
 ```bash
-# Fetch the two GEO files (about 111 MB; sizes and SHA-256 are checked) and build the derived file.
+# Fetch the two GEO files (about 117 MB; sizes and SHA-256 are checked) and build the derived file.
 uv run lumencell bench fetch sheih2020
 # The case-study numbers: 4 patients x 3 methods with stability, then the pooled diagnostic run.
-uv run python benchmarks/case_studies/sheih2020.py
+uv run python -I benchmarks/case_studies/sheih2020.py
 # Refill the generated tables of this document from the newest results file.
 uv run python -c "import json, pathlib; from lumencell.bench.case_study import render_markdown; from lumencell.bench.report import replace_section; p = sorted(pathlib.Path('benchmarks/case_studies/results').glob('sheih2020-*.json'))[-1]; replace_section(pathlib.Path('docs/case-studies/sheih-2020.md'), render_markdown(json.loads(p.read_text())), '<!-- case-study:start -->', '<!-- case-study:end -->')"
 # Check that the tables match the newest results and that the text keeps its rules.

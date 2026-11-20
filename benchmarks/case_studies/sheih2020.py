@@ -2,9 +2,9 @@
 
 Wiring only: the declaration is [case_study.sheih2020] in benchmarks/thresholds.toml, the data is the
 derived file `lumencell bench fetch sheih2020` builds, and every number comes from
-lumencell.bench.case_study. Takes hours (4 patients x 3 methods with stability on each, then the
-pooled run).
-Run as: uv run python benchmarks/case_studies/sheih2020.py [--out PATH] [--workdir DIR]
+lumencell.bench.case_study. Takes about 15 minutes on the development machine (4 patients x 3
+methods with stability on each, then the pooled run; the 2026-11-20 run took 14).
+Run as: uv run python -I benchmarks/case_studies/sheih2020.py [--out PATH] [--workdir DIR]
 """
 
 import argparse
