@@ -20,7 +20,8 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - **Phase 3 is under way** (base 35ac459). Merged: Task 1 (#43, multi-file sources, licences, build step), Task 2 (#44,
   the nine Daniel 2022 GEO files, sizes and SHA-256), Task 3 (#48, Daniel sample records and metadata; 23 captures),
   Task 4 (#47, clone calling from 10x contigs) and Task 9 (#45, Sheih 2020 joins at 0.99, so the Cao branch is not
-  taken). Next: Task 5a, then 5b, 6, 7, 8; Task 10 beside them. See each task's decisions section.
+  taken). Task 10 (#51, open) declares `[case_study.sheih2020]` before any analysis.
+  Next: Task 5a, then 5b, 6, 7, 8; Task 11 after Tasks 4 and 10. See each task's decisions section.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
   with the two plan-time amendments under Decisions.
@@ -903,6 +904,7 @@ Decisions taken in phase 1 Task 3 (`bench/synth_clones.py`):
 
 ## Found along the way
 
+- **Some existing gates are pinned only by the benchmark runs, not by unit tests** (found by PR #51's mutation seat, 2026-11-19): changing `[regression] max_drop`, `pt_spearman_global` or the pancreas `branch_accuracy` in `thresholds.toml` passes the unit tests. Phase 3 changes none of them; noted for the phase 3 security review.
 - **Local `main` was 13 commits behind `origin/main`** on 2026-11-12. Check
   `git rev-list --left-right --count main...origin/main` before reading code.
 - **`main` has no branch protection.** Keeping work on PRs is discipline, not enforcement.
@@ -1306,6 +1308,7 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 | `pivot/43-daniel-metadata` | #48 | merged (squash), phase 3 Task 3, Daniel 2022 sample records and metadata inspected without touching clones |
 | `pivot/44-contig-clones` | #47 | merged (squash, 6932b67), phase 3 Task 4, paired and TRB-only clone calling from 10x contigs |
 | `pivot/45-phase2-close` | #49 | merged (squash), closes phase 2: Done When recorded on 570fb5e, final state |
+| `pivot/47-sheih-declaration` | #51 | open, phase 3 Task 10, case-study declaration (clone definition, namespace, strata, root) before any analysis |
 
 ## Phase 3 Task 9 decisions and result
 
@@ -1315,6 +1318,16 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 - **Listing differs from the plan:** the suppl folder lists only `GSE125881_RAW.tar` (2,048,000 bytes, 16 clonotype tables inside, 6.9 KB to 297 KB each) and the matrix (114,573,707 bytes). The tables exist only inside the tar, so the whole 2 MB tar was fetched (SHA-256 `769fa5b71b12b7efe433f51164d4370e0af00c20bebc647029cc4fbd9a943487`) and read in memory, never extracted. It sits at `/private/tmp/claude-501/-Users-shreyan-lumenCell-V2/453b6f74-ae4a-4614-a97a-fbc583e58d2c/scratchpad/sheih-verify/GSE125881_RAW.tar` with the matrix header beside it (`header.txt`, SHA-256 `23955ade...`), not in the dataset cache; the chosen member's SHA-256 is `93f8ef95...` and the largest table is 305,886 bytes (members run 6,905 to 305,886). Full hashes and a negative control (wrong suffix gives 0.00) are in the research note; Tasks 10 and 11 re-verify the tar's hash when they fetch it again.
 - **Matrix is genes x cells** (62,167 cells, aggr IDs 1-16), so no whole-matrix fetch. Tables are one row per clonotype x chain, `;`-separated barcode lists, no productive flag. Details, the GSM table and the licence lines are in [research/2026-11-19-sheih-verification.md](research/2026-11-19-sheih-verification.md); Tasks 10 and 11 read it.
 - **Script:** `benchmarks/inspection/barcode_join.py` prints headers, dtypes, counts, barcodes and the share, never a receptor value.
+
+## Phase 3 Task 10 decisions
+
+- **Declared before analysis:** `[case_study.sheih2020]` in `benchmarks/thresholds.toml`, with a 2026-11-19 changelog entry giving each value and its reason. Written from the paper and Task 9's note only; nothing was downloaded and nothing was computed from clonotype, CDR3 or gene values. Pinned by `tests/unit/test_case_study_declaration.py`.
+- **Paper read:** yes, Europe PMC's open full text of PMC6954177 (nature.com redirected to a sign-in step, which was not followed; no CAPTCHA was met or bypassed).
+- **Root `cluster:timepoint=IP`.** The paper names no differentiation root (its Monocle 3 trajectory is on infusion-product cells only and gave no clear trajectories). It treats the infusion product as the source of the in vivo repertoire (Results, "Contribution of infused CAR-T clusters to in vivo repertoire", Fig. 7), which is also the plan's fallback (the earliest sample). The order comes from the trial design, never from clones. Task 11 must write obs `timepoint` with GEO's "time point" values as written (IP, d12, d21, d28, d29, d38, d83, d89, d102, d112); every patient has `IP`.
+- **Chains `paired`** (Daniel's rule, 1-2 of each of TRA and TRB). Judgement call: the GEO tables are labelled "unpaired" (one row per clonotype x chain), but every row names its chain and lists its cells' barcodes, so the chains group by cell barcode, which is the plan's test for `paired`. The paper also used Cell Ranger vdj's paired clonotype calling. Cost: cells with one chain detected are unlabelled.
+- **CDR3 `nt`** (`cdr3_nts` is present). **Filters `[]`:** productive, high_confidence and full_length (and is_cell) are all absent from the tables; whether the authors kept only productive chains is UNVERIFIED.
+- **Unit:** per patient primary (4 patients x 3 methods = 12 runs with stability, about a quarter of the cells each), patient as the clone namespace, `strata_keys = ["timepoint"]` (N3), pooled run as a labelled diagnostic only.
+- **Review fixes (controller):** the changelog's root bullet now says IP as the start is an assumption, not named by the paper; `test_the_declaration_has_its_dated_changelog_entry` ties the entry's date to `declared` and checks it states the assumption and the per-patient cost (a re-dated entry fails it).
 
 ## Verify the current state
 
