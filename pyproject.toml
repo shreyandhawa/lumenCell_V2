@@ -56,6 +56,10 @@ path = "src/lumencell/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/lumencell"]
 
+[tool.hatch.build]
+# The built web app is git-ignored, which hatchling otherwise drops from the sdist and so from the wheel.
+artifacts = ["src/lumencell/web_dist"]
+
 [tool.ruff]
 line-length = 110
 target-version = "py312"

@@ -105,3 +105,70 @@ jobs:
           name: playwright-results
           path: web/test-results/
           if-no-files-found: ignore
+
+  # The wheel is what users install: build it with the web app, then run it with
+  # no Node and none of the dev tools, and check that it serves the app and the API.
+  wheel:
+    name: build the wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      UV_LOCKED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: cd web && npm ci
+      - run: make web-dist
+      - run: uv build
+      - run: uv run pytest tests/test_wheel.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  wheel-demo:
+    name: run the wheel without Node
+    needs: wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: python:3.13-slim
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - run: pip install dist/*.whl
+      - name: Start the demo and wait for the app and the API
+        run: |
+          lumencell demo --no-browser --port 8799 > demo.log 2>&1 &
+          pid=$!
+          for i in $(seq 60); do
+            if python - <<'PY'
+          import sys, urllib.request
+          get = lambda p: urllib.request.urlopen("http://127.0.0.1:8799" + p, timeout=5).read().decode()
+          try:
+              ok = '<div id="root">' in get("/") and "n_obs" in get("/api/v1/dataset")
+          except OSError:
+              ok = False
+          sys.exit(0 if ok else 1)
+          PY
+            then
+              kill $pid
+              echo "demo served the app and the API"
+              exit 0
+            fi
+            sleep 5
+          done
+          cat demo.log
+          kill $pid
+          echo "::error::the demo did not serve the app and the API within 5 minutes"
+          exit 1
