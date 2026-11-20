@@ -22,6 +22,7 @@ import json
 import re
 import sys
 import tarfile
+import zlib
 from collections import Counter
 from pathlib import Path
 
@@ -120,8 +121,12 @@ def inspect_matrices(d: Path) -> tuple[set[str], list[str]]:
     return merged, sorted(tags)
 
 
-def _text(data: bytes) -> str:
-    return (gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data).decode()
+def _text(data: bytes, position: int) -> str:
+    """Decode a member; bad gzip or UTF-8 is an error that names its position, never its bytes."""
+    try:
+        return (gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data).decode()
+    except (OSError, EOFError, zlib.error, ValueError):
+        raise BuildError(f"contig member {position} is not valid gzip or UTF-8 text") from None
 
 
 def inspect_contigs(d: Path) -> dict[str, list[str]]:
@@ -131,6 +136,13 @@ def inspect_contigs(d: Path) -> dict[str, list[str]]:
     with tarfile.open(tar, "r:") as tf:
         names = [m.name for m in tf if m.isreg()]
     data, _ = read_members(tar, names)
+    # Validate every member before printing anything from one: a header line that is not a header may be a
+    # data row, so nothing of a member (its name or its first line) is shown until it is known to be a header.
+    texts: dict[str, str] = {}
+    for i, name in enumerate(names, 1):
+        texts[name] = _text(data[name], i)
+        if "barcode" not in texts[name].split("\n", 1)[0].rstrip("\r").split(","):
+            raise BuildError(f"contig member {i} of {len(names)} has no barcode column in its header")
     print(f"== contigs {tar.name}")
     print(f"members\t{len(names)}")
     pooled: dict[str, Counter[str]] = {c: Counter() for c in FLAGS}
@@ -138,14 +150,12 @@ def inspect_contigs(d: Path) -> dict[str, list[str]]:
     withheld: set[str] = set()
     barcodes: dict[str, list[str]] = {}
     for name in names:
-        text = _text(data[name])
+        text = texts[name]
         header = text.split("\n", 1)[0].rstrip("\r")
         columns = header.split(",")
         print(f"member\t{name}")
         print(f"header\t{header}")
         withheld.update(c for c in columns if c not in READ_COLUMNS)
-        if "barcode" not in columns:
-            raise BuildError("a contig member has no barcode column")
         use = [c for c in READ_COLUMNS if c in columns]
         df = pd.read_csv(io.StringIO(text), usecols=use, dtype=str, keep_default_na=False)
         for c in FLAGS:
@@ -163,7 +173,7 @@ def inspect_contigs(d: Path) -> dict[str, list[str]]:
             for v, n in sorted(pooled[c].items()):
                 print(f"  {v}\t{n}")
     if names:
-        first = pd.read_csv(io.StringIO(_text(data[names[0]])), usecols=["barcode"], dtype=str, nrows=50)
+        first = pd.read_csv(io.StringIO(texts[names[0]]), usecols=["barcode"], dtype=str, nrows=50)
         print("first member first barcodes\t" + "\t".join(list(dict.fromkeys(first["barcode"]))[:3]))
     return barcodes
 

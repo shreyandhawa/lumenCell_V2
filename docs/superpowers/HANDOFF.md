@@ -1161,6 +1161,13 @@ Fix round 1:
 - **Withholding is an allow-list:** of a contig member only `barcode`, `chain`, `productive`, `high_confidence`, `full_length` and `is_cell` are read (`usecols`). Each of the 12 other real columns and an unknown column is pinned by a planted-value test. Map errors give counts only, never member names.
 - **Beyond the plan:** the script also prints the orientation it reads from the size line, the barcode suffixes and the D5-in-main barcode count; `test_the_capture_map_joins_on_the_real_files` (`real_data`, `slow`) re-checks the 0.5 and best-other rule from `CAPTURES` on the cached files (passes locally).
 - **Freeze kept:** no value of `cdr3`, `cdr3_nt`, `v/d/j/c_gene`, `raw_clonotype_id`, `raw_consensus_id`, `reads`, `umis`, `contig_id` or `length` was read. The shares count barcodes only. No clone x state, clone x capture or clone x lineage count was computed.
+- **Fix round 1:**
+  - The format script validates every contig member's header (it must contain `barcode`) before printing anything from a member; a headerless member is an error naming a count and position, never the member name or its first line.
+  - A member that is not valid gzip or UTF-8 gives the script's error, with no bytes echoed.
+  - D5-equals-main is tested for reordered features and for one changed name of equal length (both False).
+  - All 23 `CAPTURES` are pinned literally from the note, plus a test that tissue, day, arm and sort gate agree with the member name; `MATRIX_ORIENTATION` and `COLUMN_RENAMES` are pinned.
+  - Tests for the union join (a D5-only tag), a member with 0 barcodes (`n/a`), one unmapped member, `neither` orientation and the exactly-100,000-value integer check.
+  - The note's section 10 states that the join share counts every contig row's barcode.
 
 ## Open questions for Shreyan
 
@@ -1320,7 +1327,7 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 | `pivot/43-daniel-metadata` | #48 | merged (squash), phase 3 Task 3, Daniel 2022 sample records and metadata inspected without touching clones |
 | `pivot/44-contig-clones` | #47 | merged (squash, 6932b67), phase 3 Task 4, paired and TRB-only clone calling from 10x contigs |
 | `pivot/45-phase2-close` | #49 | merged (squash), closes phase 2: Done When recorded on 570fb5e, final state |
-| `pivot/46-daniel-formats` | this PR | open, phase 3 Task 5a, Daniel 2022 file formats and the capture map (23 members joined) |
+| `pivot/46-daniel-formats` | #50 | open, phase 3 Task 5a, Daniel 2022 file formats and the capture map (23 members joined) |
 
 ## Phase 3 Task 9 decisions and result
 

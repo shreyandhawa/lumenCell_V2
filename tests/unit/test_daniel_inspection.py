@@ -247,14 +247,19 @@ def _formats_dir(
     planted: dict[str, str] = PLANTED,
     d5_cells_x_genes: bool = False,
     header: list[str] = CONTIG_HEADER,
+    main_size: str | None = None,
+    d5_genes: list[str] | None = None,
+    extra_members: dict[str, bytes] | None = None,
 ) -> Path:
     genes = ["Xkr4", "Gm1992", "Cd8a"]
     main = [f"Spleen_X_gex_{c}-1" for c in C[:3]] + [f"Spleen_Y_gex_{c}-1" for c in C[3:6]]
     d5 = [f"Spleen_D5_gex_{c}-1" for c in C[6:8]]
     for stem, cells in (("GSE188666_scRNA_LCMV", main), ("GSE188666_scRNA_D5_LCMV", d5)):
         _gz(d / f"{stem}_barcodes.tsv.gz", cells)
-        _gz(d / f"{stem}_features.tsv.gz", genes)
+        _gz(d / f"{stem}_features.tsv.gz", d5_genes if d5_genes and "D5" in stem else genes)
         size = f"{len(cells)} {len(genes)} 2" if d5_cells_x_genes and "D5" in stem else f"3 {len(cells)} 2"
+        if main_size is not None and "D5" not in stem:
+            size = main_size
         _gz(
             d / f"{stem}.mtx.gz",
             ["%%MatrixMarket matrix coordinate integer general", "%comment", size, "1 1 2", "3 2 7"],
@@ -265,6 +270,7 @@ def _formats_dir(
         {
             MEMBER_X: _contigs([f"{c}-1" for c in C[:3]], planted, header),
             MEMBER_Y: _contigs([f"{c}-1" for c in (C[3], C[4], C[0])], planted, header),
+            **(extra_members or {}),
         },
     )
     return d
@@ -370,6 +376,95 @@ def test_a_malformed_capture_map_is_refused(tmp_path: Path) -> None:
         p.write_text(text)
         r = run_formats(d, "--capture-map", str(p))
         assert r.returncode != 0 and "capture map" in r.stderr
+
+
+def _raw_member(text: bytes, gz: bool = True) -> bytes:
+    return gzip.compress(text) if gz else text
+
+
+def test_a_headerless_member_is_refused_before_any_of_it_is_printed(tmp_path: Path) -> None:
+    row = ",".join(["AAACCTGAGGCTAGAC-1", "True", "c1", "True", "500", "TRB", "TRBV-PLANTED", "None"])
+    row += ",None,TRBJ-PLANTED,C,True,True,CASSPLANTEDF,PLANTEDNT,10,2,clonotypePLANTED,consensus1\n"
+    name = "GSM3_SECRETNAME_tcr_filtered_contig_annotations.csv.gz"
+    d = _formats_dir(tmp_path, extra_members={name: _raw_member(row.encode())})
+    r = run_formats(d)
+    assert r.returncode != 0
+    assert "PLANTED" not in r.stdout + r.stderr and "SECRETNAME" not in r.stdout + r.stderr
+    assert "no barcode column" in r.stderr and "member 3 of 3" in r.stderr
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"\x1f\x8b not really gzip, PLANTEDBYTES",
+        b"\xff\xfe\xfd,PLANTEDBYTES\n",
+        gzip.compress(b"\xff\xfe,PLANTEDBYTES\n"),
+    ],
+)
+def test_a_member_that_is_not_gzip_or_utf8_gives_the_script_error(tmp_path: Path, data: bytes) -> None:
+    name = "GSM3_SECRETNAME_tcr_filtered_contig_annotations.csv.gz"
+    r = run_formats(_formats_dir(tmp_path, extra_members={name: data}))
+    assert r.returncode != 0
+    assert "not valid gzip or UTF-8" in r.stderr and "Traceback" not in r.stderr
+    assert "PLANTED" not in r.stdout + r.stderr and "SECRETNAME" not in r.stdout + r.stderr
+
+
+def test_d5_features_in_another_order_or_with_one_changed_name_are_not_equal(tmp_path: Path) -> None:
+    for genes in (["Gm1992", "Xkr4", "Cd8a"], ["Xkr4", "Gm1992", "Cd8b"]):
+        d = tmp_path / "-".join(genes)
+        d.mkdir()
+        out = run_formats(_formats_dir(d, d5_genes=genes)).stdout
+        assert "D5 features equal main features\tFalse\n" in out
+
+
+def test_the_join_runs_over_the_union_of_both_barcode_files(tmp_path: Path) -> None:
+    # Member Z's cells exist only in the D5 file, under a D5-only tag: joining against main alone gives 0.
+    z = "GSM3_Spleen_D5_tcr_filtered_contig_annotations.csv.gz"
+    zdata = _contigs([f"{c}-1" for c in C[6:8]], PLANTED, CONTIG_HEADER)
+    d = _formats_dir(tmp_path, extra_members={z: zdata})
+    m = _map(d, {MEMBER_X: "Spleen_X_gex_", MEMBER_Y: "Spleen_Y_gex_", z: "Spleen_D5_gex_"})
+    out = run_formats(d, "--capture-map", m).stdout
+    assert f"join\t{z}\tSpleen_D5_gex_\t2/2\t1.00\t" in out
+
+
+def test_a_member_with_no_barcodes_has_no_share(tmp_path: Path) -> None:
+    z = "GSM3_Spleen_Z_tcr_filtered_contig_annotations.csv.gz"
+    empty = _raw_member((",".join(CONTIG_HEADER) + "\n").encode())
+    d = _formats_dir(tmp_path, extra_members={z: empty})
+    m = _map(d, {MEMBER_X: "Spleen_X_gex_", MEMBER_Y: "Spleen_Y_gex_", z: "Spleen_X_gex_"})
+    out = run_formats(d, "--capture-map", m).stdout
+    assert f"join\t{z}\tSpleen_X_gex_\t0/0\tn/a\tSpleen_D5_gex_\t0/0\tn/a\n" in out
+
+
+def test_a_map_covering_one_of_two_members_reports_one_unmapped(tmp_path: Path) -> None:
+    d = _formats_dir(tmp_path)
+    out = run_formats(d, "--capture-map", _map(d, {MEMBER_X: "Spleen_X_gex_"})).stdout
+    assert "tar members not in the capture map\t1\n" in out
+
+
+@pytest.mark.parametrize("size", ["3 6", "3 5 2", "4 6 2", "6 4 2"])
+def test_an_unmatched_size_line_is_neither(tmp_path: Path, size: str) -> None:
+    out = run_formats(_formats_dir(tmp_path, main_size=size)).stdout
+    main = out.split("== matrix main ", 1)[1].split("== matrix d5 ", 1)[0]
+    assert "orientation\tneither\n" in main
+
+
+def _big_matrix(d: Path, last: str) -> None:
+    lines = ["%%MatrixMarket matrix coordinate integer general", "3 6 100001", *["1 1 2"] * 100_000, last]
+    _gz(d / "GSE188666_scRNA_LCMV.mtx.gz", lines)
+
+
+def test_the_integer_check_stops_at_exactly_100000_values(tmp_path: Path) -> None:
+    d = _formats_dir(tmp_path)
+    _big_matrix(d, "1 1 0.5")  # the 100,001st value is not looked at
+    assert "first 100000 stored values integer\tTrue\n" in run_formats(d).stdout
+
+
+def test_the_integer_check_sees_the_100000th_value(tmp_path: Path) -> None:
+    d = _formats_dir(tmp_path)
+    lines = ["%%MatrixMarket matrix coordinate integer general", "3 6 100000", *["1 1 2"] * 99_999, "1 1 0.5"]
+    _gz(d / "GSE188666_scRNA_LCMV.mtx.gz", lines)
+    assert "first 100000 stored values integer\tFalse\n" in run_formats(d).stdout
 
 
 @pytest.mark.real_data

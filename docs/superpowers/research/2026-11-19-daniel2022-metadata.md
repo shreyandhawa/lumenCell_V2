@@ -328,7 +328,9 @@ state, clone x capture or clone x lineage count was computed.
 
 The capture map (tar member -> tag) was built from the GSM records: each TCR GSM's tag is the title of its GEX
 GSM (section 1) plus `_`, and the shares were read with `--capture-map`. A contig barcode `b` of a member joins
-tag `t` when `t + b` is a barcode of either matrix. Rule: a member's own share must be at least 0.5 and above every
+tag `t` when `t + b` is a barcode of either matrix. The share's denominator is the member's distinct barcodes over
+every contig row (any contig, whether or not it is productive, full length or high confidence), as the plan's
+"distinct barcodes", not only the barcodes of qualifying contigs. Rule: a member's own share must be at least 0.5 and above every
 other tag's share. "Best other" is the other tag with the most hits.
 
 **Conflict 1, GSM6381667 and GSM6381668: the file names win.** With the title map (GSM6381667 -> `..._D5_CD8_TetPos_rep1_gex_`,
