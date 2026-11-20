@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from lumencell.bench.builders import sheih2020
 from lumencell.bench.download import (
     USER_AGENT,
     Build,
@@ -39,9 +40,11 @@ from lumencell.bench.download import (
 from lumencell.bench.truth import Truth
 
 __all__ = [
+    "CASE_STUDIES",
     "DATASETS",
     "USER_AGENT",
     "Build",
+    "CaseStudyDataset",
     "FetchError",
     "RealDataset",
     "Source",
@@ -176,6 +179,41 @@ DATASETS: dict[str, RealDataset] = {
             notes="Held out. Order is real embryo time (E7.0-E8.5), not annotation.",
         ),
     )
+}
+
+
+@dataclass(frozen=True)
+class CaseStudyDataset:
+    """A case study: fetched and built like a benchmark dataset, but not in ``DATASETS``.
+
+    It has no truth. ``bench fetch all`` skips it; it is fetched by its id.
+    """
+
+    id: str
+    title: str
+    citation: str
+    sources: tuple[Source, ...]
+    licence: str
+    build: Build
+    notes: str = ""
+
+
+# build.params equal the declaration's chains, cdr3, filters and max_per_chain (thresholds.toml,
+# [case_study.sheih2020]); tests/unit/test_sheih2020.py pins that.
+CASE_STUDIES: dict[str, CaseStudyDataset] = {
+    "sheih2020": CaseStudyDataset(
+        id="sheih2020",
+        title="CD19 CAR-T cells in four patients (CLL-1, CLL-2, NHL-6, NHL-7), scRNA with TCR clonotypes",
+        citation="Sheih et al. 2020, Nat Commun 11:219, doi:10.1038/s41467-019-13880-1",
+        sources=sheih2020.SOURCES,
+        licence=sheih2020.LICENCE,
+        build=Build(
+            builder=sheih2020.build,
+            version=sheih2020.BUILD_VERSION,
+            params={"chains": "paired", "cdr3": "nt", "filters": [], "max_per_chain": 2},
+        ),
+        notes="Case study (evaluation only): the declaration is [case_study.sheih2020].",
+    ),
 }
 
 

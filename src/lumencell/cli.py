@@ -493,15 +493,29 @@ def bench_fetch(
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Download without asking.")] = False,
 ) -> None:
     """Download a real benchmark dataset (asks first; shows source and size)."""
-    from lumencell.bench.datasets import DATASETS, FetchError, fetch, is_cached, local_path, sha256_of
+    from lumencell.bench.datasets import (
+        CASE_STUDIES,
+        DATASETS,
+        CaseStudyDataset,
+        FetchError,
+        RealDataset,
+        fetch,
+        is_cached,
+        local_path,
+        sha256_of,
+    )
     from lumencell.bench.download import build_dataset, is_downloaded, source_path
 
+    known: dict[str, RealDataset | CaseStudyDataset] = {
+        **DATASETS,
+        **CASE_STUDIES,
+    }  # `all` covers DATASETS only; a case study is fetched by its id
     ids = list(DATASETS) if dataset == "all" else [dataset]
-    unknown = [i for i in ids if i not in DATASETS]
+    unknown = [i for i in ids if i not in known]
     if unknown:
-        raise typer.BadParameter(f"unknown dataset {unknown[0]!r}; choose from {', '.join(DATASETS)} or all")
+        raise typer.BadParameter(f"unknown dataset {unknown[0]!r}; choose from {', '.join(known)} or all")
     for i in ids:
-        ds = DATASETS[i]
+        ds = known[i]
         if is_cached(ds):
             typer.echo(f"{ds.id}: already at {local_path(ds)}")
             continue

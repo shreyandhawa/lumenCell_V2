@@ -25,3 +25,14 @@ def test_cached_dataset_matches_its_checksum_and_truth(dataset_id: str) -> None:
     assert truth.root.sum() > 0
     for name, mask in truth.lineages.items():
         assert mask.sum() > 50, f"{dataset_id}/{name} has almost no cells"
+
+
+def test_case_study_files_match_their_checksums() -> None:
+    from lumencell.bench.datasets import CASE_STUDIES
+
+    for cs in CASE_STUDIES.values():
+        if not all(source_path(s).exists() for s in cs.sources):
+            pytest.skip(f"run: lumencell bench fetch {cs.id}")
+        for s in cs.sources:
+            assert source_path(s).stat().st_size == s.size
+            assert sha256_of(source_path(s)) == s.sha256

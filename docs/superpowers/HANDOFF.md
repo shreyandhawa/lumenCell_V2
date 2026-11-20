@@ -20,9 +20,10 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - **Phase 3 is under way** (base 35ac459). Merged: Task 1 (#43, multi-file sources, licences, build step), Task 2 (#44,
   the nine Daniel 2022 GEO files, sizes and SHA-256), Task 3 (#48, Daniel sample records and metadata; 23 captures),
   Task 4 (#47, clone calling from 10x contigs) and Task 9 (#45, Sheih 2020 joins at 0.99, so the Cao branch is not
-  taken). Task 10 (#51, merged) declares `[case_study.sheih2020]` before any analysis. Task 5a (#50): Daniel file
-  formats and the capture map, all 23 TCR members joined to their cells. Next: 5b, then 6, 7, 8; Task 11 after
-  Tasks 4 and 10. See each task's decisions section.
+  taken). Task 10 (#51, merged) declares `[case_study.sheih2020]` before any analysis. Task 5a (#50, merged): Daniel
+  file formats and the capture map, all 23 TCR members joined to their cells. Task 11 (#52, this PR) fetches the rest
+  of GSE125881 and builds the case-study dataset (62,167 cells, no analysis yet). Next: 5b (in progress), then 6, 7, 8.
+  See each task's decisions section.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
   with the two plan-time amendments under Decisions.
@@ -1331,6 +1332,7 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 | `pivot/45-phase2-close` | #49 | merged (squash), closes phase 2: Done When recorded on 570fb5e, final state |
 | `pivot/47-sheih-declaration` | #51 | merged (squash, 5ef3151), phase 3 Task 10, case-study declaration (clone definition, namespace, strata, root) before any analysis |
 | `pivot/46-daniel-formats` | #50 | merged (squash), phase 3 Task 5a, Daniel 2022 file formats and the capture map (23 members joined) |
+| `pivot/48-sheih-builder` | #52 | open, phase 3 Task 11, case-study fetch and build (62,167 cells, 42,362 paired-labelled; no analysis) |
 
 ## Phase 3 Task 9 decisions and result
 
@@ -1350,6 +1352,28 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 - **CDR3 `nt`** (`cdr3_nts` is present). **Filters `[]`:** productive, high_confidence and full_length (and is_cell) are all absent from the tables; whether the authors kept only productive chains is UNVERIFIED.
 - **Unit:** per patient primary (4 patients x 3 methods = 12 runs with stability, about a quarter of the cells each), patient as the clone namespace, `strata_keys = ["timepoint"]` (N3), pooled run as a labelled diagnostic only.
 - **Review fixes (controller):** the changelog's root bullet now says IP as the start is an assumption, not named by the paper; `test_the_declaration_has_its_dated_changelog_entry` ties the entry's date to `declared` and checks it states the assumption and the per-patient cost (a re-dated entry fails it).
+
+## Phase 3 Task 11 decisions
+
+- **Owner's OK (STOP step 1):** Shreyan, in chat on 2026-11-19, "Yes, approve all" (relayed by the parent session), item 3: "Task 10: the rest of GSE125881 (raw.expMatrix.csv.gz and GSE125881_RAW.tar), ~111 MB". Nothing else was downloaded (no Cao files).
+- **Downloads** (`fetch_source` only, into the datasets cache, 2026-11-20). HEAD sizes equal Task 9's: matrix 114,573,707 bytes, tar 2,048,000 bytes. SHA-256: matrix `243e6e2dd09158e08dcaecfbf35b23122ac3096c1039355b7590474e76d8c02c`; tar `769fa5b71b12b7efe433f51164d4370e0af00c20bebc647029cc4fbd9a943487`, equal to Task 9's. Both are in `SOURCES` of `bench/builders/sheih2020.py`. The tar is read in memory, never extracted.
+- **Build:** `uv run lumencell bench fetch sheih2020` builds `sheih2020-9720dc62e9bc.h5ad` (build version 2 after fix round 1; the version 1 file `78b787b0a59c` was removed; 167 s, 3.4 GB peak, the matrix read 500 genes at a time into CSR). A case study is fetched by its id; `bench fetch all` still covers `DATASETS` only.
+- **n_cells = 62,167, equal to the paper's 62,167** (20,223 genes, 116,507,933 non-zeros). Every cell maps to a sample by its aggr suffix; an unknown suffix would be a `BuildError`.
+- **Labelled totals (the declared rule):** 42,362 cells with a paired `clone_id` (1-2 distinct TRA and 1-2 distinct TRB CDR3 nt) and 50,903 with a TRB-only `clone_id_trb`. Per patient (paired / TRB-only): CLL-1 12,745 / 14,951; CLL-2 9,310 / 11,521; NHL-6 13,575 / 16,807; NHL-7 6,732 / 7,624. No clone x time point or clone x cluster table was computed (case-study freeze).
+- **Joined share per sample** (distinct table barcodes found among the sample's cells; floor 0.5, enforced by the build): minimum 0.974 (GSM3583873, NHL-7 IP); all 16 are between 0.974 and 1.000. CLL-2 d12 is 0.990 (56 misses of 5,873, so 5,817 found), as in Task 9. The distinct-barcode and miss counts per sample are in `uns["lumencell_build"]` (`contig_barcodes`, `join_misses`, `joined_share`, `cells_per_sample`).
+- **Clones from the tables.** Each table row (clonotype x chain) is expanded to one contig-style row per listed barcode (`<core>-1` becomes `<core>-<aggr id>`), flags set to "True" (the tables have none, filters = []), and handed to `call_clones`, so the `clone_id` and `clone_id_trb` strings are hashed exactly as Daniel's. `raw_clonotype_id` is dropped: the table's clonotype ids are per chain, so a cell sits under several of them and none is the cell's clonotype.
+- **Multi-value CDR3 fields.** The format check (not values) found none: all 41,756 rows hold one `[ACGTN]+` string in `cdr3_nts` and a chain of TRA or TRB. A row whose chain is not TRA/TRB or whose `cdr3_nts` is not one bare `[ACGTN]+` string (a `;`-list, an empty field) refuses the build (fix round 1; it was counted and dropped), because a dropped row could make a 3-TRA cell look like a 2-TRA one and label it. A `;`-list is never split. `cdr3_unusable_rows` stays in `uns["lumencell_build"]` (0 in every sample). The `barcodes` field is the multi-valued one: it is split on `;`; a barcode not of the form `<16 nt>-1` stays in the denominator as a miss (it does not raise by itself).
+- **Cells with more than 2 distinct CDR3 on a chain** are unlabelled in the paired call (declared `max_per_chain = 2`); a cell with no table row gets NaN and 0 counts.
+- **obs:** `patient` (the clone namespace, passed as a clonal column), `timepoint` (GEO's value as written: IP, d12, d21, d28, d29, d38, d83, d89, d102, d112; a stratum, visible), `day` (float; the sampling day in the label, NaN for IP, which is not a sampling day), `clone_id`, `clone_id_trb`, `receptor_n_tra`, `receptor_n_trb`. The clone and receptor columns match `RECEPTOR_COLUMN`. obs_names are the matrix cell ids. There is no `sample` column: the GSM encodes the patient, so it would leak the namespace to methods in the pooled diagnostic; the GSM appears only in `uns["lumencell_build"]` (`cells_per_sample` and the per-sample counts).
+- **Untrusted values:** cell ids, table barcodes and tar member names are validated by regex or compared to the fixed member list, never used as paths, and never put in an error message; params the builder cannot honour (chains other than paired, cdr3 other than nt, any filter, max_per_chain other than 2) raise `BuildError`.
+- **Tests:** `tests/unit/test_sheih2020.py` (fixture: 5 genes, 6 cells, 2 samples, a duplicate barcode core across samples, a stray `../` tar member) and `test_case_study_files_match_their_checksums` in `tests/real` (real_data).
+
+- **Fix round 1** (controller rulings P9 to P11, plus the mutation seat's tests):
+  - **P9:** `day` is float with NaN for IP. Day 0 would enter a day Spearman and, with root = IP, correlate by construction. **Task 12 must use `timepoint` only as a stratum or root, never its category codes as time** (categories are not time-ordered), and `day` only over non-IP cells.
+  - **P10:** `cdr3_unusable_rows > 0` in any sample raises `BuildError` (a TRG row, a `;`-list, an empty or non-ACGTN CDR3). The real data has 0. A CDR3 containing `N` is used (the call-clones alphabet is ACGTN).
+  - **P11:** obs `sample` dropped (leaks the patient). Duplicate gene names in the matrix raise `BuildError`. `BUILD_VERSION` is 2 (the output changed), so the derived file name changed.
+  - Tests added: all 16 samples pinned literally from Task 9's GSM table (VDJ GSM and member names written out); two-digit aggr ids (`-10`, `-12`); the join-share floor at 0.75 / 0.5 builds and 0.43 refuses; matrix 1.5, -1 and ragged rows; extra params refused; unknown-suffix error without barcode text; missing member; duplicate cell ids; `chunk_rows < 1`; missing required column; zero usable barcodes; a `-2` table barcode counts as a miss; `cells_per_sample`; the two SHA-256 literals, sizes and URLs pinned.
+  - Mutants seen to fail: `group(2)[:1]`, `<` to `<=` on the floor, subset instead of equal params, `chunk_rows < 0`, dropped negative or fractional check, no unknown-suffix check.
 
 ## Verify the current state
 
