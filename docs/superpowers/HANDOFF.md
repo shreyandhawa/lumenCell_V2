@@ -1271,6 +1271,24 @@ Fix round 1:
 - **`clonal_reason` is always a string** (`""` when none): `test_gates.py` expected `None` and now expects `""`. The old
   `test_a_real_case_row_is_not_applicable` stub dataset gained `clonal=None, report_time_key=None`.
 - **README** regenerates unchanged (no result file has `reported_*` or a clonal status other than not_applicable).
+- **Fix round 1** (controller rulings, each test seen failing on the old code or under its mutant first):
+  - **Day parsing.** A numeric `report_time_key` column is used directly (`pd.to_numeric`, NaN stays NaN); the
+    first-number regex is only for string or object columns (`D5`, `21`). The old code read `1e-05` as 1. Tests: the
+    numeric, string and all-unparsable day tests.
+  - **P16, labelled share.** `reported_labelled_share_of_raw` is the declared text literally: cells with a
+    `clone_id` divided by cells with a `raw_clonotype_id`, NaN with no raw cells. The declaration wins over a
+    bounded version, so it can exceed 1 when cells carry a `clone_id` but no raw id (5/4 in the test). Report it
+    as defined. Test: `test_the_labelled_share_is_clone_cells_over_raw_cells_as_declared_and_can_exceed_one`.
+  - **Recurrence.** Cells whose capture is missing are dropped, not counted as a capture called "nan".
+  - **ARI.** The zero-denominator branch is reachable only for two single clusters or two all-singletons, which
+    are always identical, so the dead 0.0 outcome is removed (it returns 1.0). Tests cover both-single, all
+    singletons, one cluster against singletons (0.0), a partial overlap (-0.5), n = 2, and the exhaustive small-n
+    check of the claim.
+  - **Pinned values.** Tests for `reported_metrics` on hand-built obs (capture-keyed raw ARI, restriction to cells
+    with both ids, TRB-only truth uses `trb_only_key` and the donor column, empty recurrence is `(nan, 0)`),
+    `CaseResult.row` rounding, `truth_for` columns, the report cell variants and the exact "Reported, not gated"
+    header. The P14 test is split so a real failure (`fail:` in the README, FAIL on the CLI line) is asserted
+    on its own.
 
 ## Open questions for Shreyan
 

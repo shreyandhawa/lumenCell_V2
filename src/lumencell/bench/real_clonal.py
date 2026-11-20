@@ -29,8 +29,9 @@ _NUMBER = re.compile(r"[-+]?\d*\.?\d+")
 def adjusted_rand_index(a: npt.NDArray[np.int64], b: npt.NDArray[np.int64]) -> float:
     """Hubert-Arabie adjusted Rand index of two partitions given as integer codes.
 
-    NaN with fewer than two cells. When the denominator is zero (the expected index equals its
-    maximum) the partitions agree trivially: 1.0 if they are identical up to relabelling, else 0.0.
+    NaN with fewer than two cells. The denominator is zero (expected index equals its maximum)
+    only when both partitions are one cluster or both are all singletons, and then they are
+    identical up to relabelling: 1.0.
     """
     n = int(a.shape[0])
     if n < 2:
@@ -49,18 +50,19 @@ def adjusted_rand_index(a: npt.NDArray[np.int64], b: npt.NDArray[np.int64]) -> f
     expected = rows * cols / total
     maximum = (rows + cols) / 2
     if maximum == expected:
-        identical = bool((table > 0).sum(axis=0).max() == 1 and (table > 0).sum(axis=1).max() == 1)
-        return 1.0 if identical else 0.0
+        return 1.0
     return (index - expected) / (maximum - expected)
 
 
 def clone_recurrence(clones: npt.NDArray[np.object_], captures: npt.NDArray[np.object_]) -> tuple[float, int]:
     """Share of distinct clone strings found in two or more captures, and the number of strings.
 
-    Over cells with a non-missing clone string; ``(nan, 0)`` when there are none. The namespace is
-    ignored on purpose: it estimates convergent receptors if the captures hold different mice.
+    Over cells with a non-missing clone string and a non-missing capture; ``(nan, 0)`` when there
+    are none. A cell without a capture is left out, never counted as a capture called "nan". The
+    namespace is ignored on purpose: it estimates convergent receptors if the captures hold
+    different mice.
     """
-    keep = ~is_missing(clones)
+    keep = ~is_missing(clones) & ~is_missing(captures)
     if not keep.any():
         return math.nan, 0
     frame = pd.DataFrame({"clone": clones[keep].astype(str), "capture": captures[keep].astype(str)})
@@ -79,6 +81,10 @@ def real_clonal_row(
 
 
 def _numbers(values: pd.Series) -> npt.NDArray[np.float64]:
+    """Day values as numbers: a numeric column is used as is (NaN stays NaN); only a string or
+    object column is read by its first number, so ``D21`` and ``21`` both give 21."""
+    if pd.api.types.is_numeric_dtype(values) and not pd.api.types.is_bool_dtype(values):
+        return np.asarray(pd.to_numeric(values), dtype=np.float64)
     return np.array(
         [float(m.group()) if (m := _NUMBER.search(str(v))) else math.nan for v in values], dtype=np.float64
     )
@@ -121,7 +127,11 @@ def reported_metrics(
     both = has_clone & has_raw
     keyed = np.array([f"{p}\x1f{q}" for p, q in zip(capture[both], clone[both], strict=True)], dtype=object)
     out["reported_raw_clonotype_ari"] = adjusted_rand_index(_codes(keyed), _codes(raw[both]))
-    out["reported_labelled_share_of_raw"] = float(has_clone[has_raw].mean()) if has_raw.any() else math.nan
+    # Declared text, literally: cells with a clone_id over cells with a raw_clonotype_id. It can
+    # exceed 1 when cells carry a clone_id but no raw id.
+    out["reported_labelled_share_of_raw"] = (
+        float(has_clone.sum() / has_raw.sum()) if has_raw.any() else math.nan
+    )
 
     trb_truth = replace(
         truth,

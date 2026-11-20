@@ -2,6 +2,7 @@ import json
 import math
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, get_args
 
 import numpy as np
@@ -11,13 +12,15 @@ from typer.testing import CliRunner
 
 import lumencell.bench.real_clonal as real_clonal_mod
 from lumencell.bench import report, runner
-from lumencell.bench.datasets import DATASETS, RealClonal, RealDataset
+from lumencell.bench.datasets import DATASETS, RealClonal, RealDataset, truth_for
 from lumencell.bench.download import Source, sha256_of
 from lumencell.bench.gates import REPO, check_gates, load_thresholds
-from lumencell.bench.real_clonal import adjusted_rand_index, clone_recurrence
-from lumencell.bench.runner import ClonalRowStatus, run_real_case
+from lumencell.bench.metrics import Scores
+from lumencell.bench.real_clonal import adjusted_rand_index, clone_recurrence, reported_metrics
+from lumencell.bench.runner import CaseResult, ClonalRow, ClonalRowStatus, run_real_case
 from lumencell.bench.synth import generate
 from lumencell.bench.synth_clones import DEFAULT_LAYER, add_clones
+from lumencell.bench.truth import Truth
 from lumencell.cli import app
 from lumencell.engine import stability as stability_mod
 from lumencell.engine.context import InferenceContext
@@ -204,19 +207,16 @@ def test_the_readme_shows_reported_fields(monkeypatch: pytest.MonkeyPatch) -> No
     assert "Reported, not gated" in text and "clonal: 0.80" in text and "η at m = 3" in text
 
 
-def test_a_dataset_with_no_gated_lineage_is_shown_as_not_measured(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:  # controller ruling P14
-    note = "lineage gates: not measured (no gated lineage, declared 2026-11-20)"
-    ds = DATASETS["daniel2022"]
-    assert ds.gated == [] and ds.clonal is not None and ds.clonal.declared == "2026-11-20"
-    row = _daniel_row()
-    _patch_results(monkeypatch, row)
-    cell = next(x for x in report.render().splitlines() if x.startswith("| PAGA + DPT |") and "Spearman" in x)
-    assert note in cell and "clonal: not assessable (declared 2026-11-20, because)" in cell
-    assert "PASS" not in cell and "pass" not in cell
+NOTE = "lineage gates: not measured (no gated lineage, declared 2026-11-20)"
+_FAIL_ROW = {"pt_spearman_lineage": 0.1}  # a real gate failure (needs >= 0.70)
 
-    # The CLI line: the dataset runs, its gates score NaN and are skipped, and nothing says PASS.
+
+def _daniel_cell(monkeypatch: pytest.MonkeyPatch, **kw: Any) -> str:
+    _patch_results(monkeypatch, _daniel_row(**kw))
+    return next(x for x in report.render().splitlines() if x.startswith("| PAGA + DPT |") and "Spearman" in x)
+
+
+def _run_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, row: dict[str, Any]) -> str:
     monkeypatch.setattr("lumencell.bench.datasets.is_cached", lambda d: True)
     monkeypatch.setattr(
         "lumencell.bench.runner.run_real_case",
@@ -224,17 +224,358 @@ def test_a_dataset_with_no_gated_lineage_is_shown_as_not_measured(
             "C", (), {"row": lambda self: dict(row, runtime_seconds=1.0, tree_support="not_measured")}
         )(),
     )
-    out = tmp_path / "r.json"
     res = cli.invoke(
-        app, ["bench", "real", "--datasets", "daniel2022", "--methods", "paga_dpt", "--out", str(out)]
+        app,
+        [
+            "bench",
+            "real",
+            "--datasets",
+            "daniel2022",
+            "--methods",
+            "paga_dpt",
+            "--out",
+            str(tmp_path / "r.json"),
+        ],
     )
-    line = next(x for x in res.output.splitlines() if x.startswith("daniel2022"))
-    assert res.exit_code == 0 and note in line and "clonal=not_assessable" in line
+    return res.output
+
+
+def test_p14_readme_cell_without_gated_lineage_says_not_measured_and_never_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # controller ruling P14
+    ds = DATASETS["daniel2022"]
+    assert ds.gated == [] and ds.clonal is not None and ds.clonal.declared == "2026-11-20"
+    cell = _daniel_cell(monkeypatch)
+    assert NOTE in cell and "clonal: not assessable (declared 2026-11-20, because)" in cell
+    assert "PASS" not in cell and "pass" not in cell
+
+
+def test_p14_cli_line_without_gated_lineage_says_not_measured_and_never_pass(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    output = _run_cli(monkeypatch, tmp_path, _daniel_row())
+    line = next(x for x in output.splitlines() if x.startswith("daniel2022"))
+    assert NOTE in line and "clonal=not_assessable" in line
     assert "PASS" not in line and "pass" not in line
 
-    # No clonal declaration: no date to cite, said plainly. Gated datasets render as before.
-    monkeypatch.setitem(DATASETS, "daniel2022", replace(ds, clonal=None))
-    cell = next(x for x in report.render().splitlines() if x.startswith("| PAGA + DPT |") and "Spearman" in x)
+
+def test_p14_never_hides_a_real_failure_in_the_readme_cell(monkeypatch: pytest.MonkeyPatch) -> None:
+    cell = _daniel_cell(monkeypatch, **_FAIL_ROW)
+    assert "fail: pt_spearman_lineage" in cell
+    assert NOTE not in cell
+
+
+def test_p14_never_hides_a_real_failure_in_the_cli_line(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from lumencell.bench.gates import GateFailure
+
+    monkeypatch.setattr(
+        "lumencell.bench.gates.check_gates",
+        lambda row, gates: [GateFailure("daniel2022", "pt_spearman_lineage", 0.1, ">= 0.7")],
+    )
+    output = _run_cli(monkeypatch, tmp_path, _daniel_row())
+    line = next(x for x in output.splitlines() if x.startswith("daniel2022"))
+    assert "FAIL" in line and NOTE not in line
+    assert "gate     paga_dpt: daniel2022: pt_spearman_lineage" in output
+
+
+def test_p14_without_a_clonal_declaration_there_is_no_date_to_cite(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(DATASETS, "daniel2022", replace(DATASETS["daniel2022"], clonal=None))
+    cell = _daniel_cell(monkeypatch)
     assert "lineage gates: not measured (no gated lineage)" in cell and "pass" not in cell
+
+
+def test_p14_a_dataset_with_gated_lineages_has_no_note() -> None:
     pancreas = DATASETS["pancreas"]
     assert pancreas.gated and report.lineage_gates_note(pancreas) is None
+
+
+# ---- Fix round 1 -----------------------------------------------------------------------
+
+
+def _mini_ds(**kw: Any) -> RealDataset:
+    base = RealDataset(
+        id="mini",
+        title="mini",
+        citation="none",
+        sources=(Source("https://example.org/m.h5ad", "m.h5ad", 1, "0" * 64),),
+        licence="test",
+        label_key="state",
+        root_label="a",
+        lineages={"a": ["a"], "b": ["b"]},
+        gated=["a", "b"],
+        clonal=RealClonal("clone", "donor", "trb", "raw", "capture", True, "t", "2026-01-02"),
+    )
+    return replace(base, **kw)
+
+
+def _mini_truth(n: int) -> Truth:
+    mask = np.arange(n) % 2 == 0
+    return Truth(order=np.arange(n, dtype=float), lineages={"a": mask, "b": ~mask}, root=mask)
+
+
+def _metrics(ds: RealDataset, obs: pd.DataFrame, pt: Any = None) -> dict[str, Any]:
+    n = len(obs)
+    pt = np.linspace(0, 1, n) if pt is None else np.asarray(pt, dtype=float)
+    return reported_metrics(ds, obs, SimpleNamespace(pseudotime=pt), _mini_truth(n), None, 2)  # type: ignore[arg-type]
+
+
+def _obs(**cols: Any) -> pd.DataFrame:
+    n = len(next(iter(cols.values())))
+    base: dict[str, Any] = {k: [None] * n for k in ("clone", "donor", "trb", "raw", "capture")}
+    base.update(cols)
+    return pd.DataFrame({k: pd.Series(v, dtype=object) for k, v in base.items()})
+
+
+@pytest.fixture
+def seen_trb(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    seen: dict[str, Any] = {}
+
+    def fake_row(ds: Any, truth: Truth, *a: Any) -> ClonalRow:
+        seen["truth"] = truth
+        return ClonalRow("ok", excess_ratio=0.5, p=0.02)
+
+    monkeypatch.setattr(real_clonal_mod, "real_clonal_row", fake_row)
+    return seen
+
+
+# day parsing (ruling: numeric columns are used directly)
+
+
+def test_a_numeric_day_column_is_used_as_numbers_not_parsed_from_text() -> None:
+    from scipy.stats import spearmanr
+
+    day = [1e-05, 3e-05, 0.5, np.nan, 0.7]
+    pt = [0.1, 0.2, 0.3, 0.4, 0.5]
+    ds = _mini_ds(clonal=None, report_time_key="day")
+    out = _metrics(ds, pd.DataFrame({"day": day}), pt)
+    assert out["reported_day_spearman"] == pytest.approx(
+        spearmanr([0.1, 0.2, 0.3, 0.5], [1e-05, 3e-05, 0.5, 0.7]).statistic
+    )
+    assert out["reported_day_spearman"] == pytest.approx(1.0)
+
+
+def test_a_string_day_column_reads_the_first_number_and_skips_unparsable_cells() -> None:
+    from scipy.stats import spearmanr
+
+    ds = _mini_ds(clonal=None, report_time_key="day")
+    obs = pd.DataFrame({"day": pd.Series(["D5", "D8", "D21", None], dtype=object)})
+    out = _metrics(ds, obs, [0.1, 0.5, 0.9, 0.4])
+    assert out["reported_day_spearman"] == pytest.approx(spearmanr([0.1, 0.5, 0.9], [5, 8, 21]).statistic)
+    assert out["reported_day_spearman"] > 0
+
+
+def test_an_all_unparsable_day_column_is_nan() -> None:
+    ds = _mini_ds(clonal=None, report_time_key="day")
+    out = _metrics(ds, pd.DataFrame({"day": pd.Series(["a", "b", "c"], dtype=object)}))
+    assert math.isnan(out["reported_day_spearman"])
+
+
+# P16: the declared labelled share
+
+
+def test_the_labelled_share_is_clone_cells_over_raw_cells_as_declared_and_can_exceed_one(
+    seen_trb: dict[str, Any],
+) -> None:
+    obs = _obs(
+        clone=["x", "x", None, "y", "w", "z"],
+        raw=["r1", "r1", "r2", None, None, "r3"],
+        capture=["A"] * 6,
+        donor=["d"] * 6,
+        trb=[None] * 6,
+    )
+    out = _metrics(_mini_ds(), obs)
+    assert out["reported_labelled_share_of_raw"] == pytest.approx(5 / 4)  # 5 clone cells, 4 raw cells
+
+
+def test_the_labelled_share_is_nan_without_raw_cells(seen_trb: dict[str, Any]) -> None:
+    obs = _obs(clone=["x", "y"], raw=[None, None], capture=["A", "A"], donor=["d", "d"])
+    assert math.isnan(_metrics(_mini_ds(), obs)["reported_labelled_share_of_raw"])
+
+
+# raw clonotype ARI
+
+
+def test_the_raw_ari_is_keyed_by_capture_and_restricted_to_cells_with_both_ids(
+    seen_trb: dict[str, Any],
+) -> None:
+    # "c" is the clone string in both captures; the raw ids differ by capture. Keyed by capture the
+    # partitions agree; un-keyed, clone_id is one cluster against two raw ids. The last two cells
+    # have only one of the two ids and would break the agreement if they were counted.
+    obs = _obs(
+        clone=["c", "c", "c", "c", "c", None],
+        raw=["A1", "A1", "B1", "B1", None, "A1"],
+        capture=["A", "A", "B", "B", "B", "A"],
+        donor=["d"] * 6,
+    )
+    assert _metrics(_mini_ds(), obs)["reported_raw_clonotype_ari"] == 1.0
+
+
+# TRB-only
+
+
+def test_trb_only_scores_the_trb_column_with_the_donor_column(seen_trb: dict[str, Any]) -> None:
+    obs = _obs(
+        clone=["x", "y", "z", "w"],
+        trb=["t1", None, "t3", "t4"],
+        donor=["m1", "m1", "m2", "m2"],
+        capture=["c1", "c2", "c3", "c4"],
+        raw=["r"] * 4,
+    )
+    out = _metrics(_mini_ds(), obs)
+    truth = seen_trb["truth"]
+    assert list(truth.clone_ids) == ["t1", None, "t3", "t4"]
+    assert list(truth.donors) == ["m1", "m1", "m2", "m2"]
+    assert (out["reported_trb_status"], out["reported_trb_excess_ratio"], out["reported_trb_p"]) == (
+        "ok",
+        0.5,
+        0.02,
+    )
+
+
+def test_recurrence_without_any_clone_is_nan_and_zero(seen_trb: dict[str, Any]) -> None:
+    obs = _obs(clone=[None, None], capture=["A", "B"], raw=[None, None], donor=["d", "d"])
+    out = _metrics(_mini_ds(), obs)
+    assert math.isnan(out["reported_clone_recurrence"]) and out["reported_n_clone_strings"] == 0
+
+
+def test_clone_recurrence_drops_cells_whose_capture_is_missing() -> None:
+    share, n = clone_recurrence(np.array(["X", "X", "Y"], object), np.array(["A", np.nan, "A"], object))
+    assert share == 0.0 and n == 2  # X is in one capture, not in "A" and a capture called "nan"
+
+
+# ARI edge cases
+
+
+def test_ari_of_two_single_clusters_and_of_two_all_singletons_is_one() -> None:
+    assert adjusted_rand_index(np.zeros(4, np.int64), np.full(4, 3, np.int64)) == 1.0
+    assert adjusted_rand_index(np.arange(4), np.arange(4)[::-1].copy()) == 1.0
+
+
+def test_ari_of_one_cluster_against_all_singletons_is_zero() -> None:
+    assert adjusted_rand_index(np.zeros(4, np.int64), np.arange(4)) == 0.0
+
+
+def test_ari_of_a_partial_overlap_is_by_hand() -> None:
+    # a = {0,1},{2}; b = {0},{1,2}: index 0, rows 1, cols 1, total 3, expected 1/3, max 1.
+    assert adjusted_rand_index(np.array([0, 0, 1]), np.array([0, 1, 1])) == pytest.approx(-0.5)
+
+
+def test_ari_of_two_cells_identical_up_to_relabelling_is_one() -> None:
+    assert adjusted_rand_index(np.array([0, 1]), np.array([5, 7])) == 1.0
+    assert adjusted_rand_index(np.array([0, 0]), np.array([4, 4])) == 1.0
+
+
+def test_ari_with_a_zero_denominator_always_means_identical_partitions() -> None:
+    # expected == maximum only when both are one cluster or both are all singletons, so the
+    # "not identical" outcome of the zero-denominator branch cannot occur.
+    for n in range(2, 7):
+        for a_kind in ("one", "singletons"):
+            a = np.zeros(n, np.int64) if a_kind == "one" else np.arange(n)
+            for b_kind in ("one", "singletons"):
+                b = np.zeros(n, np.int64) if b_kind == "one" else np.arange(n)
+                value = adjusted_rand_index(a, b)
+                assert value == (1.0 if a_kind == b_kind else 0.0)
+
+
+# CaseResult.row
+
+
+def test_row_rounds_reported_floats_to_four_places_and_keeps_nan_strings_and_ints() -> None:
+    fields = {f: 0.0 for f in Scores.__dataclass_fields__}
+    fields.update(n_spurious=0)
+    reported = {
+        "reported_a": 0.123456,
+        "reported_nan": math.nan,
+        "reported_s": "ok",
+        "reported_n": 40,
+    }
+    row = CaseResult("c", "m", Scores(**fields), 3, 1.0, reported=reported).row()
+    assert row["reported_a"] == 0.1235
+    assert math.isnan(row["reported_nan"])
+    assert row["reported_s"] == "ok" and row["reported_n"] == 40 and isinstance(row["reported_n"], int)
+
+
+# truth_for
+
+
+def test_truth_for_takes_clone_ids_and_donors_from_their_own_columns() -> None:
+    ds = _mini_ds()
+    obs = pd.DataFrame(
+        {
+            "state": ["a", "b", "a", "b"],
+            "clone": ["x", "y", None, "z"],
+            "donor": ["m1", "m1", "m2", "m2"],
+            "capture": ["c1", "c2", "c3", "c4"],
+        }
+    )
+    t = truth_for(ds, obs)
+    assert t.clone_ids is not None and t.donors is not None
+    assert list(t.clone_ids[:2]) == ["x", "y"] and pd.isna(t.clone_ids[2]) and t.clone_ids[3] == "z"
+    assert list(t.donors) == ["m1", "m1", "m2", "m2"]
+
+
+def test_truth_for_has_no_clones_when_not_assessable_or_without_clonal() -> None:
+    obs = pd.DataFrame({"state": ["a", "b"], "clone": ["x", "y"], "donor": ["m", "m"]})
+    declared = _mini_ds()
+    na = replace(declared, clonal=replace(declared.clonal, assessable=False))
+    for ds in (na, _mini_ds(clonal=None)):
+        t = truth_for(ds, obs)
+        assert t.clone_ids is None and t.donors is None
+
+
+# report variants
+
+
+def test_a_clonal_status_other_than_ok_is_shown_as_the_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert "clonal: too_few_clones" in _daniel_cell(monkeypatch, clonal_status="too_few_clones")
+
+
+def test_a_not_applicable_clonal_status_adds_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert "clonal" not in _daniel_cell(monkeypatch, clonal_status="not_applicable")
+
+
+def test_a_not_assessable_result_without_a_reason_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    cell = _daniel_cell(monkeypatch, clonal_reason="")
+    assert "clonal: not assessable (no reason recorded)" in cell
+
+
+def test_the_reported_table_has_its_exact_header_and_shows_counts_as_integers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_results(monkeypatch, _daniel_row())
+    lines = report.render().splitlines()
+    assert "Reported, not gated (daniel2022):" in lines
+    assert (
+        "| Method | clone recurrence | day spearman | n clone strings | trb status | cells | "
+        "effective clones | η at m = 3 | p at m = 3 |"
+    ) in lines
+    row = next(x for x in lines if x.startswith("| PAGA + DPT |") and "0.10" in x)
+    assert " 40 |" in row and "40.00" not in row
+
+
+def test_a_plain_dataset_gets_no_clonal_columns_and_no_table_without_reported_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plain = {k: v for k, v in _daniel_row(case="pancreas").items() if not k.startswith("reported_")}
+    plain["clonal_status"] = "not_applicable"
+    monkeypatch.setattr(
+        report,
+        "latest_real",
+        lambda: (RESULTS_PATH, {"commit": "x", "methods": {"paga_dpt": {"pancreas": plain}}}),
+    )
+    real = report.render().split("**Real datasets**")[1]
+    assert "Reported, not gated" not in real and "clonal" not in real
+
+
+def test_a_plain_dataset_with_reported_keys_gets_no_clonal_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = _daniel_row(case="pancreas", clonal_status="not_applicable")
+    monkeypatch.setattr(
+        report,
+        "latest_real",
+        lambda: (RESULTS_PATH, {"commit": "x", "methods": {"paga_dpt": {"pancreas": row}}}),
+    )
+    text = report.render()
+    assert "Reported, not gated (pancreas):" in text
+    assert "η at m = 3" not in text and "effective clones" not in text
