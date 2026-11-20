@@ -35,7 +35,7 @@ COUNTS = np.array(
     [[0, 1, 0, 2, 0, 3], [4, 0, 5, 0, 6, 0], [1, 1, 0, 0, 2, 2], [0, 0, 7, 7, 0, 1], [9, 8, 0, 0, 0, 0]]
 )  # genes x cells
 SAMPLES = (
-    sheih2020.Sample("GSM_A", "GSM_VA_P1_IP.csv.gz", "P1", "IP", 0, 1),
+    sheih2020.Sample("GSM_A", "GSM_VA_P1_IP.csv.gz", "P1", "IP", None, 1),
     sheih2020.Sample("GSM_B", "GSM_VB_P2_d12.csv.gz", "P2", "d12", 12, 2),
 )
 HEADER = ["chain", "clonotype_ids", "consensus_ids", "barcodes", "contig_ids", "cdr3s", "cdr3_nts"]
@@ -79,9 +79,11 @@ def _gz(frame: pd.DataFrame) -> bytes:
     return gzip.compress(frame.to_csv(index=False).encode())
 
 
-def _write_matrix(path: Path, cells: dict[str, str] = CELLS) -> None:
+def _write_matrix(
+    path: Path, cells: dict[str, str] = CELLS, counts: Any = COUNTS, genes: list[str] = GENES
+) -> None:
     head = '""' + "".join(f',"{c}"' for c in cells.values())
-    lines = [head] + [f'"{g}",' + ",".join(str(v) for v in row) for g, row in zip(GENES, COUNTS, strict=True)]
+    lines = [head] + [f'"{g}",' + ",".join(str(v) for v in row) for g, row in zip(genes, counts, strict=True)]
     path.write_bytes(gzip.compress(("\n".join(lines) + "\n").encode()))
 
 
@@ -140,8 +142,9 @@ def test_chunk_size_does_not_change_the_result(sources: dict[str, Path], tmp_pat
 def test_cells_map_to_patient_and_time_point_by_suffix(built: ad.AnnData) -> None:
     assert built.obs["patient"].astype(str).tolist() == ["P1"] * 3 + ["P2"] * 3
     assert built.obs["timepoint"].astype(str).tolist() == ["IP"] * 3 + ["d12"] * 3
-    assert built.obs["day"].tolist() == [0, 0, 0, 12, 12, 12]
-    assert built.obs["sample"].astype(str).tolist() == ["GSM_A"] * 3 + ["GSM_B"] * 3
+    day = built.obs["day"]
+    assert day.dtype == np.float64 and day.iloc[:3].isna().all() and day.iloc[3:].tolist() == [12.0] * 3
+    assert "sample" not in built.obs.columns
 
 
 def test_the_same_receptor_in_two_patients_is_two_clones(built: ad.AnnData) -> None:
@@ -202,14 +205,32 @@ def test_a_join_miss_is_counted(built: ad.AnnData) -> None:
     assert not any(MISS.split("-")[0] in n for n in built.obs_names)
 
 
-def test_a_multi_value_cdr3_field_is_not_used_and_is_counted(
-    sources: dict[str, Path], tmp_path: Path
+@pytest.mark.parametrize(
+    "row",
+    [
+        _row("TRB", "TGAAAAAAA;TGAAAAAAC", _bc("c6")),  # a list is never split
+        _row("TRA", "", _bc("c6")),
+        _row("TRG", "TGAAAAAAA", _bc("c6")),  # not TRA/TRB: refused, not counted as a chain
+        _row("TRB", "TGAAXAAAA", _bc("c6")),
+    ],
+)
+def test_an_unusable_table_row_refuses_the_build(
+    sources: dict[str, Path], tmp_path: Path, row: dict[str, str]
 ) -> None:
-    rows = [*TABLE_B, _row("TRB", "TGAAAAAAA;TGAAAAAAC", _bc("c6")), _row("TRA", "", _bc("c6"))]
-    _write_tar(sources[sheih2020.TAR], {SAMPLES[0].member: TABLE_A, SAMPLES[1].member: rows})
+    """A dropped row could turn a 3-TRA cell into a 2-TRA one and give it a label."""
+    _write_tar(sources[sheih2020.TAR], {SAMPLES[0].member: TABLE_A, SAMPLES[1].member: [*TABLE_B, row]})
+    out = tmp_path / "o.h5ad"
+    with pytest.raises(BuildError, match="GSM_B"):
+        sheih2020.build(sources, out, PARAMS)
+    assert not out.exists()
+
+
+def test_a_cdr3_with_n_is_used(sources: dict[str, Path], tmp_path: Path) -> None:
+    rows = [_row("TRA", "TGNGCAGCA", _bc("c6")), _row("TRB", "TGCGCNAGC", _bc("c6"))]
+    _write_tar(sources[sheih2020.TAR], {SAMPLES[0].member: TABLE_A, SAMPLES[1].member: [*TABLE_B, *rows]})
     b = _build(sources, tmp_path / "o.h5ad")
-    assert b.uns["lumencell_build"]["cdr3_unusable_rows"] == {"GSM_A": 0, "GSM_B": 2}
-    assert b.obs.loc[CELLS["c6"], "receptor_n_trb"] == 0 and pd.isna(b.obs.loc[CELLS["c6"], "clone_id"])
+    assert pd.notna(b.obs.loc[CELLS["c6"], "clone_id"])
+    assert b.uns["lumencell_build"]["cdr3_unusable_rows"] == {"GSM_A": 0, "GSM_B": 0}
 
 
 def test_a_sample_below_the_joined_share_floor_refuses_to_build(
@@ -256,7 +277,7 @@ def test_hostile_values_never_reach_an_error_message(sources: dict[str, Path], t
 def test_clone_columns_are_scoring_only(built: ad.AnnData) -> None:
     so = scoring_only_columns(built.obs.columns, ("patient",))
     assert {"clone_id", "clone_id_trb", "receptor_n_tra", "receptor_n_trb", "patient"} <= so
-    assert not {"timepoint", "day", "sample"} & so
+    assert not {"timepoint", "day"} & so
     assert "raw_clonotype_id" not in built.obs.columns
 
 
@@ -295,7 +316,7 @@ def test_the_samples_follow_the_note() -> None:
     assert {s.timepoint for s in real} == {
         "IP", "d12", "d21", "d28", "d29", "d38", "d83", "d89", "d102", "d112",
     }  # fmt: skip
-    assert all((s.timepoint == "IP") == (s.day == 0) for s in real)
+    assert all((s.timepoint == "IP") == (s.day is None) for s in real)
     assert len({s.gsm for s in real}) == 16 and len({s.member for s in real}) == 16
 
 
@@ -334,3 +355,170 @@ def test_bench_fetch_finds_a_case_study_by_its_id_but_all_skips_it(
     everything = CliRunner().invoke(app, ["bench", "fetch", "all"], input="n\n" * 4)
     assert "sheih2020" not in everything.output
     assert CliRunner().invoke(app, ["bench", "fetch", "nope"]).exit_code == 2
+
+
+# --- pinned sample table, written by hand from Task 9's GSM table (docs/superpowers/research) ---
+# (GE GSM, VDJ GSM, patient, time point, day, aggr id); the infusion product has no sampling day.
+NOTE_TABLE = (
+    ("GSM3583861", "GSM3583877", "CLL-1", "IP", None, 1),
+    ("GSM3583862", "GSM3583878", "CLL-1", "d21", 21, 2),
+    ("GSM3583863", "GSM3583879", "CLL-1", "d38", 38, 3),
+    ("GSM3583864", "GSM3583880", "CLL-1", "d112", 112, 4),
+    ("GSM3583865", "GSM3583881", "CLL-2", "IP", None, 8),
+    ("GSM3583866", "GSM3583882", "CLL-2", "d12", 12, 9),
+    ("GSM3583867", "GSM3583883", "CLL-2", "d29", 29, 10),
+    ("GSM3583868", "GSM3583884", "CLL-2", "d83", 83, 11),
+    ("GSM3583869", "GSM3583885", "NHL-6", "IP", None, 16),
+    ("GSM3583870", "GSM3583886", "NHL-6", "d12", 12, 5),
+    ("GSM3583871", "GSM3583887", "NHL-6", "d29", 29, 6),
+    ("GSM3583872", "GSM3583888", "NHL-6", "d102", 102, 7),
+    ("GSM3583873", "GSM3583889", "NHL-7", "IP", None, 12),
+    ("GSM3583874", "GSM3583890", "NHL-7", "d12", 12, 13),
+    ("GSM3583875", "GSM3583891", "NHL-7", "d28", 28, 14),
+    ("GSM3583876", "GSM3583892", "NHL-7", "d89", 89, 15),
+)
+
+
+def test_all_sixteen_samples_are_pinned_to_the_note() -> None:
+    real = sheih2020.REAL_SAMPLES
+    assert len(real) == len(NOTE_TABLE) == 16
+    for got, (gsm, vdj, patient, tp, day, aggr) in zip(real, NOTE_TABLE, strict=True):
+        assert (got.gsm, got.patient, got.timepoint, got.day, got.aggr_id) == (gsm, patient, tp, day, aggr)
+        assert got.member == f"{vdj}_{patient}_{tp}-unpaired-clonotypes.csv.gz"
+    assert sheih2020.SAMPLES is sheih2020.REAL_SAMPLES or sheih2020.SAMPLES == SAMPLES  # patched in tests
+
+
+def test_the_sources_are_pinned() -> None:
+    m, t = sheih2020.SOURCES
+    assert m.sha256 == "243e6e2dd09158e08dcaecfbf35b23122ac3096c1039355b7590474e76d8c02c"
+    assert t.sha256 == "769fa5b71b12b7efe433f51164d4370e0af00c20bebc647029cc4fbd9a943487"
+    assert (m.size, t.size) == (114_573_707, 2_048_000)
+    assert (
+        m.url
+        == "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE125nnn/GSE125881/suppl/GSE125881_raw.expMatrix.csv.gz"
+    )
+    assert t.url == "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE125nnn/GSE125881/suppl/GSE125881_RAW.tar"
+
+
+def test_two_digit_aggr_ids_map_to_their_own_sample(
+    sources: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for aggr in (10, 12):
+        two = (SAMPLES[0], sheih2020.Sample("GSM_B", SAMPLES[1].member, "P2", "d12", 12, aggr))
+        monkeypatch.setattr(sheih2020, "SAMPLES", two)
+        cells = {k: v.removesuffix("-2") + f"-{aggr}" if v.endswith("-2") else v for k, v in CELLS.items()}
+        _write_matrix(sources[sheih2020.MATRIX], cells)
+        b = _build(sources, tmp_path / f"o{aggr}.h5ad")
+        assert b.obs["patient"].astype(str).tolist() == ["P1"] * 3 + ["P2"] * 3
+        assert b.uns["lumencell_build"]["cells_per_sample"] == {"GSM_A": 3, "GSM_B": 3}
+        assert b.uns["lumencell_build"]["join_misses"] == {"GSM_A": 1, "GSM_B": 0}
+
+
+def test_cells_per_sample_is_recorded(built: ad.AnnData) -> None:
+    assert built.uns["lumencell_build"]["cells_per_sample"] == {"GSM_A": 3, "GSM_B": 3}
+
+
+def _misses(n: int) -> list[str]:
+    return [f"CCCCCCCCCCCCC{a}{b}{c}-1" for a, b, c in __import__("itertools").product("ACGT", repeat=3)][:n]
+
+
+@pytest.mark.parametrize(("n_miss", "builds"), [(1, True), (3, True), (4, False)])
+def test_the_joined_share_floor_boundary(
+    sources: dict[str, Path], tmp_path: Path, n_miss: int, builds: bool
+) -> None:
+    """Sample B has 3 cells found: 3/4 = 0.75 builds, 3/6 = 0.5 builds, 3/7 = 0.43 refuses."""
+    rows = [_row("TRA", TRA_X, [*_bc("c4", "c5", "c6"), *_misses(n_miss)])]
+    _write_tar(sources[sheih2020.TAR], {SAMPLES[0].member: TABLE_A, SAMPLES[1].member: rows})
+    out = tmp_path / "o.h5ad"
+    if builds:
+        sheih2020.build(sources, out, PARAMS)
+        assert out.exists()
+    else:
+        with pytest.raises(BuildError, match="joined share"):
+            sheih2020.build(sources, out, PARAMS)
+
+
+def test_a_non_integer_negative_or_ragged_matrix_is_refused(sources: dict[str, Path], tmp_path: Path) -> None:
+    m = sources[sheih2020.MATRIX]
+    for bad in (1.5, -1):
+        counts = COUNTS.astype(float)
+        counts[2, 3] = bad
+        _write_matrix(m, counts=counts)
+        with pytest.raises(BuildError, match="non-negative integer"):
+            sheih2020.build(sources, tmp_path / "o.h5ad", PARAMS)
+    _write_matrix(m)
+    lines = gzip.decompress(m.read_bytes()).decode().splitlines()
+    for ragged in (lines[2] + ",3", lines[2].rsplit(",", 1)[0]):
+        m.write_bytes(gzip.compress("\n".join([*lines[:2], ragged, *lines[3:]]).encode() + b"\n"))
+        with pytest.raises(BuildError):
+            sheih2020.build(sources, tmp_path / "o.h5ad", PARAMS)
+
+
+def test_duplicate_gene_names_are_refused(sources: dict[str, Path], tmp_path: Path) -> None:
+    _write_matrix(sources[sheih2020.MATRIX], genes=["G1", "G2", "G2", "TRAV1", "G5"])
+    with pytest.raises(BuildError, match="duplicate gene"):
+        sheih2020.build(sources, tmp_path / "o.h5ad", PARAMS)
+
+
+def test_extra_param_keys_are_refused(sources: dict[str, Path], tmp_path: Path) -> None:
+    with pytest.raises(BuildError, match="declared clone definition"):
+        sheih2020.build(sources, tmp_path / "o.h5ad", {**PARAMS, "extra": 1})
+
+
+def test_an_unknown_suffix_error_names_no_barcode(sources: dict[str, Path], tmp_path: Path) -> None:
+    _write_matrix(sources[sheih2020.MATRIX], {**CELLS, "c6": "AAAACCCCGGGGTATT-999"})
+    with pytest.raises(BuildError, match="not a known sample") as e:
+        sheih2020.build(sources, tmp_path / "o.h5ad", PARAMS)
+    assert "AAAACCCC" not in str(e.value) and "999" not in str(e.value)
+
+
+def test_a_missing_table_member_is_refused(sources: dict[str, Path], tmp_path: Path) -> None:
+    _write_tar(sources[sheih2020.TAR], {SAMPLES[0].member: TABLE_A})
+    with pytest.raises(BuildError, match="missing"):
+        sheih2020.build(sources, tmp_path / "o.h5ad", PARAMS)
+
+
+def test_duplicate_cell_ids_are_refused(sources: dict[str, Path], tmp_path: Path) -> None:
+    _write_matrix(sources[sheih2020.MATRIX], {**CELLS, "c2": CELLS["c1"]})
+    with pytest.raises(BuildError, match="duplicate cell ids"):
+        sheih2020.build(sources, tmp_path / "o.h5ad", PARAMS)
+
+
+@pytest.mark.parametrize("n", [0, -1])
+def test_chunk_rows_below_one_is_refused(sources: dict[str, Path], tmp_path: Path, n: int) -> None:
+    with pytest.raises(BuildError, match="chunk_rows"):
+        sheih2020.build(sources, tmp_path / "o.h5ad", PARAMS, chunk_rows=n)
+
+
+def _retable(sources: dict[str, Path], b_rows: list[dict[str, str]], cols: list[str] = HEADER) -> None:
+    with tarfile.open(sources[sheih2020.TAR], "w") as tf:
+        for name, rows in {SAMPLES[0].member: TABLE_A, SAMPLES[1].member: b_rows}.items():
+            frame = pd.DataFrame(rows, columns=HEADER)
+            data = _gz(frame[cols] if name == SAMPLES[1].member else frame)
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+
+
+def test_a_table_missing_a_required_column_is_refused(sources: dict[str, Path], tmp_path: Path) -> None:
+    _retable(sources, TABLE_B, [c for c in HEADER if c != "cdr3_nts"])
+    with pytest.raises(BuildError, match="lacks one of"):
+        sheih2020.build(sources, tmp_path / "o.h5ad", PARAMS)
+
+
+def test_a_table_with_no_usable_barcodes_is_refused(sources: dict[str, Path], tmp_path: Path) -> None:
+    _retable(sources, [_row("TRA", TRA_X, [])])
+    with pytest.raises(BuildError, match="no usable barcodes"):
+        sheih2020.build(sources, tmp_path / "o.h5ad", PARAMS)
+
+
+def test_a_table_barcode_not_ending_in_dash_one_counts_as_a_miss(
+    sources: dict[str, Path], tmp_path: Path
+) -> None:
+    """Counted in the denominator and never joined; it does not raise by itself."""
+    odd = CELLS["c5"].rsplit("-", 1)[0] + "-2"
+    rows = [_row("TRA", TRA_X, [*_bc("c4", "c5", "c6"), odd])]
+    _write_tar(sources[sheih2020.TAR], {SAMPLES[0].member: TABLE_A, SAMPLES[1].member: rows})
+    b = _build(sources, tmp_path / "o.h5ad")
+    assert b.uns["lumencell_build"]["contig_barcodes"]["GSM_B"] == 4
+    assert b.uns["lumencell_build"]["join_misses"]["GSM_B"] == 1

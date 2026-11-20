@@ -25,7 +25,7 @@ from anndata import AnnData
 from lumencell.bench.builders.common import MAX_PER_CHAIN, BuildError, call_clones, read_members
 from lumencell.bench.download import Source
 
-BUILD_VERSION = 1
+BUILD_VERSION = 2
 CHUNK_ROWS = 500
 JOINED_SHARE_MIN = 0.5
 
@@ -62,12 +62,12 @@ class Sample:
     member: str  # name of the clonotype table inside the tar
     patient: str
     timepoint: str  # GEO's "time point" as written
-    day: int  # the number in the label; 0 only marks the infusion product (IP)
+    day: int | None  # the sampling day in the label; None for the infusion product (not a sampling day)
     aggr_id: int  # the suffix of this sample's cell ids in the matrix
 
 
 def _s(gsm: int, patient: str, timepoint: str, aggr: int) -> Sample:
-    day = 0 if timepoint == "IP" else int(timepoint[1:])
+    day = None if timepoint == "IP" else int(timepoint[1:])
     member = f"GSM{gsm + 16}_{patient}_{timepoint}-unpaired-clonotypes.csv.gz"
     return Sample(f"GSM{gsm}", member, patient, timepoint, day, aggr)
 
@@ -137,8 +137,9 @@ def _table_calls(
     """Per-cell chains of every sample's table, joined to the matrix's cell ids.
 
     Returns the contig-style rows of the joined barcodes and, per sample GSM, the number of distinct
-    barcodes on usable rows, how many of them match no cell of the sample, and the rows left out
-    (a chain that is not TRA or TRB, or a CDR3 field that is not one bare ACGTN string).
+    barcodes, how many of them match no cell of the sample, and the rows that are not usable (a chain
+    that is not TRA or TRB, or a CDR3 field that is not one bare ACGTN string; any such row refuses the
+    build, so the counts are all 0 in a built file).
     """
     frames: list[pd.DataFrame] = []
     barcodes: dict[str, int] = {}
@@ -153,6 +154,11 @@ def _table_calls(
             raise BuildError(f"{s.gsm}: the clonotype table lacks one of {', '.join(_REQUIRED)}")
         usable = t["chain"].isin(["TRA", "TRB"]) & t["cdr3_nts"].str.fullmatch(_NT.pattern)
         unusable[s.gsm] = int((~usable).sum())
+        if unusable[s.gsm]:
+            # A dropped row could make a cell with three TRAs look like it has two, and label it.
+            raise BuildError(
+                f"{s.gsm}: {unusable[s.gsm]} clonotype row(s) are not TRA/TRB with one bare ACGTN CDR3"
+            )
         t = t[usable]
         ex = pd.DataFrame(
             {
@@ -222,6 +228,8 @@ def _read_counts(matrix: Path, n_cells: int, chunk_rows: int) -> tuple[sp.csr_ma
         raise BuildError(f"the expression matrix could not be read ({type(e).__name__})") from e
     if not blocks:
         raise BuildError("the expression matrix has no gene rows")
+    if len(set(genes)) != len(genes):
+        raise BuildError("the expression matrix has duplicate gene names")
     genes_by_cells = sp.vstack(blocks, format="csr")
     return genes_by_cells.T.tocsr().astype(np.float32), genes
 
@@ -252,10 +260,10 @@ def build(
     sample = [by_aggr[a] for a in suffix]
     obs = pd.DataFrame(
         {
-            "sample": pd.Categorical([s.gsm for s in sample]),
             "patient": pd.Categorical([s.patient for s in sample]),
             "timepoint": pd.Categorical([s.timepoint for s in sample]),
-            "day": np.array([s.day for s in sample], dtype=np.int64),
+            # NaN for the infusion product: it is not a sampling day, and 0 would correlate by construction
+            "day": np.array([np.nan if s.day is None else s.day for s in sample], dtype=np.float64),
         },
         index=pd.Index(cells, name=None),
     )
