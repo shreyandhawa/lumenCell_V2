@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from lumencell.bench.builders import sheih2020
+from lumencell.bench.builders import daniel2022, sheih2020
 from lumencell.bench.download import (
     USER_AGENT,
     Build,
@@ -46,6 +46,7 @@ __all__ = [
     "Build",
     "CaseStudyDataset",
     "FetchError",
+    "RealClonal",
     "RealDataset",
     "Source",
     "datasets_dir",
@@ -56,6 +57,28 @@ __all__ = [
     "source_path",
     "truth_for",
 ]
+
+
+@dataclass(frozen=True)
+class RealClonal:
+    """A real dataset's clone columns and its clonal declaration, fixed before any clone is counted.
+
+    ``assessable`` False means the clonal result is declared not assessable for ``reason``
+    (``declared`` is the ISO date of the declaration): it is shown, never gated or scored.
+    """
+
+    clone_key: str
+    donor_key: str
+    trb_only_key: str
+    raw_clonotype_key: str
+    capture_key: str
+    assessable: bool
+    reason: str
+    declared: str
+
+    def columns(self) -> tuple[str, ...]:
+        """The columns named as scoring-only: never visible to inference."""
+        return (self.clone_key, self.donor_key, self.trb_only_key, self.raw_clonotype_key)
 
 
 @dataclass(frozen=True)
@@ -75,6 +98,8 @@ class RealDataset:
     time_key: str | None = None  # obs column with real time, used as the order when present
     notes: str = ""
     extra: dict[str, str] = field(default_factory=dict)
+    clonal: RealClonal | None = None  # clone columns and the clonal declaration, if the data has clones
+    report_time_key: str | None = None  # obs column with real time, reported against, never the order
 
     def __post_init__(self) -> None:
         if self.build is None and len(self.sources) != 1:
@@ -84,11 +109,30 @@ class RealDataset:
             raise ValueError(f"{self.id}: sources need unique filenames")
         if not self.licence.strip():
             raise ValueError(f"{self.id}: a licence is required")
+        n_gated = len(set(self.gated) & set(self.lineages))
+        if self.clonal is not None and self.clonal.assessable and n_gated < 2:
+            raise ValueError(
+                f"{self.id}: an assessable clonal declaration needs two gated lineages, "
+                f"not {n_gated} distinct gated names present in lineages"
+            )
 
     @property
     def root_spec(self) -> str:
         return f"cluster:{self.label_key}={self.root_label}"
 
+
+# Daniel 2022's kept captures (TCR GSMs): chronic, spleen, D8 and D21, none sorted on a state marker.
+# The declaration and each rule's evidence: docs/superpowers/research/2026-11-20-daniel2022-declaration.md.
+_DANIEL_CAPTURES = [
+    "GSM5687827",  # D21 PD-1+
+    "GSM5687828",  # D21 gp33 mid
+    "GSM5687829",  # D21 gp33- rep1
+    "GSM5687830",  # D21 gp33-
+    "GSM5687831",  # D21 gp33+ rep1
+    "GSM5687832",  # D21 gp33+
+    "GSM5687833",  # D8 gp33-
+    "GSM5687834",  # D8 gp33+
+]
 
 DATASETS: dict[str, RealDataset] = {
     d.id: d
@@ -177,6 +221,47 @@ DATASETS: dict[str, RealDataset] = {
             gated=["Erythroid"],
             time_key="stage",
             notes="Held out. Order is real embryo time (E7.0-E8.5), not annotation.",
+        ),
+        RealDataset(
+            id="daniel2022",
+            title="Mouse chronic LCMV (Clone 13) CD8+ T cells, spleen days 8 and 21, scRNA with TCR",
+            citation="Daniel et al. 2022, Nat Immunol 23:1614-1627, doi:10.1038/s41590-022-01337-5",
+            sources=daniel2022.SOURCES,
+            licence=daniel2022.LICENCE,
+            build=Build(
+                builder=daniel2022.build,
+                version=daniel2022.BUILD_VERSION,
+                params={"captures": _DANIEL_CAPTURES, "namespace": {g: g for g in _DANIEL_CAPTURES}},
+            ),
+            label_key="state",
+            root_label="TEx_prog",
+            # Both literature lineages have a stage that maps to two labels (TEx_int and TEx_KLR),
+            # so neither can be written as one label per stage, and none is gated.
+            lineages={},
+            gated=[],
+            notes=(
+                "Evaluation only. Declared 2026-11-20, before any clone was counted and before any "
+                "method ran on it: docs/superpowers/research/2026-11-20-daniel2022-declaration.md. "
+                "Chronic spleen D8 and D21, no state-gated capture; namespace = capture. Lineages "
+                "from Hudson 2019, Zander 2019 and Beltra 2020: TEx_prog -> {TEx_int | TEx_KLR} -> TEx, "
+                "and TEx_prog -> {TEx_int | TEx_KLR}; not written as label lists, none gated."
+            ),
+            clonal=RealClonal(
+                clone_key="clone_id",
+                donor_key="donor",
+                trb_only_key="clone_id_trb",
+                raw_clonotype_key="raw_clonotype_id",
+                capture_key="capture",
+                assessable=False,
+                reason=(
+                    "fewer than two gated lineages, so no clonal comparison between lineages; "
+                    "namespace = capture (rule b, state-gated GSM5687824, GSM5687825 and GSM5687826 "
+                    "dropped): one mouse per capture is assumed; the records do not say which mice a "
+                    "capture holds or whether a capture pools mice"
+                ),
+                declared="2026-11-20",
+            ),
+            report_time_key="day",
         ),
     )
 }

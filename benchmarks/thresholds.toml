@@ -50,6 +50,29 @@ lineage_recall = { min = 1.0 }
 pt_spearman_global = { min = 0.60 }   # against real embryo time (E7.0-E8.5)
 terminal_share = { min = 0.80 }       # Erythroid3 cells on one inferred lineage
 
+# ---- Daniel 2022 (spec §6.1). Declared 2026-11-20 from the GEO sample records and metadata alone,
+# before any clone was counted and before any method ran on it. See the changelog entry of that date.
+# Declared not assessable (fewer than two gated lineages), so the two clonal gate lines are left out:
+# a result declared not assessable is not gated, and it is shown with its reason, never hidden.
+# With no gated lineage these gates score NaN and are skipped; Task 7 renders such a row as
+# "lineage gates: not measured (no gated lineage, declared 2026-11-20)", never PASS.
+[real.daniel2022.gates]
+pt_spearman_lineage = { min = 0.70 }   # existing real-data value; against state order along each gated lineage
+branch_accuracy = { min = 0.80 }       # the stricter existing value (pancreas 0.80, bone marrow 0.75)
+lineage_recall = { min = 1.0 }
+
+[real.daniel2022.clonal]
+mode = "oracle_cells"    # scored cells come from the truth lineages, weighted by each method's masks (spec §3)
+oracle_eta_min = 0.05    # below either floor the case is not_assessable, which fails both clonal gates
+oracle_p_max = 0.01
+
+[real.daniel2022.reported]   # reported, never gated
+day_spearman = "Spearman of the method's pseudotime against day post infection, over cells finite in both"
+clone_recurrence = "share of distinct clone_id strings found in two or more captures, namespace ignored on purpose: an estimate of convergent receptors if captures hold different mice"
+raw_clonotype_ari = "adjusted Rand index between clone_id and 10x raw_clonotype_id, both keyed by capture, over cells labelled by both"
+labelled_share_of_raw = "cells with a clone_id divided by cells with a raw_clonotype_id"
+trb_only = "the clonal block again with clone_id_trb (1 or 2 qualifying TRB, sorted TRB CDR3 nt set): same mode, nulls and floor"
+
 # ---- clonal agreement (spec docs/superpowers/specs/2026-11-12-tcell-clonotypes-design.md §4.3-4.5)
 # Defined before any clonal score was computed. src/lumencell/trust/constants.py mirrors what the
 # worker needs at run time; tests/unit/test_trust_constants.py keeps the two equal.
@@ -449,3 +472,40 @@ max_drop = 0.03
 #     as a labelled diagnostic, never the headline.
 #   * methods: all three; clonal parameters are the [clonal] defaults (m = 2 primary, m = 3
 #     sensitivity, B = 1000, seed 0). No threshold is added or changed.
+#
+# 2026-11-20  Daniel 2022 declared: [real.daniel2022.*] and DATASETS["daniel2022"], before the
+#             derived file was built, before any clone was counted and before any method ran on it.
+#             Written from Task 3's note (with Task 5a's sections), the GSM records and the
+#             literature; evidence for every item in
+#             docs/superpowers/research/2026-11-20-daniel2022-declaration.md. Nothing existing changed.
+#   * Captures, days, tissues: GSM5687827-GSM5687834 (8 TCR GSMs; chronic Clone 13, spleen, D8 and
+#     D21; PD-1+, gp33 mid, gp33- x2, gp33+ x2 at D21, gp33- and gp33+ at D8). Chronic only, because
+#     the Tpex root holds there (spec §6.1). D5 excluded: its matrix is a separate Seurat object with
+#     a different 7-label vocabulary, and the records do not say it was processed with the main
+#     matrix; a matrix processed apart would put a batch on the day axis. Liver and lung excluded:
+#     sampled only at D21, so tissue would be confounded with day.
+#   * Namespace: the capture (donor = the capture's GSM), by rule (b). The records name no mouse, so
+#     (a) cannot apply; dropping the state-gated captures (GSM5687824 CX3CR1- SLAMF6+, GSM5687825
+#     CX3CR1-, GSM5687826 CX3CR1+) leaves 8. Tetramer and PD-1 sorts are not state gates.
+#     Assumption: one mouse per capture; the records do not say which mice a capture holds or whether
+#     a capture pools mice.
+#   * Clone definition: as common.call_clones (productive, high-confidence, full-length, is_cell
+#     contigs; 1-2 distinct TRA and 1-2 TRB CDR3 nt sequences, their sorted set), keyed by capture.
+#     clone_id_trb (1-2 TRB) is the sensitivity check, reported only.
+#   * Root: TEx_prog, Daniel's Texprog (Tcf7, Slamf6, Id3; sorted PD-1+ SLAMF6+), matching Tpex
+#     (Im et al. 2016; Utzschneider et al. 2016, abstract only; Beltra et al. 2020).
+#   * Lineages: two end states arise from Tpex in the literature, by adoptive transfer of sorted
+#     subsets: terminal exhaustion (TEx; Hudson et al. 2019, Beltra et al. 2020) with the CX3CR1+
+#     transitory/intermediate stage on it, and the CX3CR1+ effector-like subset (Zander et al. 2019,
+#     which does not show it converting). The CX3CR1+ subset maps to two Daniel labels (TEx_int and
+#     TEx_KLR, by Daniel's non-clonal markers and the CX3CR1+ sort's label counts), so neither lineage
+#     can be written as one label per stage: lineages = {} and gated = [].
+#   * Gates: existing real-data values; where pancreas and bone marrow differ (branch_accuracy 0.80
+#     against 0.75) the stricter is taken, so the choice cannot be read as lenient. With no gated
+#     lineage these three score NaN, and NaN is skipped, so they measure nothing on Daniel; this is
+#     stated here so that a pass is not read as one.
+#     Clonal: not assessable, declared before any clone was counted: fewer than two gated lineages,
+#     so no clonal comparison between lineages. clonal_excess_ratio and clonal_p are left out;
+#     [real.daniel2022.clonal] keeps the synthetic mode and floor for the record.
+#     With no gated lineage these gates score NaN and are skipped; Task 7 renders such a row as
+#     "lineage gates: not measured (no gated lineage, declared 2026-11-20)", never PASS.

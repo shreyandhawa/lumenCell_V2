@@ -4,7 +4,7 @@ A new session starts with: "Read docs/superpowers/HANDOFF.md and continue."
 This file is updated inside every task's PR. `docs/HANDOFF.md` is the milestone 1 note; its
 stale lines are corrected once, by phase 1's handoff-corrections task.
 
-## Current state (2026-11-19)
+## Current state (2026-11-20)
 
 - **Phase 2 is complete on `main` (570fb5e).** Merged: Tasks 1 (#26), 5 (#27), 6 (#28), 7 (#29), 8 (#32), 9 (#33),
   10 (#31), 11 (#34), 12 (#35), 13 (#36), N2a (#30), and the late Tasks 2 (#39), 3 (#42) and 4 (#46); the start (#25),
@@ -22,9 +22,11 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   Task 4 (#47, clone calling from 10x contigs) and Task 9 (#45, Sheih 2020 joins at 0.99, so the Cao branch is not
   taken). Task 10 (#51, merged) declares `[case_study.sheih2020]` before any analysis. Task 5a (#50, merged): Daniel
   file formats and the capture map, all 23 TCR members joined to their cells. Task 11 (#52, merged) fetches the rest
-  of GSE125881 and builds the case-study dataset (62,167 cells, no analysis yet). Task 5b (#53, open): the Daniel
-  builder, tested on a synthetic layout only; the real derived file is not built. Next: 6, then 7, 8; Task 12 after
-  7 and 11. See each task's decisions section.
+  of GSE125881 and builds the case-study dataset (62,167 cells, no analysis yet). Task 5b (#53, merged): the Daniel
+  builder, tested on a synthetic layout only; the real derived file is not built. Task 6 (#54, open): the Daniel
+  declaration (8 chronic spleen D8/D21 captures, namespace = capture, root `TEx_prog`, no gated lineage, clonal
+  declared not assessable), before any clone was counted. Next: 7, 8; Task 12 after 7 and 11. See each task's
+  decisions section.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
   with the two plan-time amendments under Decisions.
@@ -1193,6 +1195,56 @@ Fix round 1:
   - **Output.** `test_a_failing_write_leaves_no_output_and_no_temp_file` (a partial write that raises: `out` absent, an earlier `out` byte-identical, no temp file; mutant: write to `out` directly), `test_capture_is_the_gsm_prefix_of_every_obs_name`, `test_arm_day_tissue_gate_and_donor_follow_each_capture` (mutants: first capture's value), `test_the_obs_day_is_int64`, `test_a_blank_label_becomes_nan` (mutant: keep the empty string).
   - **Refusals, one test each:** a metadata cell absent from its matrix; non-integer and negative counts; matrix shape against barcodes and features; duplicate matrix barcodes; duplicate feature names; non-unique metadata ids; metadata with no id column; a features file mixing 1 and 2 fields; D5 features in another order and with the same ids but other symbols (mutants: compare sorted, compare ids only); a namespace that is a list, a non-str donor, a whitespace donor; `test_errors_never_carry_donor_values_or_paths` (no donor value and no temp path in a bad-params or corrupt-matrix message).
 
+## Phase 3 Task 6 decisions
+
+- **Branch** `pivot/50-daniel-declaration`, from `main` 30b98c9. The declaration and each rule's evidence:
+  [research/2026-11-20-daniel2022-declaration.md](research/2026-11-20-daniel2022-declaration.md). Freeze kept: written
+  from Task 3's note (with Task 5a's sections), the GSM records and the literature; the derived file was not built,
+  `bench fetch daniel2022` was not run, no contig or metadata file was opened, and no clone count of any kind was
+  computed. The `>50 cells` rule used the per-capture `ident` counts already in the note.
+- **Literature:** all six DOIs (Hudson, Zander, Beltra, Im, Utzschneider, Daniel) match Crossref; no correction.
+  Full texts read as PMC author manuscripts through NCBI E-utilities `efetch db=pmc` (no CAPTCHA); Europe PMC
+  `fullTextXML` returned 500/503 or timed out on retries. Utzschneider 2016 is not in PMC: abstract only (PubMed),
+  used only as support for the root. Daniel 2022 (Task 3 found it unreadable) is readable this way; only its
+  non-clonal marker description, sorts and Methods were used.
+- **Subset:** chronic only; days 8 and 21 (D5 excluded: separate Seurat object, a different 7-label vocabulary, and no
+  record of joint processing; Daniel's Methods cluster "Chronic including Day 5" apart); spleen only (liver and lung
+  only at D21). State gates: the CX3CR1/SLAMF6 sorts GSM5687824-26; tetramer and PD-1 sorts are not.
+- **Namespace rule (b):** the records name no mouse, so (a) cannot apply; the 3 state-gated captures are dropped and 8
+  remain (GSM5687827-34), namespace = capture (donor = GSM). Assumption in `reason`: one mouse per capture.
+- **Root `TEx_prog`** (Daniel's Texprog: Tcf7, Slamf6, Id3; sorted PD-1+SLAMF6+). PD-1 level and TIM-3 are not stated
+  by Daniel for the cluster.
+- **Judgement call, lineages:** by transfer of sorted subsets, Hudson and Beltra give Tpex -> CX3CR1+ transitory/Texint
+  -> terminal (TEx), and Zander gives the CX3CR1+ subset as an end state (no conversion shown, naive hosts). The
+  papers' CX3CR1+ subset is two Daniel labels, `TEx_int` and `TEx_KLR` (Daniel's non-clonal markers; Daniel itself
+  splits the CX3CR1+ pool citing Hudson and Zander; the CX3CR1+ sort holds 2,805 TEx_KLR and 1,521 TEx_int). A stage
+  that maps to two labels cannot be written as one label per stage without inventing an order, so
+  `lineages = {}` and `gated = []`; the lineages are in the note and in `notes`.
+- **Clonal: declared not assessable** ("fewer than two gated lineages, so no clonal comparison between lineages",
+  plus the namespace assumption), so the two clonal gate lines are left out of `[real.daniel2022.gates]`. The
+  outcome does not hinge on the judgement call: mapping Zander's subset to `TEx_KLR` alone gives one gated lineage.
+- **New types:** `RealClonal` (frozen; `columns()` returns the four scoring-only columns) and
+  `RealDataset.clonal` / `report_time_key` as last fields; `__post_init__` refuses an assessable declaration with
+  fewer than two gated lineages. Tests pin the captures, namespace, root, lineages, gated, the whole `RealClonal`
+  (reason text included), the subset rules against `CAPTURES`, and that the params pass `daniel2022._check_params`.
+
+Fix round 1:
+
+- **BINDING on Task 7 (the unmeasured-gate gap).** With `gated = []` the three base gates score NaN and
+  `check_gates` skips NaN, so a Daniel row would print PASS having measured nothing. `nan = "fail"` was refused: the
+  gates stay exactly the plan's TOML. Task 7 renders such a row as "lineage gates: not measured (no gated lineage,
+  declared 2026-11-20)", never PASS, in the CLI `bench real` line and the README cell, and must add
+  `test_a_dataset_with_no_gated_lineage_is_shown_as_not_measured` (both show that text, neither shows PASS/pass for
+  that row). This PR's `test_daniel_base_gates_score_nan_and_are_skipped_without_a_gated_lineage` documents the gap.
+  The TOML comment and the changelog entry state it.
+- **Distinct gated lineages.** `RealDataset.__post_init__` counts `len(set(gated) & set(lineages))`, so `["A", "A"]`
+  and a name absent from `lineages` do not make a declaration assessable.
+- **For Task 7/8:** after this merge `make bench-real` (`bench real` with no `--datasets`) fails "not downloaded:
+  daniel2022" until Task 8 builds the derived file. `bench fetch daniel2022` builds without asking because its
+  sources are cached, as Task 8 Step 3 expects.
+- The changelog entry is pinned by `test_the_daniel_changelog_entry_is_dated_and_matches_the_registry`; the research
+  note's namespace section no longer quotes Daniel's clonal section.
+
 ## Open questions for Shreyan
 
 - **H-1 (closed 2026-11-19): should a failed check keep `weak` under the cap?** Shreyan ruled yes: keep
@@ -1354,7 +1406,8 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 | `pivot/47-sheih-declaration` | #51 | merged (squash, 5ef3151), phase 3 Task 10, case-study declaration (clone definition, namespace, strata, root) before any analysis |
 | `pivot/46-daniel-formats` | #50 | merged (squash), phase 3 Task 5a, Daniel 2022 file formats and the capture map (23 members joined) |
 | `pivot/48-sheih-builder` | #52 | merged (squash), phase 3 Task 11, case-study fetch and build (62,167 cells, 42,362 paired-labelled; no analysis) |
-| `pivot/49-daniel-builder` | #53 | open, phase 3 Task 5b, the Daniel 2022 builder (contigs joined to cells by capture, clones called; synthetic tests only) |
+| `pivot/49-daniel-builder` | #53 | merged (squash, 30b98c9), phase 3 Task 5b, the Daniel 2022 builder (contigs joined to cells by capture, clones called; synthetic tests only) |
+| `pivot/50-daniel-declaration` | #54 | open, phase 3 Task 6, the Daniel 2022 declaration before any run (subset, namespace, clone definition, truth, gates; clonal not assessable) |
 
 ## Phase 3 Task 9 decisions and result
 

@@ -1,6 +1,8 @@
 import hashlib
 import io
 import re
+from dataclasses import replace
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +12,7 @@ import pandas as pd
 import pytest
 
 from lumencell.bench import download as dl
+from lumencell.bench.builders import daniel2022
 from lumencell.bench.datasets import (
     DATASETS,
     FetchError,
@@ -20,7 +23,11 @@ from lumencell.bench.datasets import (
     truth_for,
 )
 from lumencell.bench.download import Build, Source, build_dataset, fetch_source, source_path
+from lumencell.bench.gates import load_thresholds
 from lumencell.bench.metrics import score
+from lumencell.trust.constants import ORACLE_ETA_MIN, ORACLE_P_MAX
+
+CHRONIC = "LCMV-c13"
 
 
 def _pancreas_obs() -> pd.DataFrame:
@@ -390,3 +397,196 @@ def test_a_cached_check_needs_every_source_even_when_the_derived_file_exists(two
     assert is_cached(ds)
     source_path(ds.sources[0]).unlink()
     assert local_path(ds).exists() and not is_cached(ds)
+
+
+# ---- Daniel 2022, declared before any run (phase 3 Task 6) ----------------------------
+
+
+def test_daniel_is_declared_from_its_builder() -> None:
+    ds = DATASETS["daniel2022"]
+    assert ds.sources == daniel2022.SOURCES and ds.licence == daniel2022.LICENCE
+    assert (
+        ds.build is not None
+        and ds.build.builder is daniel2022.build
+        and ds.build.version == daniel2022.BUILD_VERSION
+    )
+    caps = {c.gsm: c for c in daniel2022.CAPTURES}
+    chosen = ds.build.params["captures"]
+    assert (
+        chosen
+        and {caps[g].arm for g in chosen} == {CHRONIC}
+        and set(ds.build.params["namespace"]) == set(chosen)
+    )
+    assert ds.clonal is not None and ds.clonal.columns() == (
+        "clone_id",
+        "donor",
+        "clone_id_trb",
+        "raw_clonotype_id",
+    )
+    assert ds.report_time_key == "day" and ds.clonal.reason.strip() and date.fromisoformat(ds.clonal.declared)
+    assert all(stages[0] == ds.root_label for stages in ds.lineages.values()) and set(ds.gated) <= set(
+        ds.lineages
+    )
+
+
+def test_an_assessable_clonal_declaration_needs_two_gated_lineages() -> None:
+    ds = DATASETS["daniel2022"]
+    assert len(ds.gated) >= 2 or (
+        not ds.clonal.assessable and "fewer than two gated lineages" in ds.clonal.reason
+    )
+    with pytest.raises(ValueError, match="two gated lineages"):
+        replace(ds, gated=ds.gated[:1], clonal=replace(ds.clonal, assessable=True))
+
+
+def test_daniel_gates_are_the_declared_ones() -> None:
+    cfg, ds = load_thresholds()["real"]["daniel2022"], DATASETS["daniel2022"]
+    base = {
+        "pt_spearman_lineage": {"min": 0.70},
+        "branch_accuracy": {"min": 0.80},
+        "lineage_recall": {"min": 1.0},
+    }
+    clonal = {
+        "clonal_excess_ratio": {"min": 0.5, "nan": "fail", "status": "clonal_status"},
+        "clonal_p": {"max": 0.01, "nan": "fail", "status": "clonal_status"},
+    }
+    assert cfg["gates"] == base | (clonal if ds.clonal.assessable else {})
+    assert cfg["clonal"] == {
+        "mode": "oracle_cells",
+        "oracle_eta_min": ORACLE_ETA_MIN,
+        "oracle_p_max": ORACLE_P_MAX,
+    }
+    assert set(cfg["reported"]) == {
+        "day_spearman",
+        "clone_recurrence",
+        "raw_clonotype_ari",
+        "labelled_share_of_raw",
+        "trb_only",
+    }
+
+
+# Pinned literally from docs/superpowers/research/2026-11-20-daniel2022-declaration.md, so that any
+# later edit of the declaration fails here.
+DANIEL_CAPTURES = [
+    "GSM5687827",
+    "GSM5687828",
+    "GSM5687829",
+    "GSM5687830",
+    "GSM5687831",
+    "GSM5687832",
+    "GSM5687833",
+    "GSM5687834",
+]
+DANIEL_REASON = (
+    "fewer than two gated lineages, so no clonal comparison between lineages; "
+    "namespace = capture (rule b, state-gated GSM5687824, GSM5687825 and GSM5687826 dropped): "
+    "one mouse per capture is assumed; the records do not say which mice a capture holds "
+    "or whether a capture pools mice"
+)
+
+
+def test_the_daniel_declaration_is_pinned() -> None:
+    ds = DATASETS["daniel2022"]
+    assert ds.build is not None and ds.clonal is not None
+    assert ds.build.params == {"captures": DANIEL_CAPTURES, "namespace": {g: g for g in DANIEL_CAPTURES}}
+    assert (ds.label_key, ds.root_label, ds.root_spec) == ("state", "TEx_prog", "cluster:state=TEx_prog")
+    assert ds.lineages == {} and ds.gated == []
+    assert ds.time_key is None and ds.report_time_key == "day"
+    assert ds.clonal == daniel_clonal()
+    assert "2026-11-20" in ds.notes and "research/2026-11-20-daniel2022-declaration.md" in ds.notes
+
+
+def daniel_clonal() -> Any:
+    from lumencell.bench.datasets import RealClonal
+
+    return RealClonal(
+        "clone_id", "donor", "clone_id_trb", "raw_clonotype_id", "capture", False, DANIEL_REASON, "2026-11-20"
+    )
+
+
+def test_the_kept_daniel_captures_follow_the_subset_rules() -> None:
+    caps = {c.gsm: c for c in daniel2022.CAPTURES}
+    kept = [caps[g] for g in DATASETS["daniel2022"].build.params["captures"]]  # type: ignore[union-attr]
+    assert {c.arm for c in kept} == {CHRONIC} and {c.day for c in kept} == {8, 21}
+    assert {c.matrix for c in kept} == {"main"}, "Day 5 (the D5 matrix) is excluded"
+    assert {c.tissue for c in kept} == {"spleen"}, "only tissues sampled at every kept day"
+    state_markers = ("SLAMF6", "LY108", "CX3CR1", "TIM-3", "TIM3", "CD101", "KLRG1", "CXCR5", "TCF")
+    assert not [c.gsm for c in kept if any(m in c.sort_gate.upper() for m in state_markers)]
+    dropped = [
+        c.gsm
+        for c in daniel2022.CAPTURES
+        if c.arm == CHRONIC and c.matrix == "main" and c.tissue == "spleen" and c.gsm not in DANIEL_CAPTURES
+    ]
+    assert dropped == ["GSM5687824", "GSM5687825", "GSM5687826"]
+
+
+def test_the_daniel_build_params_pass_the_builders_checks() -> None:
+    params = DATASETS["daniel2022"].build.params  # type: ignore[union-attr]
+    listed, namespace = daniel2022._check_params(params)
+    assert [c.gsm for c in listed] == DANIEL_CAPTURES and namespace == {g: g for g in DANIEL_CAPTURES}
+
+
+def test_real_clonal_is_frozen_and_names_its_scoring_only_columns() -> None:
+    from dataclasses import FrozenInstanceError
+
+    c = daniel_clonal()
+    assert c.columns() == ("clone_id", "donor", "clone_id_trb", "raw_clonotype_id")
+    with pytest.raises(FrozenInstanceError):
+        c.assessable = True  # type: ignore[misc]
+
+
+def test_two_gated_lineages_make_an_assessable_declaration_valid() -> None:
+    from lumencell.bench.datasets import RealClonal
+
+    clonal = RealClonal("c", "d", "t", "r", "cap", True, "ok", "2026-01-02")
+    two = _REAL_FIELDS | {
+        "sources": (Source("https://h/a", "a", 1, None),),
+        "lineages": {"A": ["r", "a"], "B": ["r", "b"]},
+        "gated": ["A", "B"],
+    }
+    assert RealDataset(**(two | {"clonal": clonal})).clonal is clonal
+    with pytest.raises(ValueError, match="two gated lineages"):
+        RealDataset(**(two | {"gated": ["A"], "clonal": clonal}))
+    assert RealDataset(**(two | {"gated": ["A"], "clonal": replace(clonal, assessable=False)})).gated == ["A"]
+
+
+def test_daniel_base_gates_score_nan_and_are_skipped_without_a_gated_lineage() -> None:
+    """Documents the gap Task 7 closes: with no gated lineage the three base gates measure nothing."""
+    from lumencell.bench.gates import check_gates
+
+    ds = DATASETS["daniel2022"]
+    obs = pd.DataFrame({ds.label_key: [ds.root_label] * 5 + ["TEx"] * 5 + ["TEx_int"] * 5})
+    truth = truth_for(ds, obs)
+    row = score(np.random.default_rng(0).random(15), np.zeros((0, 15), dtype=bool), truth).to_dict()
+    gates = load_thresholds()["real"]["daniel2022"]["gates"]
+    assert all(np.isnan(row[m]) for m in gates)
+    assert check_gates(row, gates) == [], "a PASS here measured nothing; Task 7 must show 'not measured'"
+
+
+def test_the_gated_count_is_of_distinct_names_present_in_lineages() -> None:
+    from lumencell.bench.datasets import RealClonal
+
+    clonal = RealClonal("c", "d", "t", "r", "cap", True, "ok", "2026-01-02")
+    base = _REAL_FIELDS | {
+        "sources": (Source("https://h/a", "a", 1, None),),
+        "lineages": {"A": ["r", "a"], "B": ["r", "b"]},
+        "clonal": clonal,
+    }
+    for gated in (["A", "A"], ["A", "Z"]):
+        with pytest.raises(ValueError, match="two gated lineages"):
+            RealDataset(**(base | {"gated": gated}))
+    assert RealDataset(**(base | {"gated": ["A", "B"]})).gated == ["A", "B"]
+
+
+def test_the_daniel_changelog_entry_is_dated_and_matches_the_registry() -> None:
+    from lumencell.bench.gates import THRESHOLDS
+
+    text, ds = THRESHOLDS.read_text(), DATASETS["daniel2022"]
+    date_ = ds.clonal.declared  # type: ignore[union-attr]
+    heads = re.findall(r"^# (\d{4}-\d{2}-\d{2})  Daniel 2022 declared:", text, re.M)
+    assert heads == [date_], "exactly one entry, headed with the registry's date"
+    header = re.search(r"^# ---- Daniel 2022 .*?Declared (\d{4}-\d{2}-\d{2})", text, re.M)
+    assert header is not None and header.group(1) == date_
+    entry = text[text.index(f"# {date_}  Daniel 2022 declared:") :]
+    chosen = ds.build.params["captures"]  # type: ignore[union-attr]
+    assert f"{chosen[0]}-{chosen[-1]}" in entry
+    assert f"lineage gates: not measured (no gated lineage, declared {date_})" in entry
