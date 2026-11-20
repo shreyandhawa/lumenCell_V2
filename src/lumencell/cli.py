@@ -385,6 +385,20 @@ def launch(
         jobs.shutdown()
 
 
+@app.command()
+def demo(
+    port: int = 8765,
+    browser: Annotated[bool, typer.Option(help="Open the browser when the server is ready.")] = True,
+) -> None:
+    """Explore a small synthetic dataset, to try lumenCell without your own data."""
+    import platformdirs
+
+    path = Path(platformdirs.user_data_dir("lumencell")) / "demo.h5ad"
+    if not path.exists():
+        synth(path, "bifurcation", "easy", 800, 500, 0, True, None)
+    launch(path, "file", "paga_dpt", port, "127.0.0.1", browser, False, None, False)
+
+
 cache_app = typer.Typer(help="See what the cache holds, and clean it up.", no_args_is_help=True)
 app.add_typer(cache_app, name="cache")
 
