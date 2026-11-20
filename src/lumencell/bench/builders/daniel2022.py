@@ -1,4 +1,7 @@
-"""Daniel et al. 2022 (chronic LCMV, paired scRNA and TCR): the GEO files."""
+"""Daniel et al. 2022 (chronic LCMV, paired scRNA and TCR): the GEO files and their formats."""
+
+from dataclasses import dataclass
+from typing import Literal
 
 from lumencell.bench.download import Source
 
@@ -51,3 +54,258 @@ LICENCE = (
     "UNVERIFIED: https://pmc.ncbi.nlm.nih.gov/articles/PMC11225711/ is behind a CAPTCHA, "
     "not bypassed (read attempt 2026-11-19)."
 )
+
+
+@dataclass(frozen=True)
+class Capture:
+    """One TCR library (a tar member) and the expression capture whose cells it holds.
+
+    `gsm` is the TCR GSM; `member` its tar member. `tag` is the cell-id prefix of that capture in the
+    matrix barcodes: a contig barcode `b` is the cell `tag + b`. `arm`, `day`, `tissue` and `sort_gate`
+    describe those cells, as the GSM records write them (`sort_gate` is `cell type:`).
+    """
+
+    gsm: str
+    member: str
+    tag: str
+    matrix: Literal["main", "d5"]
+    arm: str
+    day: int
+    tissue: str
+    sort_gate: str
+
+
+_MEMBER_END = "_tcr_filtered_contig_annotations.csv.gz"
+
+
+def _c(
+    gsm: str, name: str, matrix: Literal["main", "d5"], arm: str, day: int, tissue: str, gate: str
+) -> Capture:
+    # For every member the join puts its barcodes under the tag of its own file name (see below).
+    return Capture(gsm, f"{gsm}_{name}{_MEMBER_END}", f"{name}_gex_", matrix, arm, day, tissue, gate)
+
+
+# From the Task 3 note (research/2026-11-19-daniel2022-metadata.md) and the Task 5a join check there.
+# Every member's barcodes sit under its own tag (share 0.58-0.96; every other tag at most 0.02).
+# GSM6381667 and GSM6381668: the titles say TetPos_rep1 and TetNeg_rep2, the file names TetNeg_rep2 and
+# TetPos_rep1. The join follows the file names (0.75 and 0.84 against 0.01 by title), so tag and labels
+# follow the file names: the labels describe the cells the barcodes are.
+# GSM5687829-32: paired by title, as the note does (0.85-0.96; the sequencer pairing gets at most 0.02).
+CAPTURES: tuple[Capture, ...] = (
+    _c(
+        "GSM5687816",
+        "Liver_Chronic_D21_CD8_TetNeg",
+        "main",
+        "LCMV-c13",
+        21,
+        "liver",
+        "CD8+ gp33- T cells",
+    ),
+    _c(
+        "GSM5687817",
+        "Liver_Chronic_D21_CD8_TetPos",
+        "main",
+        "LCMV-c13",
+        21,
+        "liver",
+        "CD8+ gp33+ T cells",
+    ),
+    _c(
+        "GSM5687818",
+        "Lung_Chronic_D21_CD8_TetNeg",
+        "main",
+        "LCMV-c13",
+        21,
+        "lung",
+        "CD8+ gp33- T cells",
+    ),
+    _c(
+        "GSM5687819",
+        "Lung_Chronic_D21_CD8_TetPos",
+        "main",
+        "LCMV-c13",
+        21,
+        "lung",
+        "CD8+ gp33+ T cells",
+    ),
+    _c(
+        "GSM5687820",
+        "Spleen_Acute_D21_CD8_TetNeg",
+        "main",
+        "LCMV-Armstrong",
+        21,
+        "spleen",
+        "CD8+ gp33- T cells",
+    ),
+    _c(
+        "GSM5687821",
+        "Spleen_Acute_D21_CD8_TetPos",
+        "main",
+        "LCMV-Armstrong",
+        21,
+        "spleen",
+        "CD8+ gp33+ T cells",
+    ),
+    _c(
+        "GSM5687822",
+        "Spleen_Acute_D8_CD8_TetNeg",
+        "main",
+        "LCMV-Armstrong",
+        8,
+        "spleen",
+        "CD8+ gp33- T cells",
+    ),
+    _c(
+        "GSM5687823",
+        "Spleen_Acute_D8_CD8_TetPos",
+        "main",
+        "LCMV-Armstrong",
+        8,
+        "spleen",
+        "CD8+ gp33+ T cells",
+    ),
+    _c(
+        "GSM5687824",
+        "Spleen_Chronic_D21_CD8_CX3CR1Neg_Slamf6Pos",
+        "main",
+        "LCMV-c13",
+        21,
+        "spleen",
+        "CD8+ CX3CR1- SLAMF6+ T cells",
+    ),
+    _c(
+        "GSM5687825",
+        "Spleen_Chronic_D21_CD8_CX3CR1Neg",
+        "main",
+        "LCMV-c13",
+        21,
+        "spleen",
+        "CD8+ CX3CR1- T cells",
+    ),
+    _c(
+        "GSM5687826",
+        "Spleen_Chronic_D21_CD8_CX3CR1Pos",
+        "main",
+        "LCMV-c13",
+        21,
+        "spleen",
+        "CD8+ CX3CR1+ T cells",
+    ),
+    _c(
+        "GSM5687827",
+        "Spleen_Chronic_D21_CD8_PD1Pos",
+        "main",
+        "LCMV-c13",
+        21,
+        "spleen",
+        "CD8+ PD1+ T cells",
+    ),
+    _c(
+        "GSM5687828",
+        "Spleen_Chronic_D21_CD8_TetMid",
+        "main",
+        "LCMV-c13",
+        21,
+        "spleen",
+        "CD8+ gp33 mid T cells",
+    ),
+    _c(
+        "GSM5687829",
+        "Spleen_Chronic_D21_CD8_TetNeg_rep1",
+        "main",
+        "LCMV-c13",
+        21,
+        "spleen",
+        "CD8+ gp33- T cells",
+    ),
+    _c(
+        "GSM5687830",
+        "Spleen_Chronic_D21_CD8_TetNeg",
+        "main",
+        "LCMV-c13",
+        21,
+        "spleen",
+        "CD8+ gp33- T cells",
+    ),
+    _c(
+        "GSM5687831",
+        "Spleen_Chronic_D21_CD8_TetPos_rep1",
+        "main",
+        "LCMV-c13",
+        21,
+        "spleen",
+        "CD8+ gp33+ T cells",
+    ),
+    _c(
+        "GSM5687832",
+        "Spleen_Chronic_D21_CD8_TetPos",
+        "main",
+        "LCMV-c13",
+        21,
+        "spleen",
+        "CD8+ gp33+ T cells",
+    ),
+    _c(
+        "GSM5687833",
+        "Spleen_Chronic_D8_CD8_TetNeg",
+        "main",
+        "LCMV-c13",
+        8,
+        "spleen",
+        "CD8+ gp33- T cells",
+    ),
+    _c(
+        "GSM5687834",
+        "Spleen_Chronic_D8_CD8_TetPos",
+        "main",
+        "LCMV-c13",
+        8,
+        "spleen",
+        "CD8+ gp33+ T cells",
+    ),
+    _c(
+        "GSM6381666",
+        "Spleen_Chronic_D5_CD8_TetNeg_rep1",
+        "d5",
+        "LCMV-c13",
+        5,
+        "spleen",
+        "CD8+ gp33- T cells",
+    ),
+    _c(
+        "GSM6381667",
+        "Spleen_Chronic_D5_CD8_TetNeg_rep2",
+        "d5",
+        "LCMV-c13",
+        5,
+        "spleen",
+        "CD8+ gp33- T cells",
+    ),
+    _c(
+        "GSM6381668",
+        "Spleen_Chronic_D5_CD8_TetPos_rep1",
+        "d5",
+        "LCMV-c13",
+        5,
+        "spleen",
+        "CD8+ gp33+ T cells",
+    ),
+    _c(
+        "GSM6381669",
+        "Spleen_Chronic_D5_CD8_TetPos_rep2",
+        "d5",
+        "LCMV-c13",
+        5,
+        "spleen",
+        "CD8+ gp33+ T cells",
+    ),
+)
+
+LABEL_COLUMN: str | None = "ident"
+# The real contig headers already use the CONTIG_COLUMNS spellings.
+COLUMN_RENAMES: dict[str, str] = {}
+# Size lines 31053 x 96750 and 31053 x 77614: rows are the 31,053 features, columns the barcodes.
+MATRIX_ORIENTATION: dict[str, Literal["genes_x_cells", "cells_x_genes"]] = {
+    "main": "genes_x_cells",
+    "d5": "genes_x_cells",
+}

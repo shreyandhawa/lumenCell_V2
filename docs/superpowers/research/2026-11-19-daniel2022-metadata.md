@@ -270,7 +270,124 @@ No clone × state, clone × capture or clone × lineage count was computed.
 ## 8. Still unverified
 
 - **The paper's Methods.** Mice per capture, pooling, hashing and how the two Seurat objects were made are not checked: PMC11225711 is behind a CAPTCHA (Task 2, not bypassed) and Europe PMC serves no full text for it (it is not open access; `fullTextXML` returned HTTP 500 on 2026-11-19).
-- **Which TCR member belongs to which capture,** for the two flags in section 1 (GSM6381667/GSM6381668, and GSM5687829-GSM5687832). Task 5a's join check decides.
-- **What the D5 matrix holds.** Whether its barcodes are the D5 file's 77,614 cells, including the repeated D8/D21 cells, is Task 5a's to check.
+- ~~Which TCR member belongs to which capture.~~ Settled by Task 5a's join check (section 10): GSM6381667/GSM6381668 follow their file names, GSM5687829-GSM5687832 pair by title.
+- ~~What the D5 matrix holds.~~ Task 5a (section 9): 77,614 barcodes, the same per-tag counts as the D5 metadata, and 43,820 of them are also main-matrix barcodes.
 - **The gate markers' reagents:** the gp33 tetramer's allele, and whether the CX3CR1, SLAMF6 and PD-1 sorts were tetramer-gated.
 - **What `ident` labels mean.** Their marker definitions are in the paper, which was not read here; Task 6 maps labels to subsets from the paper's non-clonal marker descriptions.
+
+## 9. Formats
+
+Phase 3 Task 5a, 2026-11-20. From `uv run python -I benchmarks/inspection/daniel2022_formats.py --dir <datasets dir>`
+(output kept under `$TMPDIR`, not committed). The script reads the matrix heads, the barcode and feature files,
+and of each contig member only the header and the `barcode`, `chain`, `productive`, `high_confidence`,
+`full_length` and `is_cell` columns. The tar was read in memory; nothing was extracted or written.
+
+**Matrices.** Both are `%%MatrixMarket matrix coordinate integer general`.
+
+| Matrix | Size line | Barcodes | Features | Orientation | First 100,000 stored values integer |
+|---|---|---|---|---|---|
+| main (`GSE188666_scRNA_LCMV.mtx.gz`) | `31053 96750 190891292` | 96,750 | 31,053 | genes x cells | yes |
+| d5 (`GSE188666_scRNA_D5_LCMV.mtx.gz`) | `31053 77614 172489555` | 77,614 | 31,053 | genes x cells | yes |
+
+The orientation is read from the size line: its rows equal the feature count and its columns the barcode
+count, in both files. `MATRIX_ORIENTATION` is `genes_x_cells` for both.
+
+**Features.** One field per line, a gene symbol (first three `Xkr4`, `Gm1992`, `Gm37381`); no Ensembl id and no
+feature-type column. The D5 feature list equals the main list, line for line.
+
+**Barcodes.** `<tag><16-nt core>-1`, the suffix always `-1` (96,750 and 77,614). The tag is the GEX GSM title plus
+`_`, for example `Spleen_Chronic_D8_CD8_TetPos_gex_`. The main file has the 19 D8/D21 tags and the D5 file the 4
+D5 tags plus the 11 chronic spleen D8/D21 tags. Per-tag counts equal the cells per tag of the two metadata files
+(section 2) in every row, so each barcode file is its metadata file's cells. **43,820 D5-matrix barcodes are also
+main-matrix barcodes**: the D5 matrix repeats the chronic spleen D8/D21 cells, as the D5 metadata does.
+
+**Contigs.** All 23 members have the same header, the 10x `filtered_contig_annotations` layout:
+`barcode,is_cell,contig_id,high_confidence,length,chain,v_gene,d_gene,j_gene,c_gene,full_length,productive,cdr3,cdr3_nt,reads,umis,raw_clonotype_id,raw_consensus_id`.
+Every `CONTIG_COLUMNS` name is spelled as Task 4 expects, so `COLUMN_RENAMES` is empty. Contig barcodes are bare
+`<16-nt core>-1` (first member's first three: `AAACCTGAGCGTAATA-1`, `AAACCTGAGCGTTCCG-1`, `AAACCTGCAATACGCT-1`).
+Flag vocabularies, pooled over the 23 members (476,764 contig rows):
+
+| Column | Values (rows) |
+|---|---|
+| chain | Multi (1,142), TRA (198,061), TRB (277,550), TRD (3), TRG (8) |
+| productive | False (189,032), True (287,732) |
+| high_confidence | True (476,764) |
+| full_length | False (110,606), True (366,158) |
+| is_cell | True (476,764) |
+
+Every flag is the strings `True`/`False`; no `None` or blank. `high_confidence` and `is_cell` are always True
+(these are the filtered files), so the qualifying filter turns on `productive`, `full_length` and `chain`.
+
+**Withheld.** `contig_id`, `length`, `v_gene`, `d_gene`, `j_gene`, `c_gene`, `cdr3`, `cdr3_nt`, `reads`, `umis`,
+`raw_clonotype_id` and `raw_consensus_id` were listed by name only; none of their values was read. No clone x
+state, clone x capture or clone x lineage count was computed.
+
+**Label column.** `LABEL_COLUMN` is `ident` (section 3).
+
+## 10. Join check
+
+The capture map (tar member -> tag) was built from the GSM records: each TCR GSM's tag is the title of its GEX
+GSM (section 1) plus `_`, and the shares were read with `--capture-map`. A contig barcode `b` of a member joins
+tag `t` when `t + b` is a barcode of either matrix. The share's denominator is the member's distinct barcodes over
+every contig row (any contig, whether or not it is productive, full length or high confidence), as the plan's
+"distinct barcodes", not only the barcodes of qualifying contigs. Rule: a member's own share must be at least 0.5 and above every
+other tag's share. "Best other" is the other tag with the most hits.
+
+**Conflict 1, GSM6381667 and GSM6381668: the file names win.** With the title map (GSM6381667 -> `..._D5_CD8_TetPos_rep1_gex_`,
+GSM6381668 -> `..._D5_CD8_TetNeg_rep2_gex_`) both fail: own shares 88/10,536 (0.01) and 67/6,555 (0.01), while
+the tags of their file names hold 7,875/10,536 (0.75) and 5,535/6,555 (0.84). So member
+`GSM6381667_..._TetNeg_rep2_tcr_...` holds the cells of GEX GSM6381664 (TetNeg_rep2) and member
+`GSM6381668_..._TetPos_rep1_tcr_...` those of GEX GSM6381663 (TetPos_rep1). The map uses the file-name tags.
+The `Capture` label fields follow the file names too: GSM6381667's `sort_gate` is `CD8+ gp33- T cells` and
+GSM6381668's `CD8+ gp33+ T cells`, the gates of the GEX GSMs whose cells their barcodes are, although each TCR
+GSM's own record says the opposite. The labels must describe the cells that a member's barcodes join, and the join
+says which cells those are; the records' titles and characteristics describe the other file. `gsm` stays the
+GSM each file is attached to (the member name's prefix). This fits section 1's guess that the two files were
+attached to each other's GSMs, which is still inference about how it happened.
+
+**Conflict 2, GSM5687829-GSM5687832: the title pairing holds.** Own shares by title: GSM5687829 -> TetNeg_rep1
+0.95, GSM5687830 -> TetNeg 0.85, GSM5687831 -> TetPos_rep1 0.96, GSM5687832 -> TetPos 0.87. The sequencer pairing
+would swap each to its other replicate's tag; no member's best other tag is that replicate, and every best other
+share is at most 0.02, so the swapped tags share at most 0.02. The GEX and TCR libraries of these four captures
+ran on different sequencers; that is all the flag was.
+
+Final map (`CAPTURES`): for all 23 members the tag is the member's own file name with `_tcr` replaced by
+`_gex`. Shares (hits / distinct member barcodes):
+
+| Member (GSM) | Own tag | Own | Share | Best other tag | Other | Share |
+|---|---|---|---|---|---|---|
+| GSM5687816 | Liver_Chronic_D21_CD8_TetNeg_gex_ | 8851/9669 | 0.92 | Spleen_Chronic_D5_CD8_TetNeg_rep2_gex_ | 125/9669 | 0.01 |
+| GSM5687817 | Liver_Chronic_D21_CD8_TetPos_gex_ | 3698/3910 | 0.95 | Spleen_Chronic_D5_CD8_TetPos_rep2_gex_ | 60/3910 | 0.02 |
+| GSM5687818 | Lung_Chronic_D21_CD8_TetNeg_gex_ | 8339/9405 | 0.89 | Spleen_Chronic_D21_CD8_TetNeg_gex_ | 131/9405 | 0.01 |
+| GSM5687819 | Lung_Chronic_D21_CD8_TetPos_gex_ | 5311/5775 | 0.92 | Lung_Chronic_D21_CD8_TetNeg_gex_ | 135/5775 | 0.02 |
+| GSM5687820 | Spleen_Acute_D21_CD8_TetNeg_gex_ | 8615/10436 | 0.83 | Liver_Chronic_D21_CD8_TetNeg_gex_ | 139/10436 | 0.01 |
+| GSM5687821 | Spleen_Acute_D21_CD8_TetPos_gex_ | 7033/7497 | 0.94 | Spleen_Chronic_D21_CD8_TetNeg_gex_ | 113/7497 | 0.02 |
+| GSM5687822 | Spleen_Acute_D8_CD8_TetNeg_gex_ | 2874/4788 | 0.60 | Lung_Chronic_D21_CD8_TetNeg_gex_ | 81/4788 | 0.02 |
+| GSM5687823 | Spleen_Acute_D8_CD8_TetPos_gex_ | 4030/5710 | 0.71 | Lung_Chronic_D21_CD8_TetNeg_gex_ | 79/5710 | 0.01 |
+| GSM5687824 | Spleen_Chronic_D21_CD8_CX3CR1Neg_Slamf6Pos_gex_ | 1863/1993 | 0.93 | Lung_Chronic_D21_CD8_TetNeg_gex_ | 27/1993 | 0.01 |
+| GSM5687825 | Spleen_Chronic_D21_CD8_CX3CR1Neg_gex_ | 3598/3899 | 0.92 | Liver_Chronic_D21_CD8_TetNeg_gex_ | 64/3899 | 0.02 |
+| GSM5687826 | Spleen_Chronic_D21_CD8_CX3CR1Pos_gex_ | 4734/5164 | 0.92 | Spleen_Acute_D21_CD8_TetNeg_gex_ | 78/5164 | 0.02 |
+| GSM5687827 | Spleen_Chronic_D21_CD8_PD1Pos_gex_ | 1880/2079 | 0.90 | Lung_Chronic_D21_CD8_TetNeg_gex_ | 30/2079 | 0.01 |
+| GSM5687828 | Spleen_Chronic_D21_CD8_TetMid_gex_ | 5263/6625 | 0.79 | Liver_Chronic_D21_CD8_TetNeg_gex_ | 105/6625 | 0.02 |
+| GSM5687829 | Spleen_Chronic_D21_CD8_TetNeg_rep1_gex_ | 1762/1846 | 0.95 | Spleen_Acute_D21_CD8_TetNeg_gex_ | 29/1846 | 0.02 |
+| GSM5687830 | Spleen_Chronic_D21_CD8_TetNeg_gex_ | 7829/9162 | 0.85 | Liver_Chronic_D21_CD8_TetNeg_gex_ | 134/9162 | 0.01 |
+| GSM5687831 | Spleen_Chronic_D21_CD8_TetPos_rep1_gex_ | 1854/1929 | 0.96 | Spleen_Chronic_D5_CD8_TetNeg_rep1_gex_ | 27/1929 | 0.01 |
+| GSM5687832 | Spleen_Chronic_D21_CD8_TetPos_gex_ | 7489/8560 | 0.87 | Liver_Chronic_D21_CD8_TetNeg_gex_ | 119/8560 | 0.01 |
+| GSM5687833 | Spleen_Chronic_D8_CD8_TetNeg_gex_ | 2259/3879 | 0.58 | Spleen_Chronic_D5_CD8_TetNeg_rep2_gex_ | 52/3879 | 0.01 |
+| GSM5687834 | Spleen_Chronic_D8_CD8_TetPos_gex_ | 1414/1805 | 0.78 | Spleen_Chronic_D5_CD8_TetNeg_rep2_gex_ | 26/1805 | 0.01 |
+| GSM6381666 | Spleen_Chronic_D5_CD8_TetNeg_rep1_gex_ | 7408/9352 | 0.79 | Lung_Chronic_D21_CD8_TetNeg_gex_ | 122/9352 | 0.01 |
+| GSM6381667 | Spleen_Chronic_D5_CD8_TetNeg_rep2_gex_ | 7875/10536 | 0.75 | Liver_Chronic_D21_CD8_TetNeg_gex_ | 148/10536 | 0.01 |
+| GSM6381668 | Spleen_Chronic_D5_CD8_TetPos_rep1_gex_ | 5535/6555 | 0.84 | Liver_Chronic_D21_CD8_TetNeg_gex_ | 101/6555 | 0.02 |
+| GSM6381669 | Spleen_Chronic_D5_CD8_TetPos_rep2_gex_ | 6839/8297 | 0.82 | Spleen_Chronic_D5_CD8_TetNeg_rep2_gex_ | 116/8297 | 0.01 |
+
+Every own share is 0.58 or more and every best other share 0.02 or less. The lowest own shares (0.58, 0.60) are
+two TetNeg D8 captures. A member barcode that joins no tag is most likely a cell the expression object dropped in QC
+(inference; the processing is not stated, section 6). The 1-2% under other tags are most likely 16-nt cores that
+recur by chance across captures, since every capture draws from the same 10x barcode whitelist (inference). The
+counts are of barcodes only; no receptor value was used.
+
+**Matrix per capture.** `matrix` is `d5` for the four D5 captures (their tags are only in the D5 barcodes) and
+`main` for the other 19: the main matrix holds every one of them, while the D5 matrix holds 11 of them and lacks
+24 of their cells. Whether the D5 copies of the chronic spleen D8/D21 cells are used is Task 6's to declare.
+This map is checked on the real files by `test_the_capture_map_joins_on_the_real_files` (`real_data`, `slow`).
+
