@@ -7,6 +7,16 @@ import { useUi } from "@/state/ui";
 const ICON = { info: Info, warning: TriangleAlert, error: ShieldAlert } as const;
 const TONE = { info: "text-ink-muted", warning: "text-warning", error: "text-danger" } as const;
 
+// These two labels describe C1 (connectivity) and C5 (clonal support) only, and hold only while
+// TAU_TREE, TAU_LIN and TAU_PT are None (C2-C4 excluded); revisit if a tau is ever set.
+// The payload has no verified flag, so "supported" reads as provisional (the rule is unverified).
+const LEVEL_LABEL: Record<T.TreeSupport["level"], string> = {
+  not_supported: "Not supported: cells left without a pseudotime",
+  weak: "Clones do not back these lineages",
+  provisional: "Not shown to be a tree",
+  supported: "Not shown to be a tree",
+};
+
 /** Everything needed to judge a result: where it came from, and what may be wrong with it. */
 export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
   const embedding = useUi((s) => s.embedding);
@@ -43,6 +53,12 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
         </dd>
         <dt className="text-ink-faint">unassigned</dt>
         <dd className="text-ink">{run.n_unassigned.toLocaleString()} cells</dd>
+        {run.trust?.tree_support && (
+          <>
+            <dt className="text-ink-faint">tree support</dt>
+            <dd className="text-ink">{LEVEL_LABEL[run.trust.tree_support.level]}</dd>
+          </>
+        )}
       </dl>
 
       {curves && (

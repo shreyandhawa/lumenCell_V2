@@ -109,7 +109,7 @@ def test_the_report_shows_the_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         report, "latest_real", lambda: (report.REPO / "benchmarks" / "results" / "real-x.json", data)
     )
-    assert "verdict weak" in report.render()
+    assert "verdict Clones do not back these lineages" in report.render()
 
 
 class _FakeKind:
