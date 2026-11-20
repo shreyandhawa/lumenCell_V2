@@ -509,3 +509,14 @@ max_drop = 0.03
 #     [real.daniel2022.clonal] keeps the synthetic mode and floor for the record.
 #     With no gated lineage these gates score NaN and are skipped; Task 7 renders such a row as
 #     "lineage gates: not measured (no gated lineage, declared 2026-11-20)", never PASS.
+#
+# 2026-11-20  Daniel 2022 first run, benchmarks/results/real-2026-11-20.json (33,188 cells, 8 captures).
+#             Thresholds unchanged.
+#   * paga_dpt: lineage gates not measured (no gated lineage), clonal not assessable (declared),
+#     stability_pt 0.989, stability_lineage 0.833, tree_support provisional.
+#   * palantir: lineage gates not measured, clonal not assessable, stability_pt 0.989,
+#     stability_lineage 0.667, tree_support provisional.
+#   * scfates_ppt: lineage gates not measured, clonal not assessable, stability_pt 0.990,
+#     stability_lineage 1.0, tree_support provisional (read as not shown to be a tree).
+#     No Daniel gate was measured, so none passed or failed. Pancreas, bone marrow and gastrulation
+#     metrics are unchanged against real-2026-11-17.json (only clonal_reason null -> "").

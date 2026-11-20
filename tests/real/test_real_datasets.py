@@ -36,3 +36,28 @@ def test_case_study_files_match_their_checksums() -> None:
         for s in cs.sources:
             assert source_path(s).stat().st_size == s.size
             assert sha256_of(source_path(s)) == s.sha256
+
+
+def test_the_daniel_build_joins_every_capture() -> None:
+    ds = DATASETS["daniel2022"]
+    if not is_cached(ds):
+        pytest.skip("run: lumencell bench fetch daniel2022")
+    adata = ad.read_h5ad(local_path(ds), backed="r")
+    build = adata.uns["lumencell_build"]
+    for gsm in build["params"]["captures"]:
+        barcodes = build["contig_barcodes"][gsm]
+        share = 1 - build["join_misses"][gsm] / barcodes
+        assert share >= 0.5, f"{gsm}: only {share:.3f} of {barcodes} contig barcodes join a cell"
+    obs = adata.obs
+    for col in ("state", "day", "capture", "donor", "clone_id", "clone_id_trb"):
+        assert col in obs.columns, col
+    assert (obs["state"] == ds.root_label).sum() > 0
+    # The build used exactly the declared captures, each has cells, and the columns are populated.
+    assert ds.build is not None
+    assert list(build["params"]["captures"]) == list(ds.build.params["captures"])
+    assert set(obs["capture"].astype(str).unique()) == set(ds.build.params["captures"])
+    assert int(build["n_cells"]) == adata.n_obs
+    for col in ("state", "day", "capture", "donor"):
+        assert obs[col].notna().all(), col
+    for col in ("clone_id", "clone_id_trb"):
+        assert obs[col].notna().sum() > 0, col
