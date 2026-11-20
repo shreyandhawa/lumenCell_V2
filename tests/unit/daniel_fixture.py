@@ -29,6 +29,10 @@ BAD_TRA = "AAACCTGAGCCCCCCC"  # GSM_A: its only TRA is productive="False"
 NO_CONTIG = "AAACGGGCATTGTGCA"  # GSM_A: a cell with no contig
 NOT_IN_META = "AAACGGGTCACAGGCC"  # GSM_A: in the matrix, not in the metadata
 MISSED_CORE = "TTTCCTGAGAAGGCCT"  # GSM_A: qualifying contigs, no cell
+TRA_MISS = "ACACCTGAGAAGGCCT"  # GSM_A: only a qualifying TRA, no cell (a join miss)
+NOT_CELL = "AAACGGGGTAGCTAGT"  # GSM_A: a matrix cell whose only contigs have is_cell=False
+NOT_CELL_MISS = "AAACGGGGTTTTTTTT"  # GSM_A: is_cell=False contigs, no cell (not a join miss)
+D_MISS = "GTGCCTGAGAAGGCCT"  # GSM_D: qualifying contigs, no cell (a join miss)
 B2 = "CCCCCTGAGAAGGCCT"  # GSM_B: a second paired cell
 UNQUALIFIED_B = "GGGCCTGAGAAGGCCT"  # GSM_B: no cell, and no qualifying contig (not a join miss)
 
@@ -39,8 +43,10 @@ PARAMS = {"captures": [GSM_A, GSM_B], "namespace": {GSM_A: "m1", GSM_B: "m2"}}
 
 CAPTURES = (
     Capture(GSM_A, f"{GSM_A}_A{MEMBER_END}", TAG_A, "main", "LCMV-c13", 21, "spleen", "CD8+ gp33+ T cells"),
-    Capture(GSM_B, f"{GSM_B}_B{MEMBER_END}", TAG_B, "main", "LCMV-c13", 8, "spleen", "CD8+ gp33- T cells"),
-    Capture(GSM_D, f"{GSM_D}_D{MEMBER_END}", TAG_D, "d5", "LCMV-c13", 5, "spleen", "CD8+ gp33+ T cells"),
+    Capture(
+        GSM_B, f"{GSM_B}_B{MEMBER_END}", TAG_B, "main", "LCMV-Armstrong", 8, "lung", "CD8+ gp33- T cells"
+    ),
+    Capture(GSM_D, f"{GSM_D}_D{MEMBER_END}", TAG_D, "d5", "LCMV-c13", 5, "liver", "CD8+ gp33+ T cells"),
 )
 
 # (tag, core, label); the main matrix's 8 cells and the D5 matrix's 3, in file order.
@@ -49,10 +55,11 @@ MAIN_CELLS = [
     (TAG_B, CORE, "Tex"),
     (TAG_A, THREE_TRB, "Tex"),
     (TAG_A, BAD_TRA, "Teff"),
-    (TAG_A, NO_CONTIG, "Tpex"),
+    (TAG_A, NO_CONTIG, ""),  # a blank label
     (TAG_A, NOT_IN_META, "Tpex"),
     (TAG_B, B2, "Teff"),
     (TAG_X, CORE, "Tex"),  # a tag of no capture
+    (TAG_A, NOT_CELL, "Tex"),
 ]
 D5_CELLS = [
     (TAG_D, CORE, "D5_early"),
@@ -67,12 +74,18 @@ _HEADER = (
 
 
 def _contig(
-    core: str, chain: str, nt: str, clonotype: str, productive: str = "True", full: str = "True"
+    core: str,
+    chain: str,
+    nt: str,
+    clonotype: str,
+    productive: str = "True",
+    full: str = "True",
+    is_cell: str = "True",
 ) -> str:
     v = "TRAV1" if chain == "TRA" else "TRBV1"
     c = "TRAC" if chain == "TRA" else "TRBC2"
     return (
-        f"{core}-1,True,{core}-1_contig_1,True,500,{chain},{v},None,None,{c},"
+        f"{core}-1,{is_cell},{core}-1_contig_1,True,500,{chain},{v},None,None,{c},"
         f"{full},{productive},CAS,{nt},100,5,{clonotype},{clonotype}_consensus_1"
     )
 
@@ -89,6 +102,11 @@ CONTIGS = {
         _contig(BAD_TRA, "TRB", "TGTACAGGG", "clonotype3"),
         _contig(MISSED_CORE, "TRA", "TGTACCAAA", "clonotype4"),
         _contig(MISSED_CORE, "TRB", "TGTCCAGGG", "clonotype4"),
+        _contig(TRA_MISS, "TRA", "TGTACCTTT", "clonotype5"),
+        _contig(NOT_CELL, "TRA", "TGTGCTCCC", "clonotype6", is_cell="False"),
+        _contig(NOT_CELL, "TRB", "TGTGCCCCC", "clonotype6", is_cell="False"),
+        _contig(NOT_CELL_MISS, "TRA", "TGTGCTGGG", "clonotype7", is_cell="False"),
+        _contig(NOT_CELL_MISS, "TRB", "TGTGCCGGG", "clonotype7", is_cell="False"),
     ],
     GSM_B: [
         _contig(CORE, "TRA", "TGTGGAAAA", "clonotype1"),
@@ -97,10 +115,15 @@ CONTIGS = {
         _contig(B2, "TRB", "TGTAGCGGG", "clonotype2"),
         _contig(UNQUALIFIED_B, "TRB", "TGTAAACCC", "clonotype3", full="False"),
         _contig(UNQUALIFIED_B, "Multi", "TGTAAACCC", "clonotype3"),
+        # The core of a GSM_A cell, not of any GSM_B cell: a GSM_B join miss.
+        _contig(THREE_TRB, "TRA", "TGTCAGAAA", "clonotype4"),
+        _contig(THREE_TRB, "TRB", "TGTCAGGGG", "clonotype4"),
     ],
     GSM_D: [
         _contig(CORE, "TRA", "TGTGCTAGA", "clonotype1"),
         _contig(CORE, "TRB", "TGTGCCAGC", "clonotype1"),
+        _contig(D_MISS, "TRA", "TGTGATAAA", "clonotype2"),
+        _contig(D_MISS, "TRB", "TGTGATGGG", "clonotype2"),
     ],
 }
 
@@ -110,7 +133,7 @@ def patch_captures(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(daniel2022, "LABEL_COLUMN", "ident")
 
 
-def _gz(path: Path, text: str) -> None:
+def gz(path: Path, text: str) -> None:
     path.write_bytes(gzip.compress(text.encode()))
 
 
@@ -124,7 +147,7 @@ def _metadata(path: Path, cells: list[tuple[str, str, str]]) -> None:
     # A Seurat export: 4 header fields, 5 fields per row. tcr_cdr3s_nt is planted and never read.
     lines = ["orig.ident\tnCount_RNA\ttcr_cdr3s_nt\tident"]
     lines += [f"{tag}{core}-1\t{tag[:-5]}\t100\tTGTPLANTED\t{label}" for tag, core, label in cells]
-    _gz(path, "\n".join(lines) + "\n")
+    gz(path, "\n".join(lines) + "\n")
 
 
 def _member(data: bytes, name: str) -> tuple[tarfile.TarInfo, io.BytesIO]:
@@ -138,6 +161,7 @@ def write_layout(
     *,
     d5_genes: list[str] | None = None,
     features: list[str] | None = None,
+    contigs: dict[str, list[str]] | None = None,
 ) -> tuple[dict[str, Path], dict[tuple[str, str], np.ndarray]]:
     """Write the nine source files into ``d``. Returns the paths by file name and, per (GSM, core) of a
     capture cell, its expected counts in gene order."""
@@ -161,14 +185,14 @@ def write_layout(
         ("D5_LCMV", D5_CELLS, d5, d5_genes if d5_genes is not None else feature_lines),
     ):
         _matrix(d / f"{p}{stem}.mtx.gz", m)
-        _gz(d / f"{p}{stem}_barcodes.tsv.gz", "".join(f"{t}{c}-1\n" for t, c, _ in cells))
-        _gz(d / f"{p}{stem}_features.tsv.gz", "".join(f"{g}\n" for g in genes))
+        gz(d / f"{p}{stem}_barcodes.tsv.gz", "".join(f"{t}{c}-1\n" for t, c, _ in cells))
+        gz(d / f"{p}{stem}_features.tsv.gz", "".join(f"{g}\n" for g in genes))
     _metadata(d / f"{p}LCMV_metadata.tsv.gz", [c for c in MAIN_CELLS if c[1] != NOT_IN_META])
     _metadata(d / f"{p}D5_LCMV_metadata.txt.gz", D5_CELLS)
 
     with tarfile.open(d / "GSE188666_RAW.tar", "w") as tf:
         for c in CAPTURES:
-            text = "\n".join([_HEADER, *CONTIGS[c.gsm]]) + "\n"
+            text = "\n".join([_HEADER, *(contigs or CONTIGS)[c.gsm]]) + "\n"
             tf.addfile(*_member(gzip.compress(text.encode()), c.member))
         tf.addfile(*_member(gzip.compress(f"{_HEADER}\n".encode()), STRAY))
 

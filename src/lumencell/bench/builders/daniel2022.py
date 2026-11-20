@@ -440,10 +440,23 @@ def _read_matrix(paths: Mapping[str, Path], which: Literal["main", "d5"]) -> _Ma
             f"{name} is {m.shape[0]} x {m.shape[1]}; its barcodes and features make {want[0]} x {want[1]}"
         )
     x = sp.csr_matrix(m.T if genes_x_cells else m)
-    d = x.data
-    if d.size and (not np.isfinite(d).all() or d.min() < 0 or (d != np.rint(d)).any()):
+    del m  # the coordinate arrays are as large as the CSR; drop them before the value check
+    if not _are_counts(x.data):
         raise BuildError(f"{name} does not hold non-negative integer counts")
     return _Matrix(x, barcodes, features, symbols)
+
+
+def _are_counts(d: np.ndarray, step: int = 1 << 20) -> bool:
+    """Whether every value is a finite, non-negative whole number, without full-size temporaries."""
+    if d.size == 0:
+        return True
+    if d.dtype.kind in "iu":  # an integer dtype is whole and finite already
+        return bool(d.dtype.kind == "u" or d.min() >= 0)
+    for i in range(0, d.size, step):
+        c = d[i : i + step]
+        if not np.isfinite(c).all() or c.min() < 0 or (c != np.rint(c)).any():
+            return False
+    return True
 
 
 def _read_metadata(path: Path, name: str) -> pd.Series:
@@ -524,6 +537,10 @@ def build(paths: Mapping[str, Path], out: Path, params: Mapping[str, Any]) -> No
             if hit is not None and bc in meta.index:
                 rows.append(i)
                 cores.append(hit.group(1))
+        if not rows:
+            raise BuildError(
+                f"{c.gsm}: no cell of this capture is in both the {c.matrix} matrix and its metadata"
+            )
         absent = sum(cell.fullmatch(bc) is not None for bc in meta.index) - len(rows)
         if absent:
             raise BuildError(f"{c.gsm}: {absent} metadata cell(s) are not in the {c.matrix} matrix")
@@ -550,8 +567,6 @@ def build(paths: Mapping[str, Path], out: Path, params: Mapping[str, Any]) -> No
         obs_parts.append(part)
         x_parts.append(m.x[rows])
     obs = pd.concat(obs_parts)
-    if len(obs) == 0:
-        raise BuildError("no cell of the listed captures is in the metadata")
     for col in ("capture", "arm", "tissue", "sort_gate", "donor", *(["state"] if "state" in obs else [])):
         obs[col] = pd.Categorical(obs[col])
     obs["day"] = obs["day"].astype(np.int64)
@@ -561,9 +576,16 @@ def build(paths: Mapping[str, Path], out: Path, params: Mapping[str, Any]) -> No
     gsm_of = calls.index.get_level_values("capture")
     qualifying = (calls["receptor_n_tra"] + calls["receptor_n_trb"]).to_numpy() > 0
     misses = {c.gsm: 0 for c in listed}
+    n_qualifying = dict(misses)
     for key in calls.index[qualifying]:
+        n_qualifying[key[0]] += 1
         if key not in kept:
             misses[key[0]] += 1
+    for c in listed:
+        if n_qualifying[c.gsm] and misses[c.gsm] == n_qualifying[c.gsm]:
+            raise BuildError(
+                f"{c.gsm}: none of its {n_qualifying[c.gsm]} qualifying contig barcodes joins a kept cell"
+            )
 
     first = matrices[used[0]]
     var = pd.DataFrame(index=pd.Index(first.features))
