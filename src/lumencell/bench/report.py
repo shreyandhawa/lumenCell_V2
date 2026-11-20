@@ -170,10 +170,19 @@ def render() -> str:
     return "\n".join(out) + "\n"
 
 
-def update_readme(text: str, path: Path = README) -> None:
+CASE_STUDY_START = "<!-- case-study:start -->"
+CASE_STUDY_END = "<!-- case-study:end -->"
+
+
+def replace_section(path: Path, text: str, start: str, end: str) -> None:
+    """Replace what lies between the ``start`` and ``end`` markers of ``path`` with ``text``."""
     content = path.read_text(encoding="utf-8")
-    if START not in content or END not in content:
-        raise ValueError(f"{path} has no {START} ... {END} section")
-    head, rest = content.split(START, 1)
-    _old, tail = rest.split(END, 1)
-    path.write_text(f"{head}{START}\n{text}{END}{tail}", encoding="utf-8")
+    if start not in content or end not in content:
+        raise ValueError(f"{path} has no {start} ... {end} section")
+    head, rest = content.split(start, 1)
+    _old, tail = rest.split(end, 1)
+    path.write_text(f"{head}{start}\n{text}{end}{tail}", encoding="utf-8")
+
+
+def update_readme(text: str, path: Path = README) -> None:
+    replace_section(path, text, START, END)
