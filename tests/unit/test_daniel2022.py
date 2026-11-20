@@ -1,4 +1,13 @@
-from lumencell.bench.builders.daniel2022 import GEO_SUPPL, LICENCE, SOURCES
+from lumencell.bench.builders.common import CONTIG_COLUMNS
+from lumencell.bench.builders.daniel2022 import (
+    CAPTURES,
+    COLUMN_RENAMES,
+    GEO_SUPPL,
+    LABEL_COLUMN,
+    LICENCE,
+    MATRIX_ORIENTATION,
+    SOURCES,
+)
 
 EXPECTED = (
     "GSE188666_scRNA_LCMV.mtx.gz",
@@ -72,3 +81,39 @@ def test_the_files_come_from_geo() -> None:
 def test_the_licence_says_what_could_not_be_read() -> None:
     assert LICENCE.count("UNVERIFIED") == 2
     assert "not bypassed" in LICENCE
+
+
+def test_captures_match_the_inspection() -> None:
+    # 23, not 24: the number the Task 3 note records (one TCR member per capture).
+    assert len(CAPTURES) == 23
+    assert len({c.gsm for c in CAPTURES}) == len({c.member for c in CAPTURES}) == 23
+    assert len({c.tag for c in CAPTURES}) == 23  # one expression capture per TCR member
+    assert all(c.member.endswith("_tcr_filtered_contig_annotations.csv.gz") for c in CAPTURES)
+    assert all(c.member.startswith(c.gsm + "_") for c in CAPTURES)
+    assert all(c.tag.endswith("_gex_") for c in CAPTURES)
+    assert {c.matrix for c in CAPTURES} == {"main", "d5"}
+    assert all((c.matrix == "d5") == (c.day == 5) for c in CAPTURES)
+    assert set(MATRIX_ORIENTATION) == {"main", "d5"}
+    assert set(MATRIX_ORIENTATION.values()) <= {"genes_x_cells", "cells_x_genes"}
+    assert LABEL_COLUMN == "ident"
+    assert set(COLUMN_RENAMES.values()) <= set(CONTIG_COLUMNS)
+
+
+def test_the_two_record_conflicts_follow_the_join() -> None:
+    # Settled by the barcode shares of Task 5a (the note's Join check), not by the GSM titles.
+    by_gsm = {c.gsm: c for c in CAPTURES}
+    d5 = "Spleen_Chronic_D5_CD8_"
+    # Titled TetPos_rep1 / TetNeg_rep2; their barcodes are the TetNeg_rep2 / TetPos_rep1 cells.
+    assert (by_gsm["GSM6381667"].tag, by_gsm["GSM6381667"].sort_gate) == (
+        f"{d5}TetNeg_rep2_gex_",
+        "CD8+ gp33- T cells",
+    )
+    assert (by_gsm["GSM6381668"].tag, by_gsm["GSM6381668"].sort_gate) == (
+        f"{d5}TetPos_rep1_gex_",
+        "CD8+ gp33+ T cells",
+    )
+    # The D21 spleen replicates pair by title, not by sequencer.
+    d21 = "Spleen_Chronic_D21_CD8_"
+    assert [by_gsm[f"GSM56878{n}"].tag for n in (29, 30, 31, 32)] == [
+        f"{d21}{s}_gex_" for s in ("TetNeg_rep1", "TetNeg", "TetPos_rep1", "TetPos")
+    ]
