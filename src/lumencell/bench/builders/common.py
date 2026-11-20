@@ -6,12 +6,14 @@ Pure functions; nothing here touches the network or writes a file.
 
 import hashlib
 import tarfile
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+
+from lumencell.bench.download import SAFE_NAME
 
 
 class BuildError(RuntimeError):
@@ -28,6 +30,8 @@ CONTIG_COLUMNS = (
     "raw_clonotype_id",
 )
 MAX_PER_CHAIN = 2
+# A tar member name that is not a plain file name is listed as this, never as itself.
+UNSAFE_MEMBER = "<unsafe member name>"
 _NT = r"[ACGTN]+"
 
 
@@ -69,6 +73,11 @@ def read_members(tar_path: Path, wanted: Collection[str]) -> tuple[dict[str, byt
     if missing:
         raise BuildError(f"{len(missing)} wanted tar member(s) missing or not regular files")
     return found, sorted(other)
+
+
+def listable(names: Iterable[str]) -> list[str]:
+    """Member names fit to store or print: a plain file name as itself, any other as ``UNSAFE_MEMBER``."""
+    return [n if SAFE_NAME.fullmatch(n) else UNSAFE_MEMBER for n in names]
 
 
 def _hash(prefix: str, parts: set[str]) -> str:

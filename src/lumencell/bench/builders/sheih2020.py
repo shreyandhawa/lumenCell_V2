@@ -22,7 +22,7 @@ import pandas as pd
 import scipy.sparse as sp
 from anndata import AnnData
 
-from lumencell.bench.builders.common import MAX_PER_CHAIN, BuildError, call_clones, read_members
+from lumencell.bench.builders.common import MAX_PER_CHAIN, BuildError, call_clones, listable, read_members
 from lumencell.bench.download import Source
 
 BUILD_VERSION = 2
@@ -285,7 +285,7 @@ def build(
         "join_misses": misses,
         "joined_share": share,
         "cdr3_unusable_rows": unusable,
-        "ignored_members": ignored,
+        "ignored_members": listable(ignored),
         "labelled_cells": int(obs["clone_id"].notna().sum()),
         "labelled_cells_trb": int(obs["clone_id_trb"].notna().sum()),
         "cells_per_sample": {g: int(n) for g, n in Counter(s.gsm for s in sample).items()},

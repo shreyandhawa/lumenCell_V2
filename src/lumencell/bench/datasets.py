@@ -306,6 +306,15 @@ CASE_STUDIES: dict[str, CaseStudyDataset] = {
 # ---- truth --------------------------------------------------------------------------------
 
 _NUMBER = re.compile(r"[-+]?\d*\.?\d+")
+_WHOLE_NUMBER = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+
+
+def _time_value(v: object) -> float:
+    """A number as itself (1e-05 is 1e-05), else the first number in the text ("E7.75" is 7.75), else NaN."""
+    text = str(v).strip()
+    if _WHOLE_NUMBER.fullmatch(text):
+        return float(text)
+    return float(m.group()) if (m := _NUMBER.search(text)) else np.nan
 
 
 def truth_for(ds: RealDataset, obs: pd.DataFrame) -> Truth:
@@ -313,7 +322,7 @@ def truth_for(ds: RealDataset, obs: pd.DataFrame) -> Truth:
     lineages = {name: np.isin(labels, stages) for name, stages in ds.lineages.items() if name in ds.gated}
     if ds.time_key is not None:
         order = np.array(
-            [float(m.group()) if (m := _NUMBER.search(str(v))) else np.nan for v in obs[ds.time_key]],
+            [_time_value(v) for v in obs[ds.time_key]],
             dtype=np.float64,
         )
     else:

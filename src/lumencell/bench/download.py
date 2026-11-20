@@ -132,10 +132,13 @@ def fetch_source(src: Source, progress: Callable[[int, int], None] | None = None
         h = hashlib.sha256()
         done = 0
         with tmp.open("wb") as out, _open(request) as res:
-            while chunk := res.read(1 << 20):
+            # Ask for at most one byte past the declared size, so a host that streams on cannot fill the disk.
+            while chunk := res.read(min(1 << 20, src.size - done + 1)):
                 out.write(chunk)
                 h.update(chunk)
                 done += len(chunk)
+                if done > src.size:
+                    raise FetchError(f"{src.filename}: more than {src.size:,} bytes")
                 if progress:
                     progress(done, src.size)
         if done != src.size:

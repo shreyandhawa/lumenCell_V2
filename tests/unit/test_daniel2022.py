@@ -15,7 +15,7 @@ import scipy.sparse
 import scipy.sparse as sp
 
 from lumencell.bench.builders import daniel2022
-from lumencell.bench.builders.common import CONTIG_COLUMNS, BuildError
+from lumencell.bench.builders.common import CONTIG_COLUMNS, UNSAFE_MEMBER, BuildError
 from lumencell.bench.builders.daniel2022 import (
     BUILD_VERSION,
     CAPTURES,
@@ -25,7 +25,6 @@ from lumencell.bench.builders.daniel2022 import (
     LICENCE,
     MATRIX_ORIENTATION,
     SOURCES,
-    UNSAFE_MEMBER,
     build,
 )
 from lumencell.clonal.isolation import receptor_gene_mask, scoring_only_columns
