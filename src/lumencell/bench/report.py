@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from lumencell.bench.datasets import DATASETS, lineage_gates_note
 from lumencell.bench.gates import BASELINE, REPO, check_gates, load_thresholds
 
 README = REPO / "README.md"
@@ -31,6 +32,54 @@ def _range(rows: list[dict[str, Any]], key: str, floor: bool = False) -> str:
     if floor:
         return f"{_floor3(min(vals))}–{_floor3(max(vals))}"
     return f"{min(vals):.2f}–{max(vals):.2f}"
+
+
+def _shown(v: Any) -> str:
+    if isinstance(v, str):
+        return v
+    return str(v) if isinstance(v, int) and not isinstance(v, bool) else _fmt(v)
+
+
+def _clonal_entry(r: dict[str, Any]) -> str:
+    """The clonal part of a real-table cell; nothing for a dataset without clones."""
+    status = r.get("clonal_status", "not_applicable")
+    if status == "not_applicable":
+        return ""
+    if status == "ok":
+        return f", clonal: {_fmt(r.get('clonal_excess_ratio'))}"
+    if status == "not_assessable":
+        return f", clonal: not assessable ({r.get('clonal_reason') or 'no reason recorded'})"
+    return f", clonal: {status}"
+
+
+_CLONAL_REPORTED = (
+    ("clonal_n_cells", "cells"),
+    ("clonal_effective_clones", "effective clones"),
+    ("clonal_eta_m3", "η at m = 3"),
+    ("clonal_p_m3", "p at m = 3"),
+)
+
+
+def _reported_tables(data: dict[str, Any], datasets: list[str]) -> list[str]:
+    out: list[str] = []
+    for d in datasets:
+        rows = {m: cases[d] for m, cases in data["methods"].items() if d in cases}
+        fields = sorted({k for r in rows.values() for k in r if k.startswith("reported_")})
+        if not fields:
+            continue
+        extra = (
+            [c for c in _CLONAL_REPORTED]
+            if any(r.get("clonal_status", "not_applicable") != "not_applicable" for r in rows.values())
+            else []
+        )
+        columns = [(k, k.removeprefix("reported_").replace("_", " ")) for k in fields] + extra
+        out.append(f"\nReported, not gated ({d}):\n")
+        out.append("| Method | " + " | ".join(name for _, name in columns) + " |")
+        out.append("|---|" + "---|" * len(columns))
+        for method, r in rows.items():
+            cells = " | ".join(_shown(r.get(k)) for k, _ in columns)
+            out.append(f"| {LABELS.get(method, method)} | {cells} |")
+    return out
 
 
 def latest_real() -> tuple[Path, dict[str, Any]] | None:
@@ -95,14 +144,16 @@ def render() -> str:
                     cells.append("–")
                     continue
                 failed = check_gates(r, cfg["real"][d]["gates"])
-                mark = "pass" if not failed else "fail: " + ", ".join(f.metric for f in failed)
+                note = lineage_gates_note(DATASETS[d]) if d in DATASETS else None
+                mark = "fail: " + ", ".join(f.metric for f in failed) if failed else (note or "pass")
                 level = r.get("tree_support", "not_measured")
                 shown = "" if level == "not_measured" else f", verdict {level}"
                 cells.append(
                     f"Spearman {_fmt(r['pt_spearman_lineage'])}, branch {_fmt(r['branch_accuracy'])}, "
-                    f"terminal {_fmt(r['terminal_share'])} ({mark}){shown}"
+                    f"terminal {_fmt(r['terminal_share'])} ({mark}){shown}{_clonal_entry(r)}"
                 )
             out.append(f"| {LABELS.get(method, method)} | " + " | ".join(cells) + " |")
+        out.extend(_reported_tables(data, datasets))
         if any(
             r.get("tree_support", "not_measured") != "not_measured"
             for cases in data["methods"].values()

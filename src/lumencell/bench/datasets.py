@@ -52,6 +52,7 @@ __all__ = [
     "datasets_dir",
     "fetch",
     "is_cached",
+    "lineage_gates_note",
     "local_path",
     "sha256_of",
     "source_path",
@@ -322,4 +323,28 @@ def truth_for(ds: RealDataset, obs: pd.DataFrame) -> Truth:
                 order[labels == stage] = i
     root = labels == ds.root_label
     terminals = {name: labels == ds.lineages[name][-1] for name in ds.gated}
-    return Truth(order=order, lineages=lineages, root=root, meta={"dataset": ds.id}, terminals=terminals)
+    clone_ids = donors = None
+    if ds.clonal is not None and ds.clonal.assessable:
+        clone_ids = obs[ds.clonal.clone_key].to_numpy(dtype=object)
+        donors = obs[ds.clonal.donor_key].to_numpy(dtype=object)
+    return Truth(
+        order=order,
+        lineages=lineages,
+        root=root,
+        meta={"dataset": ds.id},
+        terminals=terminals,
+        clone_ids=clone_ids,
+        donors=donors,
+    )
+
+
+def lineage_gates_note(ds: RealDataset) -> str | None:
+    """What to show instead of PASS when a dataset gates no lineage, else None.
+
+    With no gated lineage the base gates score NaN and ``check_gates`` skips NaN, so they measured
+    nothing. The date is the clonal declaration's, when the dataset has one.
+    """
+    if ds.gated:
+        return None
+    when = f", declared {ds.clonal.declared}" if ds.clonal is not None else ""
+    return f"lineage gates: not measured (no gated lineage{when})"

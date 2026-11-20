@@ -88,6 +88,7 @@ class CaseResult:
     warnings: list[str] = field(default_factory=list)
     clonal: ClonalRow = ClonalRow("not_measured")
     stability: StabilityRow = StabilityRow("not_measured")
+    reported: dict[str, float | str] = field(default_factory=dict)
 
     def row(self) -> dict[str, Any]:
         s, c, st = self.scores, self.clonal, self.stability
@@ -117,7 +118,8 @@ class CaseResult:
             "clonal_p_m3": round(c.p_m3, 4),
             "clonal_n_clones": int(c.n_clones),
             "clonal_n_cells": int(c.n_cells),
-            "clonal_reason": c.reason,
+            "clonal_reason": c.reason or "",
+            **{k: round(v, 4) if isinstance(v, float) else v for k, v in self.reported.items()},
             "stability_status": st.status,
             "stability_lineage": round(st.lineage, 4),
             "stability_pt": round(st.pseudotime, 4),
@@ -287,6 +289,7 @@ def run_real_case(
 ) -> CaseResult:
     """Run a method on a downloaded real dataset (prep is cached) and score it."""
     from lumencell.bench.datasets import DATASETS, is_cached, local_path, truth_for
+    from lumencell.bench.real_clonal import real_clonal_row, reported_metrics
     from lumencell.engine.roots import parse_root
     from lumencell.prep.cache import PrepCache
 
@@ -297,17 +300,25 @@ def run_real_case(
     data = load(local_path(ds))
     pp = PrepParams()
     prep = PrepCache(data).run(pp)
-    ctx = InferenceContext.from_prep(data, prep, pp)
+    clonal_columns = ds.clonal.columns() if ds.clonal else ()
+    ctx = InferenceContext.from_prep(data, prep, pp, clonal_columns=clonal_columns)
     result = run_method(ctx, method, parse_root(ds.root_spec), params=params, label_key=ds.label_key)
     elapsed = time.perf_counter() - start  # stops before stability, so runtime stays comparable
-    stab = stability_row(data, prep, pp, result, ds.label_key) if stability else StabilityRow("not_measured")
+    stab = (
+        stability_row(data, prep, pp, result, ds.label_key, clonal_columns)
+        if stability
+        else StabilityRow("not_measured")
+    )
+    truth = truth_for(ds, data.obs)
+    pca = np.asarray(prep.artifacts["pca"]) if ds.clonal else None
     return CaseResult(
         case=dataset_id,
         method=method,
-        scores=score(result.pseudotime, result.membership, truth_for(ds, data.obs)),
+        scores=score(result.pseudotime, result.membership, truth),
         n_clusters=int(ctx.leiden.max()) + 1,
         runtime_seconds=elapsed,
         warnings=[w.code for w in result.warnings],
-        clonal=ClonalRow("not_applicable"),
+        clonal=real_clonal_row(ds, truth, result, pca, pp.neighbors_pcs),
         stability=stab,
+        reported=reported_metrics(ds, data.obs, result, truth, pca, pp.neighbors_pcs),
     )
