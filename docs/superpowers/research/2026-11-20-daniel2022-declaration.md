@@ -100,7 +100,8 @@ apply. (b): dropping the three state-gated candidates leaves 8, so the namespace
 (the donor value is the capture's GSM) and the dropped captures are GSM5687824, GSM5687825 and
 GSM5687826. Stated assumption, written into `reason`: one mouse per capture is assumed; the records do
 not say which mice a capture holds or whether a capture pools mice. Daniel's Methods do not say either
-(they state "animal-matched" only for the organ comparison, whose liver and lung captures are out). If
+(the one place they mention matching animals concerns the organ comparison, whose liver and lung
+captures are out, and the declaration uses no clonal section). If
 a capture pools mice, identical receptors from two mice there are one clone; if two captures share a
 mouse, that sharing is not counted.
 

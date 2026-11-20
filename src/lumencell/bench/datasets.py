@@ -109,9 +109,11 @@ class RealDataset:
             raise ValueError(f"{self.id}: sources need unique filenames")
         if not self.licence.strip():
             raise ValueError(f"{self.id}: a licence is required")
-        if self.clonal is not None and self.clonal.assessable and len(self.gated) < 2:
+        n_gated = len(set(self.gated) & set(self.lineages))
+        if self.clonal is not None and self.clonal.assessable and n_gated < 2:
             raise ValueError(
-                f"{self.id}: an assessable clonal declaration needs two gated lineages, not {len(self.gated)}"
+                f"{self.id}: an assessable clonal declaration needs two gated lineages, "
+                f"not {n_gated} distinct gated names present in lineages"
             )
 
     @property

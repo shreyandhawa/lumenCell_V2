@@ -547,3 +547,46 @@ def test_two_gated_lineages_make_an_assessable_declaration_valid() -> None:
     with pytest.raises(ValueError, match="two gated lineages"):
         RealDataset(**(two | {"gated": ["A"], "clonal": clonal}))
     assert RealDataset(**(two | {"gated": ["A"], "clonal": replace(clonal, assessable=False)})).gated == ["A"]
+
+
+def test_daniel_base_gates_score_nan_and_are_skipped_without_a_gated_lineage() -> None:
+    """Documents the gap Task 7 closes: with no gated lineage the three base gates measure nothing."""
+    from lumencell.bench.gates import check_gates
+
+    ds = DATASETS["daniel2022"]
+    obs = pd.DataFrame({ds.label_key: [ds.root_label] * 5 + ["TEx"] * 5 + ["TEx_int"] * 5})
+    truth = truth_for(ds, obs)
+    row = score(np.random.default_rng(0).random(15), np.zeros((0, 15), dtype=bool), truth).to_dict()
+    gates = load_thresholds()["real"]["daniel2022"]["gates"]
+    assert all(np.isnan(row[m]) for m in gates)
+    assert check_gates(row, gates) == [], "a PASS here measured nothing; Task 7 must show 'not measured'"
+
+
+def test_the_gated_count_is_of_distinct_names_present_in_lineages() -> None:
+    from lumencell.bench.datasets import RealClonal
+
+    clonal = RealClonal("c", "d", "t", "r", "cap", True, "ok", "2026-01-02")
+    base = _REAL_FIELDS | {
+        "sources": (Source("https://h/a", "a", 1, None),),
+        "lineages": {"A": ["r", "a"], "B": ["r", "b"]},
+        "clonal": clonal,
+    }
+    for gated in (["A", "A"], ["A", "Z"]):
+        with pytest.raises(ValueError, match="two gated lineages"):
+            RealDataset(**(base | {"gated": gated}))
+    assert RealDataset(**(base | {"gated": ["A", "B"]})).gated == ["A", "B"]
+
+
+def test_the_daniel_changelog_entry_is_dated_and_matches_the_registry() -> None:
+    from lumencell.bench.gates import THRESHOLDS
+
+    text, ds = THRESHOLDS.read_text(), DATASETS["daniel2022"]
+    date_ = ds.clonal.declared  # type: ignore[union-attr]
+    heads = re.findall(r"^# (\d{4}-\d{2}-\d{2})  Daniel 2022 declared:", text, re.M)
+    assert heads == [date_], "exactly one entry, headed with the registry's date"
+    header = re.search(r"^# ---- Daniel 2022 .*?Declared (\d{4}-\d{2}-\d{2})", text, re.M)
+    assert header is not None and header.group(1) == date_
+    entry = text[text.index(f"# {date_}  Daniel 2022 declared:") :]
+    chosen = ds.build.params["captures"]  # type: ignore[union-attr]
+    assert f"{chosen[0]}-{chosen[-1]}" in entry
+    assert f"lineage gates: not measured (no gated lineage, declared {date_})" in entry

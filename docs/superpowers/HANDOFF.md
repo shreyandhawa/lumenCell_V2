@@ -1223,13 +1223,27 @@ Fix round 1:
 - **Clonal: declared not assessable** ("fewer than two gated lineages, so no clonal comparison between lineages",
   plus the namespace assumption), so the two clonal gate lines are left out of `[real.daniel2022.gates]`. The
   outcome does not hinge on the judgement call: mapping Zander's subset to `TEx_KLR` alone gives one gated lineage.
-- **For Task 7/8 (gap, not resolved here):** with `gated = []` the three base gates score NaN and are skipped, so a
-  Daniel row passes them without measuring anything. The TOML comment and changelog say so; the README/report
-  should show it beside each Daniel row.
 - **New types:** `RealClonal` (frozen; `columns()` returns the four scoring-only columns) and
   `RealDataset.clonal` / `report_time_key` as last fields; `__post_init__` refuses an assessable declaration with
   fewer than two gated lineages. Tests pin the captures, namespace, root, lineages, gated, the whole `RealClonal`
   (reason text included), the subset rules against `CAPTURES`, and that the params pass `daniel2022._check_params`.
+
+Fix round 1:
+
+- **BINDING on Task 7 (the unmeasured-gate gap).** With `gated = []` the three base gates score NaN and
+  `check_gates` skips NaN, so a Daniel row would print PASS having measured nothing. `nan = "fail"` was refused: the
+  gates stay exactly the plan's TOML. Task 7 renders such a row as "lineage gates: not measured (no gated lineage,
+  declared 2026-11-20)", never PASS, in the CLI `bench real` line and the README cell, and must add
+  `test_a_dataset_with_no_gated_lineage_is_shown_as_not_measured` (both show that text, neither shows PASS/pass for
+  that row). This PR's `test_daniel_base_gates_score_nan_and_are_skipped_without_a_gated_lineage` documents the gap.
+  The TOML comment and the changelog entry state it.
+- **Distinct gated lineages.** `RealDataset.__post_init__` counts `len(set(gated) & set(lineages))`, so `["A", "A"]`
+  and a name absent from `lineages` do not make a declaration assessable.
+- **For Task 7/8:** after this merge `make bench-real` (`bench real` with no `--datasets`) fails "not downloaded:
+  daniel2022" until Task 8 builds the derived file. `bench fetch daniel2022` builds without asking because its
+  sources are cached, as Task 8 Step 3 expects.
+- The changelog entry is pinned by `test_the_daniel_changelog_entry_is_dated_and_matches_the_registry`; the research
+  note's namespace section no longer quotes Daniel's clonal section.
 
 ## Open questions for Shreyan
 

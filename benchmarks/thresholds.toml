@@ -54,6 +54,8 @@ terminal_share = { min = 0.80 }       # Erythroid3 cells on one inferred lineage
 # before any clone was counted and before any method ran on it. See the changelog entry of that date.
 # Declared not assessable (fewer than two gated lineages), so the two clonal gate lines are left out:
 # a result declared not assessable is not gated, and it is shown with its reason, never hidden.
+# With no gated lineage these gates score NaN and are skipped; Task 7 renders such a row as
+# "lineage gates: not measured (no gated lineage, declared 2026-11-20)", never PASS.
 [real.daniel2022.gates]
 pt_spearman_lineage = { min = 0.70 }   # existing real-data value; against state order along each gated lineage
 branch_accuracy = { min = 0.80 }       # the stricter existing value (pancreas 0.80, bone marrow 0.75)
@@ -505,3 +507,5 @@ max_drop = 0.03
 #     Clonal: not assessable, declared before any clone was counted: fewer than two gated lineages,
 #     so no clonal comparison between lineages. clonal_excess_ratio and clonal_p are left out;
 #     [real.daniel2022.clonal] keeps the synthetic mode and floor for the record.
+#     With no gated lineage these gates score NaN and are skipped; Task 7 renders such a row as
+#     "lineage gates: not measured (no gated lineage, declared 2026-11-20)", never PASS.
