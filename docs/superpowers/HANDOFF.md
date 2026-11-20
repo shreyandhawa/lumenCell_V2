@@ -25,9 +25,9 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
   of GSE125881 and builds the case-study dataset (62,167 cells, no analysis yet). Task 5b (#53, merged): the Daniel
   builder, tested on a synthetic layout only; the real derived file is not built. Task 6 (#54, merged): the Daniel
   declaration (8 chronic spleen D8/D21 captures, namespace = capture, root `TEx_prog`, no gated lineage, clonal
-  declared not assessable), before any clone was counted. Task 7 (#55, open): clonal scores and reported fields for real
+  declared not assessable), before any clone was counted. Task 7 (#55, merged): clonal scores and reported fields for real
   datasets, tested on a synthetic `fake` fixture only; a dataset with no gated lineage is shown as not measured, never
-  PASS. Next: 8; Task 12 after 7 and 11. See each task's
+  PASS. Task 8 (this PR, open): the first real run with Daniel rows, `benchmarks/results/real-2026-11-20.json`; no Daniel gate measured. Next: Task 12 after 7 and 11. See each task's
   decisions section.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
@@ -1453,7 +1453,49 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 | `pivot/48-sheih-builder` | #52 | merged (squash), phase 3 Task 11, case-study fetch and build (62,167 cells, 42,362 paired-labelled; no analysis) |
 | `pivot/49-daniel-builder` | #53 | merged (squash, 30b98c9), phase 3 Task 5b, the Daniel 2022 builder (contigs joined to cells by capture, clones called; synthetic tests only) |
 | `pivot/50-daniel-declaration` | #54 | merged (squash, fb06f05), phase 3 Task 6, the Daniel 2022 declaration before any run (subset, namespace, clone definition, truth, gates; clonal not assessable) |
-| `pivot/51-bench-real-clonal` | #55 | open, phase 3 Task 7, clonal scores and reported fields for real datasets (synthetic `fake` fixture only; Daniel not built) |
+| `pivot/51-bench-real-clonal` | #55 | merged (squash, a7d69c4), phase 3 Task 7, clonal scores and reported fields for real datasets (synthetic `fake` fixture only; Daniel not built) |
+| `pivot/52-bench-real-daniel` | #56 | open, phase 3 Task 8, the real benchmark with Daniel 2022 rows (`real-2026-11-20.json`); gates not measured, clonal not assessable |
+
+## Phase 3 Task 8 decisions and result
+
+- **Branch** `pivot/52-bench-real-daniel`, from `main` a7d69c4. Step 1: all four datasets were downloaded, so no
+  download was asked for. Step 3: `bench fetch daniel2022` built the derived file from cached sources in about
+  10 s (peak resident memory about 1.8 GB when sampled, far under the 5.5 GB estimate); no memory problem.
+- **Build shares** (`1 - join_misses / contig_barcodes`, all at or above 0.5; `tests/real` `test_the_daniel_build_joins_every_capture` passes):
+  GSM5687827 0.904, 828 0.794, 829 0.954, 830 0.855, 831 0.961, 832 0.875, 833 0.582 (lowest, D8 gp33-), 834 0.783.
+  `n_cells` 33,188, equal to Task 3's total for the kept captures (per-capture cells 1989, 5875, 2057, 8914, 2031,
+  8194, 2526, 1602). 26,714 cells carry a `clone_id`, 29,271 a `clone_id_trb`. The 0.5 was not touched.
+- **Run:** `make bench-real` exited 0 (7 real-data tests passed, then `bench real`). The results file
+  `benchmarks/results/real-2026-11-20.json` records `commit` a7d69c4, which is `main`, not a branch commit, so no
+  merge commit is needed.
+- **Daniel rows (all three methods):** `clonal_status == "not_assessable"`, `clonal_reason` starts `declared 2026-11-20`,
+  every gated lineage metric NaN and rendered "lineage gates: not measured (no gated lineage, declared
+  2026-11-20)", never PASS or FAIL. Stability ok: paga_dpt pt 0.989 / lineage 0.833, palantir 0.989 / 0.667,
+  scfates_ppt 0.990 / 1.0. Verdict level `provisional` for all three (tree_likeness 0.632); the level is never
+  `supported` because the verdict verification failed on 2026-11-17, and `provisional` reads as "not shown to be a
+  tree", not as support. Cluster counts 19 (spurious 6, 6, 2).
+- **Reported fields (not gated):** `reported_day_spearman` 0.291 (paga_dpt), 0.341 (palantir), 0.125 (scfates_ppt);
+  identical across methods: `reported_clone_recurrence` 0.0612, `reported_labelled_share_of_raw` 0.8979 (26,714 over
+  29,750, recomputed independently), `reported_n_clone_strings` 7,242, `reported_raw_clonotype_ari` 1.0,
+  `reported_trb_status` not_assessable. The ARI of 1.0 means clone_id and the 10x raw clonotype id partition the
+  jointly labelled cells identically within a capture. That is true by construction, not independent evidence:
+  the builder derives both ids from the same contigs, and among the 26,714 cells with both they map 1:1 within
+  capture. The ARI shows the clone call reproduces the 10x grouping where it labels a cell; it hides the 3,036
+  raw-labelled cells (10.2%) that fail the qualifying rule, which the labelled share (0.898) shows. Day Spearman is
+  low to moderate and is reported as is.
+- **Root sits late in every pseudotime (ungated, unexplained):** `root_pt_median` of the `TEx_prog` root cells is
+  0.70 (paga_dpt), 0.80 (palantir) and 0.984 (scfates_ppt), against 0.07-0.58 on the other datasets. With no gated
+  lineage `root_pt_excess` is NaN and no gate reads it, so "stability ok, provisional" must not be read as a
+  healthy trajectory: the root, though explicit, is not early in any method's ordering. Reported as is.
+- **Review (controller, PR #56):** `data:validate-data` on the Daniel rows: values are finite wherever a status is
+  ok (stability, tree_likeness, reported fields), shares lie in [0, 1], and the reported fields match their
+  declared definitions (labelled share and recurrence recomputed from the built file by the review seat). The real
+  build test now also checks the listed captures are the declared ones, every declared capture has cells, the
+  label/day/capture/donor columns are populated, some cells carry each clone id, and `n_cells` equals the obs count.
+- **Step 7:** pancreas, bone marrow and gastrulation metrics are identical to `real-2026-11-17.json`
+  (runtime aside). The only difference is `clonal_reason`, `null` before and `""` now (Task 7, always a string).
+- **Not assessable checks:** README `grep -c "clonal: not assessable (declared"` prints 3. Gate failures on the other
+  datasets stay failures. Nothing was re-run with other settings.
 
 ## Phase 3 Task 9 decisions and result
 
