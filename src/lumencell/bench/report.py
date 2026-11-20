@@ -8,7 +8,7 @@ from typing import Any
 from lumencell.bench.datasets import DATASETS, lineage_gates_note
 from lumencell.bench.gates import BASELINE, REPO, check_gates, load_thresholds
 
-README = REPO / "README.md"
+README = REPO / "docs" / "benchmarks.md"
 START = "<!-- bench:start -->"
 END = "<!-- bench:end -->"
 LABELS = {"paga_dpt": "PAGA + DPT", "palantir": "Palantir", "scfates_ppt": "scFates"}
