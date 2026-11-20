@@ -81,6 +81,21 @@ def test_a_stability_error_is_recorded_as_failed(
     assert repr(StabilityRow("failed", reason=row.reason)) == repr(row)
 
 
+def test_a_stability_failure_reason_is_one_escaped_line_of_bounded_length(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ds, prep, pp, result = _run(tmp_path)
+
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise ValueError("bad column 'a\x1b[31m\nb' " + "x" * 1000)
+
+    monkeypatch.setattr("lumencell.bench.runner.run_stability", boom)
+    reason = stability_row(ds, prep, pp, result, None).reason
+    assert reason is not None and reason.startswith("ValueError: ")
+    assert reason.isprintable() and "\n" not in reason and "\x1b" not in reason
+    assert len(reason) <= 300
+
+
 def test_bench_real_has_a_stability_switch() -> None:
     out = CliRunner().invoke(app, ["bench", "real", "--help"]).output
     assert "--no-stability" in out

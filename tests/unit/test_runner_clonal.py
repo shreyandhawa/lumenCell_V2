@@ -134,6 +134,18 @@ def test_an_error_is_recorded_as_failed(
     assert "no scores today" in capsys.readouterr().err
 
 
+def test_a_failure_reason_is_one_escaped_line_of_bounded_length(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*args: object, **kwargs: object) -> None:
+        raise ValueError("bad column 'a\x1b[31m\nb' " + "x" * 1000)
+
+    monkeypatch.setattr("lumencell.clonal.scores.score_clonal", boom)
+    truth = _clone_truth()
+    row = clonal_row(truth, _result(truth.membership(), truth), _pca(truth.n_obs), 10)
+    assert row.reason is not None and row.reason.startswith("ValueError: ")
+    assert row.reason.isprintable() and "\n" not in row.reason and "\x1b" not in row.reason
+    assert len(row.reason) <= 300
+
+
 def test_the_report_says_the_clonal_gate_is_not_a_branch_gate() -> None:
     assert "not a branch gate" in render()
 

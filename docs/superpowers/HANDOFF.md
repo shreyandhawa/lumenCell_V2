@@ -24,7 +24,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
     is provisional for all three methods (`benchmarks/results/real-2026-11-20.json`).
   - **Sheih 2020 case study:** per patient, 8 weak and 4 provisional method runs, none supported, 4 passes of C5
     (`benchmarks/case_studies/results/sheih2020-2026-11-20.json`; write-up `docs/case-studies/sheih-2020.md`).
-  - **Task 14** (this PR): the security review, S11 to S20 (S11, S12, S13 and S15 fixed test-first, the rest recorded), and the
+  - **Task 14** (this PR): the security review, S11 to S24 (S11, S12, S13, S15 and S21 fixed test-first, the rest recorded), and the
     Done When commands run on this branch (see "Done When (phase 3)"). No recorded number changed.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
@@ -1417,6 +1417,10 @@ user's file.
 | S18 | Info | `cli.py` `bench_fetch` | A dataset whose sources are all downloaded is built without asking (the case study and Daniel, once their files are cached). | Recorded, acceptable: no download happens, the build reads only sources whose size and SHA-256 are re-checked and writes one hashed-name file into the datasets directory; the confirmation exists for the download (`test_bench_fetch_builds_without_asking_when_only_the_derived_file_is_missing`). Any missing source still stops at the prompt. |
 | S19 | Info | `benchmarks/inspection/*.py` | The scripts print column names, label values and tar member names raw to the terminal. A changed upstream file could carry terminal escape sequences. The receptor values are withheld by name and never printed. | Recorded, no change: the inputs are the checksum-pinned files and the runs are done (their output is in the research notes); the scripts take no input that is not a pinned download. They run as `python -I`, read in memory and write nothing (`test_the_inspection_writes_nothing`, `test_the_format_script_writes_nothing`). |
 | S20 | Info | `benchmarks/case_studies/sheih2020.py` `--out`, `--workdir`; `LUMENCELL_DATASETS_DIR` | The output path, the work directory and the datasets directory are written as given, as S3 and S8 record. `--out`'s parent is created when the report is written, after the 14-minute run, so an unwritable path fails late (loudly, with the traceback). A killed process can leave a hidden `.download-*` directory or `.tmp.h5ad` file in the datasets directory. | Recorded, no change: they are set by whoever runs the script, nothing derived from file content reaches them (unit files are named by a hash of the patient, `test_unit_files_are_named_by_hash`), the leftover temp names are never accepted by `is_cached` (a derived file is named by its build hash), and a failed or cancelled build removes its own temp (`test_a_failed_build_leaves_no_derived_file`, `test_a_failed_replace_leaves_no_temp_unit_file`). |
+| S21 | Low | `bench/runner.py` `clonal_row`, `stability_row` | (b) A failed row's `reason` kept the raw `Class: message` and reached the results JSON as `clonal_reason` / `stability_reason`. The message can carry a name from the file, with control characters and no length bound. Same class as S12. | Fixed: wrapped in `safe_text` (one printable line, at most 300 characters). Tests: `test_a_failure_reason_is_one_escaped_line_of_bounded_length` and `test_a_stability_failure_reason_is_one_escaped_line_of_bounded_length`. No recorded row has a free-text reason (they are constants or empty), so the committed results are unchanged. |
+| S22 | Info | `bench/case_study.py`, `bench/runner.py` stderr | The raw exception text is also printed to stderr (the terminal) when a method, the clonal scoring or the stability run fails. Same class as S19. | Recorded, no change: the inputs are the checksum-pinned files, and the text goes to the terminal of whoever runs the benchmark, not to a stored or served file. |
+| S23 | Info | `bench/download.py` `is_downloaded`, `fetch`, `local_path` | `is_downloaded` checks the size only, so a cached non-build source (the h5ad files) of the right size is trusted without a checksum on `fetch` and `local_path`. A build re-checks its sources' checksums. | Recorded, no change: the cache is the user's own datasets directory (S3, S8), and a file there is already the user's to alter; the checksum is verified when the file is downloaded. |
+| S24 | Info | `bench/download.py` `_open` | `_open` has a per-read 60 s timeout but no overall deadline. S13 bounds the bytes read, not the time, so a host that sends one byte a minute holds the fetch open. | Recorded, no change: a fetch is started by hand (`bench fetch`, with its confirmation) and can be interrupted; the size bound still holds. |
 
 Checked and found sound, no change:
 - Tar member names: `read_members` compares a name to the wanted set and never uses it as a path; nothing is extracted (`test_tar_members_are_read_in_memory`), and its errors never carry a name (`test_error_messages_never_carry_member_names`). The wanted names are constants in the builders. A wanted member that is not a regular file is refused. The tar is read fully into memory, bounded by the pinned size of the archive.
@@ -1434,7 +1438,7 @@ changed to make any of them pass. All pass.
 
 | Command | Exit | Output | Result |
 |---|---|---|---|
-| `make ci; echo $?` | `0` | ruff and mypy passed; `1420 passed, 43 deselected, 3 warnings in 364.17s`; web `36 passed`; web-e2e `1 passed` (a first run failed mypy on the new `listable` signature, fixed before the commit) | PASS |
+| `make ci; echo $?` | `0` | ruff and mypy passed; `1425 passed, 43 deselected, 3 warnings in 337.80s`; web `36 passed`; web-e2e `1 passed` (run on the fix-round head) | PASS |
 | `uv run pytest tests/unit/test_datasets.py tests/unit/test_daniel2022.py -q; echo $?` | `0` | `102 passed in 1.63s` | PASS |
 | the declaration-before-first-run command (Daniel) | `0` | declaration fb06f05 is an ancestor of the first results commit db190e5 and a different commit | PASS |
 | the `real-*.json` Daniel rows command | n/a | `benchmarks/results/real-2026-11-20.json ['paga_dpt', 'palantir', 'scfates_ppt']` | PASS |
@@ -1444,7 +1448,7 @@ changed to make any of them pass. All pass.
 | `uv run pytest tests/unit/test_real_clonal.py -q -k not_assessable; echo $?` | `0` | `3 passed, 34 deselected in 7.49s` | PASS |
 | the declaration-before-analysis command (case study) | `0` | declaration 5ef3151 is an ancestor of the first case-study results commit ebeba6d and a different commit | PASS |
 | `uv run pytest tests/unit/test_case_study.py tests/unit/test_case_study_writeup.py -q; echo $?` | `0` | `60 passed in 20.36s` (this PR adds one test to `test_case_study.py`; the `make ci` run above includes it) | PASS |
-| the plan's grep for this file's phase 3 security heading | n/a | one line, 1400, the heading of the section above; it lists S11 to S20, each fixed or recorded | PASS |
+| the plan's grep for this file's phase 3 security heading | n/a | one line, 1400, the heading of the section above; it lists S11 to S24, each fixed or recorded | PASS |
 
 The Daniel and case-study rows are the plan's commands run from this branch; the two ordering commands read git history, which this PR does not change.
 
@@ -1506,7 +1510,7 @@ The Daniel and case-study rows are the plan's commands run from this branch; the
 | `pivot/52-bench-real-daniel` | #56 | merged, phase 3 Task 8, the real benchmark with Daniel 2022 rows (`real-2026-11-20.json`); gates not measured, clonal not assessable |
 | `pivot/53-case-study-numbers` | #57 | merged (merge commit, 89c8d78), phase 3 Task 12, case-study numbers per patient for all three methods with a pooled diagnostic; the recorded commit 5b4f83f is on `main` |
 | `pivot/54-case-study-writeup` | #58 | merged, phase 3 Task 13, the Sheih 2020 write-up from its committed numbers |
-| `pivot/55-phase3-security` | #59 | open, phase 3 Task 14, the security review (S11 to S20) and the Done When commands for phase 3 |
+| `pivot/55-phase3-security` | #59 | open, phase 3 Task 14, the security review (S11 to S24) and the Done When commands for phase 3 |
 
 ## Phase 3 Task 8 decisions and result
 
