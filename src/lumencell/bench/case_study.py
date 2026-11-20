@@ -290,7 +290,9 @@ def _cell(v: Any) -> str:
 
 
 def _p(v: Any) -> str:
-    return MISSING if v is None else f"{v:.3g}"
+    if v is None or not np.isfinite(v):
+        return MISSING
+    return f"{v:.3g}"
 
 
 def _table(header: Sequence[str], rows: Sequence[Sequence[str]]) -> list[str]:
@@ -448,6 +450,30 @@ def _cell_cycle_table(runs: list[tuple[str, str, dict[str, Any]]]) -> list[str]:
     return _table(("Patient", "Method", "Cell-cycle status", "Dataset share cycling", "Warnings"), rows)
 
 
+def failed_methods(report: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """(patient, method, exception class name) for every unit or pooled method that raised.
+
+    The class name only: the raw message (in the JSON, for diagnosis) may carry paths.
+    """
+    return [
+        (u, meth, str(m["error"]).split(":", 1)[0])
+        for pooled in (False, True)
+        for u, meth, m in _runs(report, pooled)
+        if m.get("error")
+    ]
+
+
+def _failed_table(runs: list[tuple[str, str, dict[str, Any]]]) -> list[str]:
+    rows = [
+        [_cell(u), _cell(meth), _cell(str(m["error"]).split(":", 1)[0])]
+        for u, meth, m in runs
+        if m.get("error")
+    ]
+    if not rows:
+        return []
+    return ["", "#### Failed methods", "", *_table(("Patient", "Method", "Exception"), rows)]
+
+
 def _footnote() -> list[str]:
     if constants.VERDICT_VERIFIED:
         return []
@@ -478,6 +504,7 @@ def _section(heading: str, runs: list[tuple[str, str, dict[str, Any]]], pooled: 
         "#### Cell cycle",
         "",
         *_cell_cycle_table(runs),
+        *_failed_table(runs),
     ]
 
 

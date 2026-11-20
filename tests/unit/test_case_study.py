@@ -400,3 +400,382 @@ def test_replace_section_rewrites_only_between_the_markers(tmp_path: Path) -> No
     assert doc.read_text(encoding="utf-8") == "head\n<!-- s -->\nnew\n<!-- e -->\ntail\n"
     with pytest.raises(ValueError):
         replace_section(doc, "x\n", "<!-- case-study:start -->", "<!-- case-study:end -->")
+
+
+# ---- fix round 1: the wiring, the tables and the failure path --------------------------
+
+
+def _load_script() -> Any:
+    import importlib.util
+
+    path = Path(case_study.__file__).parents[3] / "benchmarks" / "case_studies" / "sheih2020.py"
+    spec = importlib.util.spec_from_file_location("sheih2020_script", path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _header_after(text: str, heading: str) -> list[str]:
+    lines = text[text.index(heading) :].splitlines()
+    line = next(line for line in lines if line.startswith("|"))
+    return [c.strip() for c in line.strip("|").split("|")]
+
+
+def _copy(obj: Any) -> Any:
+    return json.loads(json.dumps(obj))
+
+
+def test_the_context_gets_the_clonal_columns_and_hides_them_from_methods(
+    monkeypatch: pytest.MonkeyPatch, data600: Path, tmp_path: Path
+) -> None:
+    seen: dict[str, Any] = {"columns": [], "ctx": []}
+    real_from_prep = case_study.InferenceContext.from_prep
+    real_run_method = case_study.run_method
+
+    def spy_from_prep(ds: Any, prep: Any, params: Any, clonal_columns: Any = ()) -> Any:
+        seen["columns"].append(list(clonal_columns))
+        return real_from_prep(ds, prep, params, clonal_columns=clonal_columns)
+
+    def spy_method(ctx: Any, *a: Any, **k: Any) -> Any:
+        seen["ctx"].append(ctx)
+        return real_run_method(ctx, *a, **k)
+
+    monkeypatch.setattr(case_study.InferenceContext, "from_prep", staticmethod(spy_from_prep))
+    monkeypatch.setattr(case_study, "run_method", spy_method)
+    _run(data600, tmp_path, ["paga_dpt"])
+    assert seen["columns"] == [list(settings_columns(SETTINGS))] and seen["columns"][0]
+    (ctx,) = seen["ctx"]
+    assert "clone_id" not in ctx.obs.columns and "donor" not in ctx.obs.columns
+
+
+def test_settings_only_check_settings_rejects_raise_before_any_method_runs(
+    monkeypatch: pytest.MonkeyPatch, data600: Path, tmp_path: Path
+) -> None:
+    def no_method(*a: Any, **k: Any) -> Any:
+        raise AssertionError("a method ran")
+
+    monkeypatch.setattr(case_study, "run_method", no_method)
+    same = ClonalSettings(clone_key="clone_id", donor_key="clone_id")
+    with pytest.raises(ValueError, match="must be different"):
+        run_case_study(data600, same, ROOT, ["paga_dpt"], include_stability=False, cache_root=tmp_path)
+    adata = ad.read_h5ad(data600)
+    adata.obs["clone_id"] = pd.Categorical([None] * adata.n_obs, categories=["c"])
+    empty = tmp_path / "empty.h5ad"
+    adata.write_h5ad(empty)
+    with pytest.raises(ValueError, match="no clone label"):
+        run_case_study(empty, SETTINGS, ROOT, ["paga_dpt"], include_stability=False, cache_root=tmp_path)
+
+
+def test_the_verdict_gets_the_lineage_count_and_tree_likeness_the_paga_artifacts_in_order(
+    monkeypatch: pytest.MonkeyPatch, data600: Path, tmp_path: Path
+) -> None:
+    calls: dict[str, Any] = {"evidence": [], "tree": [], "results": [], "preps": []}
+    real_run_method = case_study.run_method
+    real_evidence = case_study.clonal_evidence
+    real_tree = case_study.tree_likeness
+    real_cache_run = case_study.PrepCache.run
+
+    def spy_method(*a: Any, **k: Any) -> Any:
+        calls["results"].append(real_run_method(*a, **k))
+        return calls["results"][-1]
+
+    def spy_evidence(agreement: Any, n: Any) -> Any:
+        calls["evidence"].append(n)
+        return real_evidence(agreement, n)
+
+    def spy_tree(*args: Any) -> Any:
+        calls["tree"].append(args)
+        return real_tree(*args)
+
+    def spy_cache_run(self: Any, params: Any) -> Any:
+        calls["preps"].append(real_cache_run(self, params))
+        return calls["preps"][-1]
+
+    monkeypatch.setattr(case_study, "run_method", spy_method)
+    monkeypatch.setattr(case_study, "clonal_evidence", spy_evidence)
+    monkeypatch.setattr(case_study, "tree_likeness", spy_tree)
+    monkeypatch.setattr(case_study.PrepCache, "run", spy_cache_run)
+    _run(data600, tmp_path, ["paga_dpt"])
+    (result,), (prep,) = calls["results"], calls["preps"]
+    assert calls["evidence"] == [len(result.lineages)] and calls["evidence"][0] >= 2
+    (args,) = calls["tree"]
+    assert args[0] is prep.artifacts["paga_connectivities"]
+    assert args[1] is prep.artifacts["paga_tree"]
+
+
+def test_a_stability_error_that_is_not_a_stability_failure_propagates(
+    monkeypatch: pytest.MonkeyPatch, data600: Path, tmp_path: Path
+) -> None:
+    def boom(*a: Any, **k: Any) -> Any:
+        raise RuntimeError("not a StabilityError")
+
+    monkeypatch.setattr(case_study, "run_stability", boom)
+    with pytest.raises(RuntimeError, match="not a StabilityError"):
+        _run(data600, tmp_path, ["paga_dpt"], include_stability=True)
+
+
+@pytest.fixture(scope="module")
+def failed_report(data600: Path, tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
+    """paga_dpt runs; palantir raises, and the others still report."""
+    real_run_method = case_study.run_method
+
+    def run_method_failing(ctx: Any, method: str, root: Any) -> Any:
+        if method == "palantir":
+            raise RuntimeError("boom /private/secret/path")
+        return real_run_method(ctx, method, root)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(case_study, "run_method", run_method_failing)
+    try:
+        out = _run(data600, tmp_path_factory.mktemp("cachefail"), ["paga_dpt", "palantir"])
+    finally:
+        mp.undo()
+    return {
+        "declaration": {},
+        "units": {"d0": _copy(out), "d1": _copy(out)},
+        "pooled_diagnostic": _copy(out),
+    }
+
+
+def test_a_failed_method_is_recorded_and_the_others_still_report(failed_report: dict[str, Any]) -> None:
+    methods = failed_report["units"]["d0"]["methods"]
+    assert methods["palantir"]["error"] == "RuntimeError: boom /private/secret/path"
+    assert methods["palantir"]["clonal"] is None and methods["palantir"]["stability"] is None
+    assert methods["paga_dpt"]["clonal"] is not None and "error" not in methods["paga_dpt"]
+    assert case_study.failed_methods(failed_report) == [
+        ("d0", "palantir", "RuntimeError"),
+        ("d1", "palantir", "RuntimeError"),
+        ("pooled", "palantir", "RuntimeError"),
+    ]
+
+
+def test_a_failed_method_is_shown_in_the_tables_without_its_message(failed_report: dict[str, Any]) -> None:
+    text = render_markdown(failed_report)
+    per = _table_after(text, "Per patient (primary)")
+    pooled = _table_after(text, "Pooled diagnostic (not the headline")
+    assert {len(r) for r in per} == {len(case_study.ROW_HEADER)}
+    assert {len(r) for r in pooled} == {len(case_study.ROW_HEADER) + 1}
+    ok, failed = (next(r for r in per if r[0] == "d0" and r[1] == m) for m in ("paga_dpt", "palantir"))
+    assert failed[3] == "failed" and ok[3] != "failed"
+    assert [c for c in failed[5:] if c != "–"] == []
+    failed_rows = _table_after(text, "#### Failed methods")
+    assert failed_rows == [["d0", "palantir", "RuntimeError"], ["d1", "palantir", "RuntimeError"]]
+    assert text.count("#### Failed methods") == 2  # per patient and pooled, each its own
+    assert "boom" not in text and "secret" not in text
+    coupling = _table_after(text, "#### Lineage-pair coupling")
+    assert coupling and all(r[1] == "paga_dpt" for r in coupling)
+    stability = _table_after(text, "#### Stability")
+    assert next(r for r in stability if r[:2] == ["d0", "palantir"])[:3] == ["d0", "palantir", "not measured"]
+
+
+def test_the_script_writes_the_report_then_exits_non_zero_when_a_method_failed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failed_report: dict[str, Any]
+) -> None:
+    script = _load_script()
+    written: list[Path] = []
+    clean = {"declaration": {}, "units": {"d0": {"methods": {"paga_dpt": {}}}}, "pooled_diagnostic": None}
+    monkeypatch.setattr(script, "is_cached", lambda item: True)
+    monkeypatch.setattr(script, "local_path", lambda item: tmp_path / "x.h5ad")
+    monkeypatch.setattr(script, "write_report", lambda report, out, commit: written.append(out))
+    monkeypatch.setattr(
+        "sys.argv", ["sheih2020.py", "--out", str(tmp_path / "r.json"), "--workdir", str(tmp_path)]
+    )
+
+    monkeypatch.setattr(script, "run_units", lambda *a, **k: failed_report)
+    assert script.main() == 1
+    assert written == [tmp_path / "r.json"]  # written first, then the failure is reported
+
+    monkeypatch.setattr(script, "run_units", lambda *a, **k: clean)
+    assert script.main() == 0
+
+
+def _stub_run_case_study(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Path, Any]]:
+    calls: list[tuple[Path, Any]] = []
+
+    def stub(
+        path: Path, settings: Any, root: Any, methods: Any, include_stability: bool, *, cache_root: Any = None
+    ) -> Any:
+        calls.append((path, cache_root))
+        return {"methods": {}}
+
+    monkeypatch.setattr(case_study, "run_case_study", stub)
+    return calls
+
+
+def test_the_pooled_run_happens_only_when_declared_and_caches_live_under_the_workdir(
+    monkeypatch: pytest.MonkeyPatch, data600: Path, tmp_path: Path
+) -> None:
+    calls = _stub_run_case_study(monkeypatch)
+    decl = CaseStudyDeclaration(SETTINGS, ROOT, ["paga_dpt"], "donor", pooled_diagnostic=False)
+    out = run_units(data600, decl, tmp_path / "w1")
+    assert out["pooled_diagnostic"] is None and len(calls) == 3
+    assert all(c != data600 for c, _ in calls)
+    assert {cache for _, cache in calls} == {tmp_path / "w1" / "cache"}
+
+    calls.clear()
+    pooled = CaseStudyDeclaration(SETTINGS, ROOT, ["paga_dpt"], "donor", pooled_diagnostic=True)
+    out = run_units(data600, pooled, tmp_path / "w2")
+    assert out["pooled_diagnostic"] == {"methods": {}} and len(calls) == 4
+    assert calls[-1] == (data600, tmp_path / "w2" / "cache")
+
+
+def test_the_report_carries_the_declaration_as_written(
+    monkeypatch: pytest.MonkeyPatch, data600: Path, tmp_path: Path
+) -> None:
+    _stub_run_case_study(monkeypatch)
+    section = {
+        "declared": "2026-11-19",
+        "methods": ["paga_dpt"],
+        "root": "cluster:timepoint=t0",
+        "clone_key": "clone_id",
+        "donor_key": "donor",
+        "strata_keys": ["timepoint"],
+        "unit_key": "donor",
+        "pooled_diagnostic": False,
+        "chains": "paired",
+    }
+    decl = load_declaration("t", {"case_study": {"t": section}})
+    assert run_units(data600, decl, tmp_path / "w")["declaration"] == section
+    built = CaseStudyDeclaration(SETTINGS, ROOT, ["paga_dpt"], "donor", pooled_diagnostic=False)
+    record = run_units(data600, built, tmp_path / "w3")["declaration"]
+    assert record == {
+        **SETTINGS.model_dump(mode="json"),
+        "root": "cluster:timepoint=t0",
+        "methods": ["paga_dpt"],
+        "unit_key": "donor",
+        "pooled_diagnostic": False,
+    }
+
+
+def test_the_sheih_declaration_is_a_single_donor_false_namespace() -> None:
+    assert load_declaration("sheih2020").settings.single_donor is False
+
+
+def test_a_failed_replace_leaves_the_old_report_and_no_temp_file(
+    monkeypatch: pytest.MonkeyPatch, report: dict[str, Any], tmp_path: Path
+) -> None:
+    target = tmp_path / "r.json"
+    target.write_text("old", encoding="utf-8")
+
+    def broken(*a: Any, **k: Any) -> None:
+        raise OSError("disk")
+
+    monkeypatch.setattr(case_study.os, "replace", broken)
+    with pytest.raises(OSError, match="disk"):
+        write_report(report, target, "abc1234")
+    assert target.read_text(encoding="utf-8") == "old"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["r.json"]
+
+
+def test_a_failed_replace_leaves_no_temp_unit_file(
+    monkeypatch: pytest.MonkeyPatch, data600: Path, tmp_path: Path
+) -> None:
+    def broken(*a: Any, **k: Any) -> None:
+        raise OSError("disk")
+
+    monkeypatch.setattr(case_study.os, "replace", broken)
+    with pytest.raises(OSError, match="disk"):
+        split_units(data600, "donor", tmp_path / "w")
+    assert list((tmp_path / "w").iterdir()) == []
+
+
+@pytest.mark.parametrize("only", ["<!-- s -->", "<!-- e -->"])
+def test_replace_section_needs_both_markers_and_leaves_the_file_alone(tmp_path: Path, only: str) -> None:
+    doc = tmp_path / "doc.md"
+    doc.write_text(f"head\n{only}\nold\ntail\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        replace_section(doc, "new\n", "<!-- s -->", "<!-- e -->")
+    assert doc.read_text(encoding="utf-8") == f"head\n{only}\nold\ntail\n"
+
+
+@pytest.mark.parametrize("v", [None, math.nan, math.inf, -math.inf, np.float64("nan")])
+def test_a_missing_or_non_finite_value_is_a_dash(v: Any) -> None:
+    assert case_study._cell(v) == "–" and case_study._p(v) == "–"
+    assert case_study._cell(0.5) == "0.500" and case_study._p(0.0123456) == "0.0123"
+    assert case_study._cell(True) == "yes" and case_study._cell(7) == "7"
+
+
+def test_the_pooled_table_has_a_donors_column_and_every_row_matches_its_header(units: dict[str, Any]) -> None:
+    text = render_markdown(units)
+    per_head = _header_after(text, "Per patient (primary)")
+    pooled_head = _header_after(text, "Pooled diagnostic (not the headline")
+    assert "Donors scored" not in per_head and pooled_head[8] == "Donors scored"
+    assert len(pooled_head) == len(per_head) + 1
+    (pooled_row,) = _table_after(text, "Pooled diagnostic (not the headline")
+    assert len(pooled_row) == len(pooled_head) and pooled_row[8] == "3"
+    assert {len(r) for r in _table_after(text, "Per patient (primary)")} == {len(per_head)}
+
+
+def test_two_methods_render_the_whole_patient_by_method_product(report: dict[str, Any]) -> None:
+    m = report["methods"]["paga_dpt"]
+    both = {"methods": {"a": _copy(m), "b": _copy(m)}}
+    text = render_markdown({"units": {"p1": both, "p2": _copy(both)}, "pooled_diagnostic": None})
+    rows = _table_after(text, "Per patient (primary)")
+    assert [(r[0], r[1]) for r in rows] == [("p1", "a"), ("p1", "b"), ("p2", "a"), ("p2", "b")]
+
+
+def test_coupling_stability_and_cell_cycle_tables_show_the_given_numbers(report: dict[str, Any]) -> None:
+    base = _copy(report["methods"]["paga_dpt"])
+    base["clonal"]["coupling"] = [{"a": 0, "b": 2, "observed": 0.25, "z": -1.5, "p_adj": 0.5}]
+
+    def rep(**k: Any) -> dict[str, Any]:
+        return {
+            "replicates": [],
+            "r": 3,
+            "share_matched_median": 0.5,
+            "share_matched_min": 0.25,
+            "spearman_median": 0.75,
+            "spearman_min": 0.125,
+            "mean_jaccard_median": 0.625,
+            "mean_jaccard_min": 0.375,
+            "n_lineages_min": 4,
+            **k,
+        }
+
+    runs = {"a": base, "b": _copy(base), "c": _copy(base)}
+    runs["a"]["stability"] = {
+        "status": "ok",
+        "reseeds": rep(replicates=[{"error": None}, {"error": "x"}, {"error": None}]),
+        "subsamples": None,
+    }
+    runs["b"]["stability"] = None
+    runs["c"]["cell_cycle"] = {
+        "status": "scored",
+        "dataset_share": 0.125,
+        "warnings": [{"message": "one"}, {"message": "two"}],
+    }
+    runs["c"]["stability"] = None
+    text = render_markdown({"units": {"p": {"methods": runs}}, "pooled_diagnostic": None})
+
+    coupling = _table_after(text, "#### Lineage-pair coupling")
+    assert coupling[0] == ["p", "a", "0", "2", "0.250", "-1.500", "0.5"] and len(coupling) == 3
+    stability = _table_after(text, "#### Stability")
+    assert stability[0] == [
+        "p",
+        "a",
+        "reseeds",
+        "3",
+        "1",
+        "0.500",
+        "0.250",
+        "0.750",
+        "0.125",
+        "0.625",
+        "0.375",
+        "4",
+    ]
+    assert stability[1] == ["p", "a", "subsamples: ok"] + ["–"] * 9
+    assert stability[2] == ["p", "b", "not measured"] + ["–"] * 9
+    cycle = _table_after(text, "#### Cell cycle")
+    assert cycle[2] == ["p", "c", "scored", "0.125", "one; two"]
+
+
+def test_the_verdict_footnote_comes_once_after_the_patients_and_before_the_pooled_run(
+    units: dict[str, Any],
+) -> None:
+    text = render_markdown(units)
+    note = "Verdict: the rule failed its verification on"
+    assert text.count(note) == 1
+    assert text.index("Per patient (primary)") < text.index(note) < text.index("Pooled diagnostic")
+    assert text.index(note) < text.index("#### Lineage-pair coupling")

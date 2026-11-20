@@ -9,17 +9,18 @@ Run as: uv run python benchmarks/case_studies/sheih2020.py [--out PATH] [--workd
 
 import argparse
 import subprocess
+import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-from lumencell.bench.case_study import load_declaration, run_units, write_report
+from lumencell.bench.case_study import failed_methods, load_declaration, run_units, write_report
 from lumencell.bench.datasets import CASE_STUDIES
 from lumencell.bench.download import is_cached, local_path
 from lumencell.bench.gates import REPO
 
 
-def main() -> None:
+def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, default=None, help="results file (default: dated, under results/)")
     ap.add_argument(
@@ -44,7 +45,11 @@ def main() -> None:
             report = run_units(local_path(item), decl, Path(tmp))
     write_report(report, out, commit)
     print(f"wrote {out}")
+    failed = failed_methods(report)
+    for unit, method, exc in failed:
+        print(f"FAILED: {unit} {method} ({exc})", file=sys.stderr)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
