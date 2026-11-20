@@ -20,7 +20,7 @@ stale lines are corrected once, by phase 1's handoff-corrections task.
 - **Phase 3 is under way** (base 35ac459). Merged: Task 1 (#43, multi-file sources, licences, build step), Task 2 (#44,
   the nine Daniel 2022 GEO files, sizes and SHA-256), Task 3 (#48, Daniel sample records and metadata; 23 captures),
   Task 4 (#47, clone calling from 10x contigs) and Task 9 (#45, Sheih 2020 joins at 0.99, so the Cao branch is not
-  taken). Task 10 (`pivot/47-sheih-declaration`, PR open) declares `[case_study.sheih2020]` before any analysis.
+  taken). Task 10 (#51, open) declares `[case_study.sheih2020]` before any analysis.
   Next: Task 5a, then 5b, 6, 7, 8; Task 11 after Tasks 4 and 10. See each task's decisions section.
 - **Spec:** approved and merged in PR #5 (142a788):
   [specs/2026-11-12-tcell-clonotypes-design.md](specs/2026-11-12-tcell-clonotypes-design.md),
@@ -1307,7 +1307,7 @@ needs the pre-declared C1/C2 redesign recorded as follow-up work; none is planne
 | `pivot/43-daniel-metadata` | #48 | merged (squash), phase 3 Task 3, Daniel 2022 sample records and metadata inspected without touching clones |
 | `pivot/44-contig-clones` | #47 | merged (squash, 6932b67), phase 3 Task 4, paired and TRB-only clone calling from 10x contigs |
 | `pivot/45-phase2-close` | #49 | merged (squash), closes phase 2: Done When recorded on 570fb5e, final state |
-| `pivot/47-sheih-declaration` | #TBD | open, phase 3 Task 10, case-study declaration (clone definition, namespace, strata, root) before any analysis |
+| `pivot/47-sheih-declaration` | #51 | open, phase 3 Task 10, case-study declaration (clone definition, namespace, strata, root) before any analysis |
 
 ## Phase 3 Task 9 decisions and result
 
