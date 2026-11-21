@@ -46,7 +46,7 @@ export function GenePanel({ run }: { run: T.TrajectoryRun }) {
       aria-label="Gene trends"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 8, transition: { duration: 0.15 } }}
+      exit={{ opacity: 0, y: 8, transition: { duration: 0.15, ease: [0.23, 1, 0.32, 1] } }}
       transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
       className="rounded-xl bg-panel pt-3 pb-2"
     >
@@ -80,15 +80,15 @@ export function GenePanel({ run }: { run: T.TrajectoryRun }) {
                   <line x1={0} x2={100} y1={H - 2} y2={H - 2} className="stroke-line" vectorEffect="non-scaling-stroke" />
                   {/* the focused lineage last, so it draws on top */}
                   {[...series.filter((s) => s.id !== focus), ...series.filter((s) => s.id === focus)].map((s) => (
-                      <path
-                        key={s.id}
-                        d={path(s.x.map((xv, i) => [xv, s.y[i] ?? null])) ?? ""}
-                        fill="none"
-                        vectorEffect="non-scaling-stroke"
-                        strokeWidth={s.id === focus ? 2 : 1.25}
-                        className={s.id === focus ? "stroke-accent" : "stroke-ink-muted"}
-                      />
-                    ))}
+                    <path
+                      key={s.id}
+                      d={path(s.x.map((xv, i) => [xv, s.y[i] ?? null])) ?? ""}
+                      fill="none"
+                      vectorEffect="non-scaling-stroke"
+                      strokeWidth={s.id === focus ? 2 : 1.25}
+                      className={s.id === focus ? "stroke-accent" : "stroke-ink-muted"}
+                    />
+                  ))}
                 </svg>
                 <span
                   className="font-mono text-xs text-ink"
@@ -101,6 +101,7 @@ export function GenePanel({ run }: { run: T.TrajectoryRun }) {
           })}
         </ul>
       )}
+      {results.some((r) => r.isError) && <p className="px-3 pb-1 text-xs text-ink-muted">Some lineages' trends could not be loaded.</p>}
     </motion.section>
   );
 }

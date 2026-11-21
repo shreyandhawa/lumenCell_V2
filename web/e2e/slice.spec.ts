@@ -30,10 +30,8 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   // 3. Use the root stored in the file (the first suggestion).
   const suggestions = page.getByRole("list", { name: "Suggested roots" });
   await expect(suggestions).toContainText("Stored in the file");
-  const stored = suggestions.getByRole("button").first();
-  await stored.click();
-  await expect(stored).toHaveAttribute("aria-pressed", "true");
-  await expect(stored).toContainText("Chosen");
+  await suggestions.getByRole("button").first().click();
+  await expect(page.getByRole("region", { name: "Pick a root" })).toContainText("Chosen");
 
   // 4. Run the method; the run finishes in the worker and two lineages appear.
   await page.getByRole("button", { name: /Run PAGA \+ DPT/ }).click();

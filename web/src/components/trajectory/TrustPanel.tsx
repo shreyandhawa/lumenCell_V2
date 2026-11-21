@@ -27,13 +27,14 @@ function list(items: string[]): string {
 
 /** The verdict in plain words: is it a real failure or a cap, and which checks it reads. */
 function explain(ts: T.TreeSupport): string {
-  const waiting = ts.checks.some((c) => c.state === "pending" || c.state === "unavailable");
   const lead =
     ts.level === "weak" || ts.level === "not_supported"
       ? "A real failure, not a cap."
-      : waiting
+      : ts.checks.some((c) => c.state === "pending")
         ? "Some checks are still running."
-        : "Capped: the verdict rule failed its check on fresh seeds, so no run is shown as supported.";
+        : ts.checks.some((c) => c.state === "unavailable")
+          ? "Some checks could not be measured."
+          : "Capped: the verdict rule failed its own check on fresh seeds.";
   const read = ts.checks.filter((c) => c.state !== "excluded" && c.state !== "not_applicable");
   const scope =
     read.length < ts.checks.length
@@ -70,7 +71,7 @@ function checkValue(c: T.SupportCheck, clonal: T.ClonalAgreement | null): string
 
 function Checks({ ts, clonal }: { ts: T.TreeSupport; clonal: T.ClonalAgreement | null }) {
   return (
-    <ul className="space-y-3" aria-label="Checks">
+    <ul className="space-y-2" aria-label="Checks">
       {ts.checks.map((c, i) => {
         const Icon = c.state in STATE_ICON ? STATE_ICON[c.state as keyof typeof STATE_ICON] : Minus;
         const afterExcluded = ts.checks.slice(0, i).some((x) => x.state === "excluded");
@@ -98,6 +99,9 @@ function NullLine({ score }: { score: T.ClonalScore }) {
   ].sort((a, b) => a.v - b.v);
   const max = Math.max(0.5, ...marks.map((m) => m.v));
   const near = (i: number, j: number) => marks[j] !== undefined && Math.abs(marks[i]!.v - marks[j]!.v) / max < 0.08;
+  // Close pairs sit side by side; a third close mark drops to a second row; ends stay inside.
+  const anchor = (i: number, f: number) =>
+    f > 0.92 ? "-100%" : f < 0.08 ? "0%" : near(i, i + 1) ? "-100%" : near(i, i - 1) ? "0%" : "-50%";
   return (
     <div className="relative mb-4 h-9 font-mono text-2xs text-ink-muted" aria-hidden>
       <span className="absolute top-0 left-0">0</span>
@@ -105,7 +109,7 @@ function NullLine({ score }: { score: T.ClonalScore }) {
       <div className="absolute top-[13px] right-0 left-0 h-px bg-line" />
       {marks.map((m, i) => {
         const x = `${(m.v / max) * 100}%`;
-        const anchor = near(i, i + 1) ? "-100%" : near(i, i - 1) ? "0%" : "-50%";
+        const row = near(i, i - 1) && near(i - 1, i - 2) ? 11 : 0;
         return (
           <div key={m.label}>
             {m.base ? (
@@ -116,7 +120,10 @@ function NullLine({ score }: { score: T.ClonalScore }) {
                 style={{ left: x }}
               />
             )}
-            <span className="absolute top-[20px] px-0.5" style={{ left: x, transform: `translateX(${anchor})` }}>
+            <span
+              className="absolute px-0.5 whitespace-nowrap"
+              style={{ left: x, top: 20 + row, transform: `translateX(${anchor(i, m.v / max)})` }}
+            >
               {m.label}
             </span>
           </div>
@@ -165,18 +172,18 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
   const ts = run.trust?.tree_support ?? null;
   const clonal = run.trust?.clonal ?? null;
   const notices = [...run.warnings, ...(curves?.warnings ?? [])];
-  const rule = "border-t border-line pt-4 mt-4";
+  const rule = "border-t border-line pt-3 mt-3";
 
   return (
     <motion.aside
       aria-label="Evidence"
       initial={{ opacity: 0, x: 16 }}
       animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 16, transition: { duration: 0.16 } }}
+      exit={{ opacity: 0, x: 16, transition: { duration: 0.16, ease: [0.23, 1, 0.32, 1] } }}
       transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
-      className="absolute top-3 right-3 bottom-3 z-10 w-[360px] overflow-y-auto rounded-xl bg-panel p-4"
+      className="absolute top-3 right-3 bottom-3 z-10 w-[360px] overflow-y-auto rounded-xl bg-panel px-4 pt-3 pb-4"
     >
-      <header className="mb-4 flex items-center justify-between">
+      <header className="mb-3 flex items-center justify-between">
         <h2 className="text-base font-semibold">Evidence</h2>
         <button
           type="button"
@@ -193,7 +200,7 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
         {ts ? (
           <>
             <Mark>{LEVEL_LABEL[ts.level]}</Mark>
-            <p className="mt-2 text-xs leading-relaxed text-ink-muted" title={ts.reasons.join("\n")}>
+            <p className="mt-2 text-xs leading-snug text-ink-muted" title={ts.reasons.join("\n")}>
               {explain(ts)}
             </p>
           </>
@@ -214,20 +221,6 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
         <Clones clonal={clonal} />
       </section>
 
-      {notices.length > 0 && (
-        <section aria-label="Warnings" className={rule}>
-          <Label>Warnings</Label>
-          <ul className="space-y-1.5">
-            {notices.map((w, i) => (
-              <li key={`${w.code}-${i}`} className="flex gap-1.5 text-xs leading-relaxed text-ink">
-                <TriangleAlert size={14} aria-hidden className="mt-0.5 shrink-0 text-amber" />
-                {w.message}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
       <section aria-label="Provenance" className={rule}>
         <Label>Provenance</Label>
         <KeyValues
@@ -241,6 +234,20 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
           ]}
         />
       </section>
+
+      {notices.length > 0 && (
+        <section aria-label="Warnings" className={rule}>
+          <Label>Warnings</Label>
+          <ul className="space-y-1.5">
+            {notices.map((w, i) => (
+              <li key={`${w.code}-${i}`} className="flex gap-1.5 text-xs leading-relaxed text-ink">
+                <TriangleAlert size={14} aria-hidden className="mt-0.5 shrink-0 text-ink" />
+                {w.message}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </motion.aside>
   );
 }

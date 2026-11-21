@@ -65,7 +65,7 @@ export function MethodRunner() {
       )}
       {(create.error || failed) && (
         <p role="alert" className="flex gap-1.5 text-xs text-ink">
-          <TriangleAlert size={14} className="mt-px shrink-0 text-amber" />
+          <TriangleAlert size={14} aria-hidden className="mt-px shrink-0 text-ink" />
           {create.error?.message ?? failed?.error ?? "The run failed."}
         </p>
       )}

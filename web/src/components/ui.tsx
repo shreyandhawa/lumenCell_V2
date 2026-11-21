@@ -107,7 +107,7 @@ export function Label({ children }: { children: ReactNode }) {
 /** Key-value rows: a muted key, a mono value. */
 export function KeyValues({ rows, label }: { rows: [string, ReactNode][]; label: string }) {
   return (
-    <dl aria-label={label} className="grid grid-cols-[132px_1fr] gap-x-3 gap-y-1.5 text-xs">
+    <dl aria-label={label} className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-1.5 text-xs">
       {rows.map(([k, v]) => (
         <div key={k} className="contents">
           <dt className="text-ink-muted">{k}</dt>

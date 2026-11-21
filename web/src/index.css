@@ -69,8 +69,8 @@ input[type="range"].scrub {
   appearance: none;
   background: transparent;
   position: absolute;
-  inset: 0;
-  width: 100%;
+  inset: 0 -6px;
+  width: calc(100% + 12px);
   margin: 0;
   cursor: pointer;
 }

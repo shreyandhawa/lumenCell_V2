@@ -40,7 +40,7 @@ export function PrepProgress({ prep, hasFileEmbedding }: { prep: T.PrepStatus; h
               ) : running ? (
                 <LoaderCircle size={15} aria-hidden className="animate-spin text-ink" />
               ) : s.state === "failed" ? (
-                <TriangleAlert size={15} aria-hidden className="text-amber" />
+                <TriangleAlert size={15} aria-hidden className="text-ink" />
               ) : (
                 <CircleDashed size={15} aria-hidden className="text-ink-muted" />
               )}

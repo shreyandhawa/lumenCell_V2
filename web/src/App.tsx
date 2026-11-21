@@ -64,7 +64,7 @@ export default function App() {
       <div className="grid h-full place-items-center p-8">
         <div role="alert" className="max-w-md rounded-xl bg-panel p-4 text-[13px]">
           <h1 className="mb-1 flex items-center gap-2 font-semibold text-ink">
-            <TriangleAlert size={16} className="text-amber" /> Could not reach the lumenCell server
+            <TriangleAlert size={16} className="text-ink" /> Could not reach the lumenCell server
           </h1>
           <p className="text-ink-muted">{dataset.error.message}</p>
           <p className="mt-2 text-xs text-ink-muted">

@@ -146,7 +146,6 @@ export function Scatter() {
     [userViewState, flat, size.width, fitZoom],
   );
   const [t, setT] = useState(0); // 0 = 2-D embedding, 1 = DC1-DC3; in between while morphing
-  const [wash, setWash] = useState(1);
 
   // Live values for the animations below, which must not restart when these change.
   const live = useRef({ viewState, t, fitZoom, padRight });
@@ -197,23 +196,22 @@ export function Scatter() {
 
   const reset = () => tween({ target: [0, 0, 0], zoom: fitZoom, ...(view === "3d" ? TILTED : FLAT) }, t, 0.3, EASE_OUT);
 
-  // The set piece: when a run finishes, pseudotime washes out from the root, once.
-  const washPending = useRef(false);
-  const lastState = useRef(runState);
+  // The set piece: when a run finishes, pseudotime washes out from the root, once. It holds at 0
+  // from the moment the run is done, so the finished colours never flash before the wash starts.
+  const [wash, setWash] = useState(1);
+  const [washing, setWashing] = useState(false);
+  const [seenState, setSeenState] = useState(runState);
+  if (runState !== seenState) {
+    setSeenState(runState);
+    const finished = runState === "done" && (seenState === "queued" || seenState === "running") && !reduce;
+    setWashing(finished);
+    setWash(finished ? 0 : 1);
+  }
   useEffect(() => {
-    if (runState === "done" && (lastState.current === "queued" || lastState.current === "running")) washPending.current = true;
-    lastState.current = runState;
-  }, [runState]);
-  useEffect(() => {
-    if (!cells || !washPending.current) return;
-    washPending.current = false;
-    if (reduce) return;
-    const c = animate(0, 1, { duration: 0.9, ease: EASE_OUT, onUpdate: setWash });
-    return () => {
-      c.stop();
-      setWash(1);
-    };
-  }, [cells, reduce]);
+    if (!cells || !washing) return;
+    const c = animate(0, 1, { duration: 0.9, ease: EASE_OUT, onUpdate: setWash, onComplete: () => setWashing(false) });
+    return () => c.stop();
+  }, [cells, washing]);
 
   const positions = useMemo(() => {
     if (!flat) return null;
@@ -254,7 +252,7 @@ export function Scatter() {
     return out;
   }, [n, cells]);
   // Cells past the cursor (or the wash) keep only their halo.
-  const limit = cells ? (cursor ?? (wash < 1 ? wash : 2)) : 2;
+  const limit = cells ? (cursor ?? (washing ? wash : 2)) : 2;
 
   const paths = useMemo(() => {
     const shape = (cs: typeof curves2, norm: typeof flat) =>
@@ -270,6 +268,18 @@ export function Scatter() {
     });
   }, [curves2, curves3, flat, deep, t]);
 
+  const haloData = useMemo(() => ({ length: n, attributes: { getPosition: { value: positions!, size: 3 } } }), [n, positions]);
+  const cellData = useMemo(
+    () => ({
+      length: n,
+      attributes: {
+        getPosition: { value: positions!, size: 3 },
+        getFillColor: { value: fill!, size: 4, normalized: true },
+        getFilterValue: { value: ptValues, size: 1 },
+      },
+    }),
+    [n, positions, fill, ptValues],
+  );
   const ink: [number, number, number, number] = theme === "dark" ? [243, 245, 242, 190] : [20, 23, 22, 170];
   const layers = [];
   if (positions && fill) {
@@ -278,8 +288,8 @@ export function Scatter() {
     layers.push(
       new ScatterplotLayer({
         id: "halo",
-        data: { length: n, attributes: { getPosition: { value: positions, size: 3 } } },
-        getFillColor: theme === "dark" ? [255, 255, 255, 18] : [0, 0, 0, 22],
+        data: haloData,
+        getFillColor: theme === "dark" ? [255, 255, 255, 10] : [0, 0, 0, 14],
         radiusUnits: "pixels",
         getRadius: r + 1.5,
         parameters: overdraw,
@@ -287,14 +297,7 @@ export function Scatter() {
       }),
       new ScatterplotLayer({
         id: "cells",
-        data: {
-          length: n,
-          attributes: {
-            getPosition: { value: positions, size: 3 },
-            getFillColor: { value: fill, size: 4, normalized: true },
-            getFilterValue: { value: ptValues, size: 1 },
-          },
-        },
+        data: cellData,
         radiusUnits: "pixels",
         getRadius: r,
         pickable: true,
@@ -416,8 +419,8 @@ export function Scatter() {
             key={v}
             type="button"
             aria-pressed={view === v}
-            disabled={v === "3d" && !runId}
-            title={v === "3d" && !runId ? "3-D opens once a run has finished" : undefined}
+            disabled={v === "3d" && !deep}
+            title={v === "3d" && !deep ? "3-D opens once a run has finished" : undefined}
             onClick={() => setView(v)}
             className={`press h-[26px] rounded-md px-2.5 text-[13px] disabled:text-ink-faint ${
               view === v ? "bg-panel-raised text-ink" : "text-ink-muted hover:text-ink"
