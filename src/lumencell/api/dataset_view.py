@@ -282,6 +282,9 @@ class DatasetView:
                 return np.asarray(art["umap"], dtype=np.float32)
             if name == "dc12":
                 return np.ascontiguousarray(np.asarray(art["diffmap"])[:, 1:3], dtype=np.float32)
+            # The 3-D stage: DC1-DC3, not listed in embeddings() because it is not a 2-D display embedding.
+            if name == "dc123":
+                return np.ascontiguousarray(np.asarray(art["diffmap"])[:, 1:4], dtype=np.float32)
         raise ApiError(HTTPStatus.NOT_FOUND, "not_found", f"no embedding named {name!r}")
 
     def default_embedding(self) -> str | None:

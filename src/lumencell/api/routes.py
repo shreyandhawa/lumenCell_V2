@@ -103,7 +103,7 @@ def get_dataset(session: S) -> DatasetInfo:
     "/embeddings/{name}",
     tags=["dataset"],
     response_class=Response,
-    responses=_lcb1("Array `coords` f32[n_obs, 2]."),
+    responses=_lcb1("Array `coords` f32[n_obs, 2]; f32[n_obs, 3] for `dc123`, diffusion components 1-3."),
 )
 def get_embedding(name: str, session: S) -> Response:
     from lumencell.api import binary

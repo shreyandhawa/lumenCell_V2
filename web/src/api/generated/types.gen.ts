@@ -738,11 +738,10 @@ export type LineageCurve = {
     lineage: number;
     /**
      * Points
+     *
+     * Two coordinates per point; three on the 3-D diffusion view (embedding dc123).
      */
-    points: Array<[
-        number,
-        number
-    ]>;
+    points: Array<Array<number>>;
 };
 
 /**
@@ -907,6 +906,12 @@ export type MilestonePosition = {
      * Y
      */
     y: number;
+    /**
+     * Z
+     *
+     * Set on the 3-D diffusion view (embedding dc123).
+     */
+    z: number | null;
 };
 
 /**
@@ -1790,7 +1795,7 @@ export type GetEmbeddingApiV1EmbeddingsNameGetError = GetEmbeddingApiV1Embedding
 
 export type GetEmbeddingApiV1EmbeddingsNameGetResponses = {
     /**
-     * LCB1 buffer. Array `coords` f32[n_obs, 2].
+     * LCB1 buffer. Array `coords` f32[n_obs, 2]; f32[n_obs, 3] for `dc123`, diffusion components 1-3.
      */
     200: Blob | File;
 };

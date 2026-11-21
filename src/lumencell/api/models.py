@@ -516,7 +516,9 @@ class TrajectoryRun(Model):
 
 class LineageCurve(Model):
     lineage: int
-    points: list[tuple[float, float]]
+    points: list[tuple[float, ...]] = Field(
+        description="Two coordinates per point; three on the 3-D diffusion view (embedding dc123)."
+    )
     fidelity: float | None = Field(
         None, description="Spearman of pseudotime against position along the drawn curve."
     )
@@ -526,6 +528,7 @@ class MilestonePosition(Model):
     id: int
     x: float
     y: float
+    z: float | None = Field(None, description="Set on the 3-D diffusion view (embedding dc123).")
 
 
 class Curves(Model):
