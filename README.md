@@ -6,6 +6,25 @@ Interactive explorer for pseudotime and lineage trajectories in single-cell RNA-
 trajectory starts, runs a trajectory method, and lets you inspect lineages, gene
 trends along pseudotime and how far to trust the result, in the browser.
 
+![CAR T cells from patient NHL-6 (Sheih 2020) on diffusion components 1 to 3, with the Evidence sheet](https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-3d-evidence.png)
+
+CAR T cells from patient NHL-6 (Sheih 2020) on diffusion components 1 to 3, with the
+trajectory's lineages drawn through them. The Evidence sheet on the right rates the run
+weak: clones do not back these lineages any better than plain expression clusters do.
+
+<table>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-pick-a-root.png" alt="Choosing where the trajectory starts"></td>
+    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-playback.png" alt="Playing pseudotime with gene trends on the same axis"></td>
+    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-light.png" alt="The light theme"></td>
+  </tr>
+  <tr>
+    <td>You choose where the trajectory starts; it is never guessed.</td>
+    <td>Play pseudotime: gene trends share the bar's axis and cursor.</td>
+    <td>The light theme.</td>
+  </tr>
+</table>
+
 Results so far: [docs/results.md](docs/results.md)
 
 > Early development (M1). Usable on real data, but every method is still labelled
