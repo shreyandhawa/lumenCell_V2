@@ -630,7 +630,7 @@ def bench_real(
 
 @bench_app.command("report")
 def bench_report(
-    readme: Annotated[bool, typer.Option(help="Rewrite the results section of README.md.")] = False,
+    readme: Annotated[bool, typer.Option(help="Rewrite the results section of docs/benchmarks.md.")] = False,
 ) -> None:
     """Markdown tables of the latest synthetic baseline and real-data results."""
     from lumencell.bench.report import render, update_readme
@@ -638,7 +638,7 @@ def bench_report(
     text = render()
     if readme:
         update_readme(text)
-        typer.echo("README.md updated")
+        typer.echo("docs/benchmarks.md updated")
     else:
         typer.echo(text)
 

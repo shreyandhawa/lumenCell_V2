@@ -7,10 +7,17 @@ from typing import Any
 
 from lumencell.bench.datasets import DATASETS, lineage_gates_note
 from lumencell.bench.gates import BASELINE, REPO, check_gates, load_thresholds
+from lumencell.trust.constants import VERDICT_VERIFIED
 
-README = REPO / "README.md"
+README = REPO / "docs" / "benchmarks.md"  # the generated tables; the name is kept so the CLI is untouched
 START = "<!-- bench:start -->"
 END = "<!-- bench:end -->"
+LEVEL_LABELS = {
+    "not_supported": "Not supported: cells left without a pseudotime",
+    "weak": "Clones do not back these lineages",
+    "provisional": "Not shown to be a tree",
+    "supported": "Supported" if VERDICT_VERIFIED else "Not shown to be a tree",
+}
 LABELS = {"paga_dpt": "PAGA + DPT", "palantir": "Palantir", "scfates_ppt": "scFates"}
 
 
@@ -147,7 +154,7 @@ def render() -> str:
                 note = lineage_gates_note(DATASETS[d]) if d in DATASETS else None
                 mark = "fail: " + ", ".join(f.metric for f in failed) if failed else (note or "pass")
                 level = r.get("tree_support", "not_measured")
-                shown = "" if level == "not_measured" else f", verdict {level}"
+                shown = "" if level == "not_measured" else f", verdict {LEVEL_LABELS.get(level, level)}"
                 cells.append(
                     f"Spearman {_fmt(r['pt_spearman_lineage'])}, branch {_fmt(r['branch_accuracy'])}, "
                     f"terminal {_fmt(r['terminal_share'])} ({mark}){shown}{_clonal_entry(r)}"
