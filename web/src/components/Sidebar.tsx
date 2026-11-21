@@ -1,7 +1,12 @@
-import { useMemo } from "react";
-import { useDataset, useObs, useRunCells, useDoneRunId } from "@/api/queries";
+import { Database, Moon, Sun } from "lucide-react";
+import { useState } from "react";
+import { useDataset, useDoneRunId, useMethods, useRoot, useRun } from "@/api/queries";
 import { GeneSearch } from "@/components/GeneSearch";
-import { Badge, fmt, Hint, Section, Select } from "@/components/ui";
+import { LineageTree } from "@/components/trajectory/LineageTree";
+import { PrepProgress, prepCount } from "@/components/trajectory/PrepProgress";
+import { describeRoot, RootPicker } from "@/components/trajectory/RootPicker";
+import { MethodRunner } from "@/components/trajectory/Runs";
+import { fmt, Mark, Select, Step } from "@/components/ui";
 import { type ColorBy, useUi } from "@/state/ui";
 
 const LEIDEN = "lumencell_leiden";
@@ -10,7 +15,6 @@ function encode(c: ColorBy | null): string {
   if (!c) return "";
   if (c.kind === "obs") return `obs:${c.column}`;
   if (c.kind === "gene") return `gene:${c.gene}`;
-  if (c.kind === "disagreement") return `disagreement:${c.a}:${c.b}`;
   return c.kind;
 }
 
@@ -18,147 +22,129 @@ function decode(v: string): ColorBy | null {
   if (v.startsWith("obs:")) return { kind: "obs", column: v.slice(4) };
   if (v.startsWith("gene:")) return { kind: "gene", gene: v.slice(5) };
   if (v === "pseudotime" || v === "lineage") return { kind: v };
-  if (v.startsWith("disagreement:")) {
-    const [, a = "", b = ""] = v.split(":");
-    return { kind: "disagreement", a, b };
-  }
   return null;
 }
 
+/** The steps rail: Prepare, Pick a root, Run, Inspect. */
 export function Sidebar() {
   const dataset = useDataset().data;
-  const embedding = useUi((s) => s.embedding);
-  const setEmbedding = useUi((s) => s.setEmbedding);
+  const root = useRoot().data?.root ?? null;
+  const run = useRun(useDoneRunId(useUi((s) => s.runId))).data;
+  const method = useMethods().data?.methods.find((m) => m.name === run?.provenance.method);
+  const theme = useUi((s) => s.theme);
+  const setTheme = useUi((s) => s.setTheme);
   const colorBy = useUi((s) => s.colorBy);
   const setColorBy = useUi((s) => s.setColorBy);
-  const runId = useDoneRunId(useUi((s) => s.runId));
+  const addTrendGene = useUi((s) => s.addTrendGene);
+  // A done step stays closed until its header is clicked.
+  const [reopen, setReopen] = useState<number | null>(null);
+  const toggle = (n: number) => () => setReopen(reopen === n ? null : n);
   if (!dataset) return null;
 
+  const prepDone = dataset.prep.state === "ready";
+  const runDone = run !== undefined;
   const columns = dataset.obs.filter((c) => c.kind !== "string");
-  const embeddingSource = dataset.embeddings.find((e) => e.name === embedding)?.source;
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col overflow-y-auto border-r border-line bg-panel" aria-label="View controls">
-      <Section title="Embedding">
-        <Select aria-label="Embedding" value={embedding ?? ""} onChange={(e) => setEmbedding(e.target.value)}>
-          {dataset.embeddings.length === 0 && <option value="">waiting for preprocessing…</option>}
-          {dataset.embeddings.map((e) => (
-            <option key={e.name} value={e.name}>
-              {e.name === "dc12" ? "DC1 vs DC2 (diffusion)" : e.name.toUpperCase()}
-              {e.source === "computed" ? " · computed" : ""}
-            </option>
-          ))}
-        </Select>
-        <div className="mt-1.5">
-          <Hint>
-            {embeddingSource === "diffusion"
-              ? "The first two diffusion components: the space the trajectory is inferred in."
-              : "For display only. Trajectories are inferred in PCA / diffusion space and drawn here as a projection."}
-          </Hint>
-        </div>
-      </Section>
+    <aside aria-label="Steps" className="absolute top-3 bottom-3 left-3 z-10 flex w-[280px] flex-col overflow-y-auto rounded-xl bg-panel p-4">
+      <header className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold tracking-tight">lumenCell</h1>
+        <button
+          type="button"
+          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          className="press grid size-8 place-items-center rounded-md bg-panel-raised text-ink"
+        >
+          {theme === "dark" ? <Moon size={16} /> : <Sun size={16} />}
+        </button>
+      </header>
+      <div className="mt-5 border-b border-line pb-3">
+        <p className="flex items-center gap-2 text-[13px] font-medium text-ink">
+          <Database size={15} aria-hidden className="shrink-0 text-ink-muted" />
+          <span className="truncate" title={dataset.name}>
+            {dataset.name}
+          </span>
+        </p>
+        <p className="mt-1 font-mono text-xs text-ink-muted">
+          {fmt(dataset.n_obs)} cells · {fmt(dataset.n_vars)} genes
+        </p>
+      </div>
 
-      <Section title="Colour by">
-        <Select aria-label="Colour by" value={encode(colorBy)} onChange={(e) => setColorBy(decode(e.target.value))}>
-          <option value="">nothing</option>
-          <optgroup label="Trajectory">
-            <option value="pseudotime" disabled={!runId}>
-              Pseudotime{runId ? "" : " (run a method first)"}
-            </option>
-            <option value="lineage" disabled={!runId}>
-              Lineage{runId ? "" : " (run a method first)"}
-            </option>
-          </optgroup>
-          <optgroup label="Annotations">
-            {columns.map((c) => (
-              <option key={c.name} value={`obs:${c.name}`}>
-                {c.name === LEIDEN ? "Leiden clusters (computed)" : c.name}
-              </option>
-            ))}
-          </optgroup>
-          {colorBy?.kind === "gene" && (
-            <optgroup label="Gene">
-              <option value={encode(colorBy)}>{colorBy.gene}</option>
-            </optgroup>
+      <div className="mt-2">
+        <Step n={1} title="Prepare" state={prepDone ? "done" : "active"} aside={prepDone ? "done" : prepCount(dataset.prep)} open={!prepDone}>
+          <PrepProgress prep={dataset.prep} hasFileEmbedding={dataset.embeddings.some((e) => e.source === "file")} />
+        </Step>
+
+        <Step
+          n={2}
+          title="Pick a root"
+          state={!prepDone ? "pending" : runDone ? "done" : "active"}
+          aside={!prepDone ? "after prep" : runDone && root ? describeRoot(root.spec) : null}
+          open={prepDone && (!runDone || reopen === 2)}
+          onToggle={runDone ? toggle(2) : undefined}
+        >
+          <RootPicker />
+        </Step>
+
+        <Step
+          n={3}
+          title="Run"
+          state={runDone ? "done" : "pending"}
+          aside={runDone ? (method?.label ?? run.provenance.method) : prepDone && root ? "ready" : null}
+          open={prepDone && root !== null && (!runDone || reopen === 3 || method?.experimental === true)}
+          onToggle={runDone ? toggle(3) : undefined}
+        >
+          {runDone && reopen !== 3 ? (
+            <Mark title={method?.experimental_note ?? undefined}>Experimental</Mark>
+          ) : (
+            <MethodRunner />
           )}
-          {colorBy?.kind === "disagreement" && (
-            <optgroup label="Comparison">
-              <option value={encode(colorBy)}>Where the two runs disagree</option>
-            </optgroup>
+        </Step>
+
+        <Step
+          n={4}
+          title="Inspect"
+          state={runDone ? "active" : "pending"}
+          aside={runDone ? `${run.lineages.length} lineages` : null}
+          open={runDone}
+        >
+          {run && (
+            <div className="space-y-5">
+              <div>
+                <label htmlFor="colour-by" className="mb-1.5 block text-xs text-ink-muted">
+                  Colour by
+                </label>
+                <Select id="colour-by" aria-label="Colour by" value={encode(colorBy)} onChange={(e) => setColorBy(decode(e.target.value))}>
+                  <option value="">Nothing</option>
+                  <optgroup label="Trajectory">
+                    <option value="pseudotime">Pseudotime</option>
+                    <option value="lineage">Lineage</option>
+                  </optgroup>
+                  <optgroup label="Annotations">
+                    {columns.map((c) => (
+                      <option key={c.name} value={`obs:${c.name}`}>
+                        {c.name === LEIDEN ? "Leiden cluster" : c.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {colorBy?.kind === "gene" && (
+                    <optgroup label="Gene">
+                      <option value={encode(colorBy)}>{colorBy.gene}</option>
+                    </optgroup>
+                  )}
+                </Select>
+                <GeneSearch
+                  onPick={(gene) => {
+                    setColorBy({ kind: "gene", gene });
+                    addTrendGene(gene);
+                  }}
+                />
+              </div>
+              <LineageTree run={run} />
+            </div>
           )}
-        </Select>
-        <GeneSearch onPick={(gene) => setColorBy({ kind: "gene", gene })} />
-      </Section>
-
-      <SelectionSummary />
-
-      <div className="mt-auto border-t border-line px-3 py-2">
-        <Hint>
-          {fmt(dataset.n_obs)} cells · {fmt(dataset.n_vars)} genes · X holds{" "}
-          {dataset.x_kind === "counts" ? "raw counts" : "log-normalised values"}
-        </Hint>
+        </Step>
       </div>
     </aside>
-  );
-}
-
-function SelectionSummary() {
-  const selection = useUi((s) => s.selection);
-  const count = useUi((s) => s.selectionCount);
-  const runId = useDoneRunId(useUi((s) => s.runId));
-  const dataset = useDataset().data;
-  const groupKey = dataset?.label_key ?? LEIDEN;
-  const groups = useObs(selection ? groupKey : null).data;
-  const cells = useRunCells(selection ? runId : null).data;
-
-  const summary = useMemo(() => {
-    if (!selection) return null;
-    const tally = new Map<string, number>();
-    let ptSum = 0;
-    let ptN = 0;
-    for (let i = 0; i < selection.length; i++) {
-      if (!selection[i]) continue;
-      if (groups?.codes) {
-        const label = groups.categories[groups.codes[i]!] ?? "missing";
-        tally.set(label, (tally.get(label) ?? 0) + 1);
-      }
-      const pt = cells?.pseudotime[i];
-      if (pt !== undefined && Number.isFinite(pt)) {
-        ptSum += pt;
-        ptN++;
-      }
-    }
-    const top = [...tally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-    return { top, meanPt: ptN ? ptSum / ptN : null };
-  }, [selection, groups, cells]);
-
-  if (!selection || !summary) {
-    return (
-      <Section title="Selection">
-        <Hint>Use the lasso (top left of the plot) to select cells.</Hint>
-      </Section>
-    );
-  }
-  return (
-    <Section title="Selection" aside={<Badge tone="accent">{fmt(count)} cells</Badge>}>
-      {summary.meanPt !== null && (
-        <p className="mb-2 text-xs text-ink">
-          mean pseudotime <span className="font-mono">{summary.meanPt.toFixed(3)}</span>
-        </p>
-      )}
-      <ul className="space-y-1">
-        {summary.top.map(([label, k]) => (
-          <li key={label} className="text-2xs text-ink-muted">
-            <div className="flex justify-between">
-              <span className="truncate">{groupKey === LEIDEN ? `Cluster ${label}` : label}</span>
-              <span className="font-mono">{((100 * k) / count).toFixed(0)}%</span>
-            </div>
-            <div className="mt-0.5 h-1 rounded-full bg-line">
-              <div className="h-1 rounded-full bg-accent" style={{ width: `${(100 * k) / count}%` }} />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </Section>
   );
 }

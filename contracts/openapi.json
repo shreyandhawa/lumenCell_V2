@@ -1407,17 +1407,11 @@
             "type": "integer"
           },
           "points": {
+            "description": "Two coordinates per point; three on the 3-D diffusion view (embedding dc123).",
             "items": {
-              "maxItems": 2,
-              "minItems": 2,
-              "prefixItems": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "number"
-                }
-              ],
+              "items": {
+                "type": "number"
+              },
               "type": "array"
             },
             "title": "Points",
@@ -1662,12 +1656,25 @@
           "y": {
             "title": "Y",
             "type": "number"
+          },
+          "z": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set on the 3-D diffusion view (embedding dc123).",
+            "title": "Z"
           }
         },
         "required": [
           "id",
           "x",
-          "y"
+          "y",
+          "z"
         ],
         "title": "MilestonePosition",
         "type": "object"
@@ -3373,7 +3380,7 @@
                 }
               }
             },
-            "description": "LCB1 buffer. Array `coords` f32[n_obs, 2]."
+            "description": "LCB1 buffer. Array `coords` f32[n_obs, 2]; f32[n_obs, 3] for `dc123`, diffusion components 1-3."
           },
           "404": {
             "content": {

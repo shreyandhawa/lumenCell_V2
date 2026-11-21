@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useDataset, useDisagreement, useGeneExpression, useObs, useRun, useRunCells, useDoneRunId } from "@/api/queries";
+import { useDataset, useGeneExpression, useObs, useRun, useRunCells, useDoneRunId } from "@/api/queries";
 import {
   categoryPalette,
   categorical,
@@ -26,7 +26,7 @@ export interface CellColors {
   loading: boolean;
 }
 
-const DEFAULT: RGBA = [148, 163, 184, 200];
+const DEFAULT: RGBA = [150, 158, 154, 200];
 const LEIDEN = "lumencell_leiden";
 
 export function useCellColors(): CellColors {
@@ -42,10 +42,6 @@ export function useCellColors(): CellColors {
   const expr = useGeneExpression(gene);
   const cells = useRunCells(needsRun ? runId : null);
   const run = useRun(colorBy?.kind === "lineage" ? runId : null);
-  const disagreement = useDisagreement(
-    colorBy?.kind === "disagreement" ? colorBy.a : null,
-    colorBy?.kind === "disagreement" ? colorBy.b : null,
-  );
 
   return useMemo<CellColors>(() => {
     const none: CellColors = { colors: n ? uniform(n, DEFAULT) : null, legend: null, describe: () => null, loading: false };
@@ -73,8 +69,8 @@ export function useCellColors(): CellColors {
         colors: colorsForCodes(codes, palette),
         legend: {
           kind: "categorical",
-          title: leiden ? "Leiden clusters" : colorBy.column,
-          items: v.categories.map((c, i) => ({ label: label(c), color: palette[i]! })),
+          title: leiden ? "Leiden" : colorBy.column,
+          items: v.categories.map((c, i) => ({ label: c, color: palette[i]! })),
         },
         describe: (i) => (codes[i]! >= 0 ? label(v.categories[codes[i]!]!) : "missing"),
         loading: false,
@@ -89,18 +85,6 @@ export function useCellColors(): CellColors {
         colors: colorsForValues(values, domain),
         legend: { kind: "continuous", title: `${colorBy.gene} (log-normalised)`, domain },
         describe: (i) => values[i]!.toFixed(2),
-        loading: false,
-      };
-    }
-
-    if (colorBy.kind === "disagreement") {
-      const diff = disagreement.data;
-      if (!diff) return { ...none, loading: disagreement.isLoading };
-      const domain = robustDomain(diff);
-      return {
-        colors: colorsForValues(diff, domain),
-        legend: { kind: "continuous", title: "rank difference between runs", domain },
-        describe: (i) => (Number.isFinite(diff[i]!) ? `ranks differ by ${(diff[i]! * 100).toFixed(1)}%` : "not in both runs"),
         loading: false,
       };
     }
@@ -146,17 +130,5 @@ export function useCellColors(): CellColors {
     cells.isLoading,
     run.data,
     dataset,
-    disagreement.data,
-    disagreement.isLoading,
   ]);
-}
-
-/** Dim cells outside the selection, so the selection reads at a glance. */
-export function withSelection(colors: Uint8Array, selection: Uint8Array | null): Uint8Array {
-  if (!selection) return colors;
-  const out = colors.slice();
-  for (let i = 0; i < selection.length; i++) {
-    if (!selection[i]) out[i * 4 + 3] = Math.round(out[i * 4 + 3]! * 0.18);
-  }
-  return out;
 }

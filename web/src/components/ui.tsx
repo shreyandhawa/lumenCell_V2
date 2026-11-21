@@ -1,41 +1,75 @@
+import { Check, ChevronDown, TriangleAlert } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 
-export function Section({
+type StepState = "active" | "done" | "pending";
+
+/** One step of the rail: Prepare, Pick a root, Run, Inspect. A done step's header reopens it. */
+export function Step({
+  n,
   title,
+  state,
   aside,
+  open,
+  onToggle,
   children,
 }: {
+  n: number;
   title: string;
+  state: StepState;
   aside?: ReactNode;
-  children: ReactNode;
+  open: boolean;
+  onToggle?: () => void;
+  children?: ReactNode;
 }) {
+  const active = state === "active";
+  const head = (
+    <>
+      <span
+        aria-hidden
+        className={`grid size-[22px] shrink-0 place-items-center rounded-full text-2xs ${
+          state === "done"
+            ? "bg-panel-raised text-ink-muted"
+            : active
+              ? "border-[1.5px] border-ink text-ink"
+              : "border border-line text-ink-muted"
+        }`}
+      >
+        {state === "done" ? <Check size={12} strokeWidth={2.5} /> : n}
+      </span>
+      <span className={`shrink-0 ${active ? "text-[15px] font-semibold text-ink" : "text-[13px] font-medium text-ink"}`}>{title}</span>
+      {aside != null && <span className="ml-auto min-w-0 truncate pl-2 font-mono text-xs text-ink-muted">{aside}</span>}
+    </>
+  );
   return (
-    <section className="border-b border-line px-3 py-3" aria-label={title}>
-      <header className="mb-2 flex items-center justify-between gap-2">
-        <h2 className="text-2xs font-semibold tracking-wide text-ink-muted uppercase">{title}</h2>
-        {aside}
-      </header>
-      {children}
+    <section aria-label={title} className="py-2">
+      {onToggle ? (
+        <button type="button" aria-expanded={open} onClick={onToggle} className="flex w-full items-center gap-2.5 text-left">
+          {head}
+        </button>
+      ) : (
+        <div className="flex items-center gap-2.5">{head}</div>
+      )}
+      {open && children && <div className="mt-3 pl-8">{children}</div>}
     </section>
   );
 }
 
-type Tone = "primary" | "quiet" | "danger";
+type Tone = "primary" | "secondary" | "ghost";
 
 export function Button({
-  tone = "quiet",
+  tone = "secondary",
   className = "",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone }) {
   const tones: Record<Tone, string> = {
-    primary: "bg-accent text-accent-ink hover:brightness-110 disabled:opacity-40",
-    quiet: "border border-line bg-panel-2 text-ink hover:border-ink-faint disabled:opacity-40",
-    danger: "border border-danger/50 text-danger hover:bg-danger/10",
+    primary: "bg-accent px-3 text-on-accent hover:brightness-110",
+    secondary: "bg-panel-raised px-3 text-ink hover:bg-line",
+    ghost: "px-2 text-ink-muted hover:text-ink",
   };
   return (
     <button
       type="button"
-      className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-[filter,border-color,background-color] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed ${tones[tone]} ${className}`}
+      className={`press inline-flex h-8 items-center justify-center gap-1.5 rounded text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:text-ink-faint ${tones[tone]} ${className}`}
       {...props}
     />
   );
@@ -43,28 +77,45 @@ export function Button({
 
 export function Select({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select
-      className={`h-7 w-full rounded-md border border-line bg-panel-2 px-2 text-xs text-ink focus-visible:outline-2 focus-visible:outline-accent ${className}`}
-      {...props}
-    />
+    <div className={`relative ${className}`}>
+      <select
+        className="h-9 w-full appearance-none rounded-md bg-panel-raised pr-8 pl-2.5 text-[13px] text-ink focus-visible:outline-2 focus-visible:outline-ink"
+        {...props}
+      />
+      <ChevronDown size={16} aria-hidden className="pointer-events-none absolute top-2.5 right-2.5 text-ink-muted" />
+    </div>
   );
 }
 
-export function Badge({ tone = "neutral", children }: { tone?: "neutral" | "warning" | "accent"; children: ReactNode }) {
-  const tones = {
-    neutral: "border-line text-ink-muted",
-    warning: "border-warning/40 text-warning",
-    accent: "border-accent/40 text-accent",
-  };
+/** The amber mark: experimental, provisional and weak, always with its icon and a label. */
+export function Mark({ children, title }: { children: ReactNode; title?: string }) {
   return (
-    <span className={`inline-flex items-center rounded border px-1.5 py-px text-2xs font-medium whitespace-nowrap ${tones[tone]}`}>
+    <span
+      title={title}
+      className="inline-flex items-center gap-1.5 rounded border border-amber bg-amber-tint px-1.5 py-0.5 text-xs text-ink"
+    >
+      <TriangleAlert size={14} aria-hidden className="shrink-0 text-amber" />
       {children}
     </span>
   );
 }
 
-export function Hint({ children }: { children: ReactNode }) {
-  return <p className="text-2xs leading-relaxed text-ink-faint">{children}</p>;
+export function Label({ children }: { children: ReactNode }) {
+  return <h3 className="mb-2 text-2xs font-semibold tracking-[0.06em] text-ink-muted uppercase">{children}</h3>;
+}
+
+/** Key-value rows: a muted key, a mono value. */
+export function KeyValues({ rows, label }: { rows: [string, ReactNode][]; label: string }) {
+  return (
+    <dl aria-label={label} className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-1.5 text-xs">
+      {rows.map(([k, v]) => (
+        <div key={k} className="contents">
+          <dt className="text-ink-muted">{k}</dt>
+          <dd className="font-mono break-words text-ink">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 export function fmt(n: number): string {

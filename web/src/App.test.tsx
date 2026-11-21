@@ -44,7 +44,7 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 beforeEach(() => {
   state = { dataset: fx.dataset("ready"), root: null, runs: [], putRoot: [] };
-  useUi.setState({ embedding: null, colorBy: null, runId: null, ptRange: [0, 1], focusLineage: null, selection: null });
+  useUi.setState({ embedding: null, colorBy: null, runId: null, focusLineage: null, cursor: null });
 });
 
 function renderApp() {
@@ -62,7 +62,7 @@ describe("App", () => {
     renderApp();
     const stages = await screen.findByRole("list", { name: "Preprocessing stages" });
     expect(within(stages).getByText("PCA")).toBeInTheDocument();
-    expect(screen.getByText("preparing…")).toBeInTheDocument();
+    expect(screen.getByText("3 of 8")).toBeInTheDocument();
     expect(screen.queryByText("Where does the trajectory start?")).not.toBeInTheDocument();
   });
 
@@ -76,16 +76,16 @@ describe("App", () => {
 
   it("keeps pseudotime and lineage colouring disabled until there is a finished run", async () => {
     renderApp();
-    const colourBy = await screen.findByRole("combobox", { name: "Colour by" });
-    const option = within(colourBy).getByRole("option", { name: /Pseudotime/ }) as HTMLOptionElement;
-    expect(option.disabled).toBe(true);
-    expect(option.textContent).toContain("run a method first");
+    expect(await screen.findByText("Where does the trajectory start?")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Colour by" })).not.toBeInTheDocument();
+    expect(screen.getByText("Pseudotime appears after a run")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Play" })).toBeDisabled();
   });
 
   it("saves the root the user picks, then offers methods", async () => {
     const user = userEvent.setup();
     renderApp();
-    await user.click(await screen.findByRole("button", { name: /Start here/ }));
+    await user.click(await screen.findByRole("button", { name: /cell_type = stem/ }));
     await waitFor(() => expect(state.putRoot).toEqual([{ root: { kind: "cluster", key: "cell_type", value: "stem" } }]));
     expect(await screen.findByRole("button", { name: /Run PAGA \+ DPT/ })).toBeInTheDocument();
     expect(screen.getByText(/Experimental/)).toBeInTheDocument();
@@ -96,8 +96,8 @@ describe("App", () => {
     state.runs = [{ run_id: "run1", method: "paga_dpt", state: "done", created_at: "2026-11-10T00:00:00Z", n_lineages: 1, error: null }];
     renderApp();
     expect(await screen.findByText("Erythroid")).toBeInTheDocument();
-    const trust = screen.getByRole("region", { name: "How far to trust this" });
-    expect(within(trust).getByText("X_diffmap · 10 dims")).toBeInTheDocument();
+    const trust = screen.getByRole("complementary", { name: "Evidence" });
+    expect(within(trust).getByText("X_diffmap, 10 components")).toBeInTheDocument();
     expect(within(trust).getByText("2 cells are not connected.")).toBeInTheDocument();
     const colourBy = screen.getByRole("combobox", { name: "Colour by" });
     expect((within(colourBy).getByRole("option", { name: "Pseudotime" }) as HTMLOptionElement).disabled).toBe(false);
