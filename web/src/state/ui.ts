@@ -5,63 +5,57 @@ export type ColorBy =
   | { kind: "obs"; column: string }
   | { kind: "gene"; gene: string }
   | { kind: "pseudotime" }
-  | { kind: "lineage" }
-  | { kind: "disagreement"; a: string; b: string };
+  | { kind: "lineage" };
 
 export interface UiState {
   embedding: string | null;
   colorBy: ColorBy | null;
   runId: string | null;
-  /** Inclusive pseudotime window; [0, 1] means no filter. */
-  ptRange: [number, number];
   focusLineage: number | null;
-  /** 1 = selected. null = no selection. */
-  selection: Uint8Array | null;
-  selectionCount: number;
-  lassoActive: boolean;
-  hovered: number | null;
-  /** Genes shown in the trends panel. */
+  /** Genes the user picked, shown first in the gene trends. */
   trendGenes: string[];
+  theme: "dark" | "light";
+  view: "2d" | "3d";
+  /** The pseudotime cursor shared by the bar and the gene trends; null until the user plays or scrubs. */
+  cursor: number | null;
+  playing: boolean;
+  sheetOpen: boolean;
 
   setEmbedding: (name: string) => void;
   setColorBy: (c: ColorBy | null) => void;
   setRun: (id: string | null) => void;
-  setPtRange: (r: [number, number]) => void;
   setFocusLineage: (id: number | null) => void;
-  setSelection: (mask: Uint8Array | null) => void;
-  setLasso: (on: boolean) => void;
-  setHovered: (i: number | null) => void;
   addTrendGene: (gene: string) => void;
-  removeTrendGene: (gene: string) => void;
+  setTheme: (t: "dark" | "light") => void;
+  setView: (v: "2d" | "3d") => void;
+  setCursor: (t: number | null) => void;
+  setPlaying: (on: boolean) => void;
+  setSheetOpen: (open: boolean) => void;
 }
 
-export const MAX_TREND_GENES = 6;
+export const MAX_TREND_GENES = 4;
 
 export const useUi = create<UiState>((set) => ({
   embedding: null,
   colorBy: null,
   runId: null,
-  ptRange: [0, 1],
   focusLineage: null,
-  selection: null,
-  selectionCount: 0,
-  lassoActive: false,
-  hovered: null,
   trendGenes: [],
+  theme: "dark",
+  view: "2d",
+  cursor: null,
+  playing: false,
+  sheetOpen: true,
 
   setEmbedding: (embedding) => set({ embedding }),
   setColorBy: (colorBy) => set({ colorBy }),
-  setRun: (runId) => set({ runId, focusLineage: null, ptRange: [0, 1] }),
-  setPtRange: (ptRange) => set({ ptRange }),
+  setRun: (runId) => set({ runId, focusLineage: null, cursor: null, playing: false }),
   setFocusLineage: (focusLineage) => set({ focusLineage }),
-  setSelection: (mask) => {
-    let count = 0;
-    if (mask) for (let i = 0; i < mask.length; i++) count += mask[i]!;
-    set({ selection: mask && count > 0 ? mask : null, selectionCount: count });
-  },
-  setLasso: (lassoActive) => set({ lassoActive }),
-  setHovered: (hovered) => set({ hovered }),
   addTrendGene: (gene) =>
-    set((s) => (s.trendGenes.includes(gene) ? s : { trendGenes: [...s.trendGenes, gene].slice(-MAX_TREND_GENES) })),
-  removeTrendGene: (gene) => set((s) => ({ trendGenes: s.trendGenes.filter((g) => g !== gene) })),
+    set((s) => (s.trendGenes.includes(gene) ? s : { trendGenes: [gene, ...s.trendGenes].slice(0, MAX_TREND_GENES) })),
+  setTheme: (theme) => set({ theme }),
+  setView: (view) => set({ view }),
+  setCursor: (cursor) => set({ cursor }),
+  setPlaying: (playing) => set({ playing }),
+  setSheetOpen: (sheetOpen) => set({ sheetOpen }),
 }));

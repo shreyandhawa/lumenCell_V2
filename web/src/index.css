@@ -1,42 +1,43 @@
 @import "tailwindcss";
+@import "@fontsource-variable/atkinson-hyperlegible-next";
+@import "@fontsource-variable/atkinson-hyperlegible-mono";
 
-/* Design tokens. Dark is the default (scatter plots of glowing cells read best on
-   dark); the light palette applies when the OS asks for it. */
+/* Design tokens (Figma "Explorer loop"). Dark is the default; the theme toggle sets
+   data-theme="light" on <html>. Accent (magenta) has three roles only: the root pin, the
+   focused lineage and the primary action; it is never a data colour. Amber marks
+   experimental, provisional and weak, always with a label and an icon. */
 @theme {
-  --color-surface: oklch(0.165 0.008 260);
-  --color-panel: oklch(0.2 0.01 260);
-  --color-panel-2: oklch(0.235 0.012 260);
-  --color-line: oklch(0.29 0.012 260);
-  --color-ink: oklch(0.94 0.005 260);
-  --color-ink-muted: oklch(0.72 0.01 260);
-  --color-ink-faint: oklch(0.55 0.01 260);
-  --color-accent: oklch(0.78 0.13 210);
-  --color-accent-ink: oklch(0.2 0.03 230);
-  --color-warning: oklch(0.8 0.14 80);
-  --color-danger: oklch(0.68 0.19 25);
-  --color-success: oklch(0.75 0.14 150);
+  --color-stage: #000000;
+  --color-panel: #262b2a;
+  --color-panel-raised: #313736;
+  --color-line: #3a413f;
+  --color-ink: #f3f5f2;
+  --color-ink-muted: #a3aca8;
+  /* Disabled controls only, never body text. */
+  --color-ink-faint: #6e7773;
+  --color-accent: #e0338f;
+  --color-on-accent: #000000;
+  --color-amber: #f2a900;
+  --color-amber-tint: rgb(242 169 0 / 0.14);
+  --color-stage-scrim: rgb(0 0 0 / 0.55);
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --color-surface: oklch(0.985 0.002 260);
-    --color-panel: oklch(0.97 0.003 260);
-    --color-panel-2: oklch(0.94 0.005 260);
-    --color-line: oklch(0.88 0.006 260);
-    --color-ink: oklch(0.22 0.01 260);
-    --color-ink-muted: oklch(0.44 0.01 260);
-    --color-ink-faint: oklch(0.58 0.01 260);
-    --color-accent: oklch(0.55 0.14 230);
-    --color-accent-ink: oklch(0.98 0.01 230);
-    --color-warning: oklch(0.62 0.14 70);
-    --color-danger: oklch(0.56 0.2 25);
-    --color-success: oklch(0.52 0.13 150);
-  }
+:root[data-theme="light"] {
+  --color-stage: #f4f6f3;
+  --color-panel: #ecefec;
+  --color-panel-raised: #e0e4e0;
+  --color-line: #cdd3ce;
+  --color-ink: #141716;
+  --color-ink-muted: #4e5753;
+  --color-ink-faint: #8a938e;
+  --color-amber: #b07a00;
+  --color-amber-tint: rgb(176 122 0 / 0.12);
 }
 
 html,
@@ -47,41 +48,47 @@ body,
 }
 
 body {
-  background: var(--color-surface);
+  background: var(--color-stage);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: 13px;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Native range inputs, restyled once for the pseudotime filter. */
-input[type="range"].range {
+/* Pressable things answer the press. */
+.press {
+  transition: transform 160ms var(--ease-out);
+}
+.press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* The pseudotime scrubber: a native range input over the viridis track. Its thumb is
+   invisible; the shared cursor line drawn over the bar and the gene trends shows the value. */
+input[type="range"].scrub {
   appearance: none;
   background: transparent;
-  pointer-events: none;
   position: absolute;
   inset: 0;
   width: 100%;
   margin: 0;
+  cursor: pointer;
 }
-input[type="range"].range::-webkit-slider-thumb {
+input[type="range"].scrub::-webkit-slider-thumb {
   appearance: none;
-  pointer-events: auto;
-  width: 14px;
-  height: 14px;
-  border-radius: 9999px;
-  background: var(--color-ink);
-  border: 2px solid var(--color-surface);
-  box-shadow: 0 0 0 1px var(--color-line);
-  cursor: grab;
-}
-input[type="range"].range::-moz-range-thumb {
-  pointer-events: auto;
   width: 12px;
-  height: 12px;
-  border-radius: 9999px;
-  background: var(--color-ink);
-  border: 2px solid var(--color-surface);
-  cursor: grab;
+  height: 24px;
+  opacity: 0;
+}
+input[type="range"].scrub::-moz-range-thumb {
+  width: 12px;
+  height: 24px;
+  opacity: 0;
+}
+input[type="range"].scrub:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 @media (prefers-reduced-motion: reduce) {

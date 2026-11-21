@@ -1,11 +1,12 @@
+import { LoaderCircle, PanelRightOpen, TriangleAlert } from "lucide-react";
+import { AnimatePresence, MotionConfig } from "motion/react";
 import { useEffect } from "react";
-import { Loader2 } from "lucide-react";
-import { useDataset, useRuns } from "@/api/queries";
+import { useDataset, useDoneRunId, useRun, useRuns } from "@/api/queries";
 import { GenePanel } from "@/components/GenePanel";
-import { Header } from "@/components/Header";
 import { Scatter } from "@/components/Scatter";
 import { Sidebar } from "@/components/Sidebar";
-import { TrajectoryPanel } from "@/components/trajectory/TrajectoryPanel";
+import { cursorLeft, PseudotimeBar } from "@/components/trajectory/PseudotimeBar";
+import { TrustPanel } from "@/components/trajectory/TrustPanel";
 import { useUi } from "@/state/ui";
 
 const LEIDEN = "lumencell_leiden";
@@ -14,7 +15,7 @@ const LEIDEN = "lumencell_leiden";
 function useDefaults() {
   const dataset = useDataset().data;
   const runs = useRuns().data?.runs;
-  const { embedding, colorBy, runId, setEmbedding, setColorBy, setRun } = useUi();
+  const { embedding, colorBy, runId, theme, setEmbedding, setColorBy, setRun } = useUi();
 
   useEffect(() => {
     if (!dataset) return;
@@ -35,17 +36,25 @@ function useDefaults() {
     const latest = runs.find((r) => r.state === "done");
     if (latest) setRun(latest.run_id);
   }, [runs, runId, setRun]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 }
 
 export default function App() {
   const dataset = useDataset();
+  const run = useRun(useDoneRunId(useUi((s) => s.runId))).data;
+  const cursor = useUi((s) => s.cursor);
+  const sheetOpen = useUi((s) => s.sheetOpen);
+  const setSheetOpen = useUi((s) => s.setSheetOpen);
   useDefaults();
 
   if (dataset.isLoading) {
     return (
-      <div className="grid h-full place-items-center text-sm text-ink-muted">
+      <div className="grid h-full place-items-center text-[13px] text-ink-muted">
         <span className="flex items-center gap-2">
-          <Loader2 size={16} className="animate-spin text-accent" /> Loading dataset…
+          <LoaderCircle size={16} className="animate-spin text-ink" /> Loading dataset…
         </span>
       </div>
     );
@@ -53,29 +62,50 @@ export default function App() {
   if (dataset.error) {
     return (
       <div className="grid h-full place-items-center p-8">
-        <div role="alert" className="max-w-md rounded-lg border border-danger/40 bg-danger/10 p-4 text-sm">
-          <h1 className="mb-1 font-semibold text-danger">Could not reach the lumenCell server</h1>
+        <div role="alert" className="max-w-md rounded-xl bg-panel p-4 text-[13px]">
+          <h1 className="mb-1 flex items-center gap-2 font-semibold text-ink">
+            <TriangleAlert size={16} className="text-amber" /> Could not reach the lumenCell server
+          </h1>
           <p className="text-ink-muted">{dataset.error.message}</p>
-          <p className="mt-2 text-xs text-ink-faint">
-            Start it with <code className="font-mono">lumencell launch your-data.h5ad</code>.
+          <p className="mt-2 text-xs text-ink-muted">
+            Start it with <code className="font-mono text-ink">lumencell launch your-data.h5ad</code>.
           </p>
         </div>
       </div>
     );
   }
+  const trends = run !== undefined && cursor !== null;
   return (
-    <div className="flex h-full flex-col">
-      <Header />
-      <div className="flex min-h-0 flex-1">
+    // Motion's own components drop transforms and keep fades under prefers-reduced-motion.
+    <MotionConfig reducedMotion="user">
+      <div className="relative h-full overflow-hidden bg-stage">
+        <Scatter />
         <Sidebar />
-        <main className="flex min-w-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1">
-            <Scatter />
-          </div>
-          <GenePanel />
-        </main>
-        <TrajectoryPanel />
+
+        <div className="absolute right-[384px] bottom-3 left-[304px] z-10 flex flex-col gap-2">
+          <AnimatePresence>{trends && <GenePanel key="trends" run={run} />}</AnimatePresence>
+          <PseudotimeBar ready={run !== undefined} />
+          {run && cursor !== null && (
+            <div aria-hidden className="pointer-events-none absolute top-[30px] bottom-2 w-px bg-ink" style={{ left: cursorLeft(cursor) }}>
+              <span className="absolute -top-1 -left-[3.5px] size-2 rounded-full bg-ink" />
+            </div>
+          )}
+        </div>
+
+        <AnimatePresence>
+          {run && sheetOpen && <TrustPanel key="sheet" run={run} />}
+        </AnimatePresence>
+        {run && !sheetOpen && (
+          <button
+            type="button"
+            aria-label="Show evidence"
+            onClick={() => setSheetOpen(true)}
+            className="press absolute top-3 right-3 z-10 flex h-[34px] items-center gap-2 rounded-lg bg-panel px-2.5 text-[13px] text-ink"
+          >
+            <PanelRightOpen size={16} /> Evidence
+          </button>
+        )}
       </div>
-    </div>
+    </MotionConfig>
   );
 }

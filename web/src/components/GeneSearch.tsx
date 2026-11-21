@@ -13,7 +13,7 @@ export function GeneSearch({
   const results = useGeneSearch(q.trim());
   return (
     <div className="relative mt-2">
-      <Search size={13} className="pointer-events-none absolute top-2 left-2 text-ink-faint" />
+      <Search size={14} aria-hidden className="pointer-events-none absolute top-2.5 left-2.5 text-ink-muted" />
       <input
         type="search"
         aria-label={placeholder}
@@ -27,18 +27,18 @@ export function GeneSearch({
             setQ("");
           }
         }}
-        className="h-7 w-full rounded-md border border-line bg-panel-2 pr-2 pl-7 text-xs text-ink placeholder:text-ink-faint focus-visible:outline-2 focus-visible:outline-accent"
+        className="h-9 w-full rounded-md bg-panel-raised pr-2 pl-8 text-[13px] text-ink placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-ink"
       />
       {q && results.data && (
-        <ul role="listbox" aria-label="Genes" className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-line bg-panel-2 py-1 shadow-xl">
-          {results.data.genes.length === 0 && <li className="px-2 py-1 text-2xs text-ink-faint">no match</li>}
+        <ul role="listbox" aria-label="Genes" className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-line bg-panel-raised py-1 shadow-xl">
+          {results.data.genes.length === 0 && <li className="px-2 py-1 text-xs text-ink-muted">no match</li>}
           {results.data.genes.map((g) => (
             <li key={g}>
               <button
                 type="button"
                 role="option"
                 aria-selected={false}
-                className="w-full px-2 py-1 text-left font-mono text-xs text-ink hover:bg-accent/15"
+                className="w-full px-2.5 py-1 text-left font-mono text-xs text-ink hover:bg-line"
                 onClick={() => {
                   onPick(g);
                   setQ("");

@@ -1,68 +1,69 @@
-import { Check, Circle, Loader2, TriangleAlert } from "lucide-react";
-import { api } from "@/api/client";
+import { Check, CircleDashed, LoaderCircle, TriangleAlert } from "lucide-react";
+import type * as T from "@/api/generated";
 import { useJobEvents } from "@/api/events";
-import { useDataset, useStartPrepare } from "@/api/queries";
-import { Button, Hint, Section } from "@/components/ui";
+import { useStartPrepare } from "@/api/queries";
+import { Button } from "@/components/ui";
 
 const LABELS: Record<string, string> = {
-  normalize: "Normalise counts",
-  hvg: "Select variable genes",
+  normalize: "Normalise",
+  hvg: "Highly variable genes",
   pca: "PCA",
-  neighbors: "Neighbour graph",
+  neighbors: "Neighbours",
   leiden: "Leiden clusters",
   diffmap: "Diffusion map",
-  paga: "PAGA cluster graph",
-  umap: "UMAP (display only)",
+  paga: "PAGA",
+  umap: "UMAP",
+  cell_cycle: "Cell cycle",
 };
 
-export function PrepProgress() {
-  const dataset = useDataset().data;
+/** "5 of 8": the stage running now (or the count done), for the step's aside. */
+export function prepCount(prep: T.PrepStatus): string {
+  const done = prep.stages.filter((s) => s.state === "done" || s.state === "skipped").length;
+  const n = prep.stages.length;
+  return `${prep.state === "running" ? Math.min(done + 1, n) : done} of ${n}`;
+}
+
+export function PrepProgress({ prep, hasFileEmbedding }: { prep: T.PrepStatus; hasFileEmbedding: boolean }) {
   const start = useStartPrepare();
-  const prep = dataset?.prep;
-  const live = useJobEvents(prep?.state === "running" ? prep.job_id : null);
-  if (!prep) return null;
+  const live = useJobEvents(prep.state === "running" ? prep.job_id : null);
 
   return (
-    <Section title="Preparing the dataset">
-      <ol className="space-y-1" aria-label="Preprocessing stages">
+    <>
+      <ol className="space-y-2.5" aria-label="Preprocessing stages">
         {prep.stages.map((s) => {
           const running = s.state === "running" || (live?.stage === s.name && live.state === "running");
+          const done = s.state === "done" || s.state === "skipped";
           return (
-            <li key={s.name} className="flex items-center gap-2 text-xs">
-              {s.state === "done" || s.state === "skipped" ? (
-                <Check size={13} className="text-success" />
+            <li key={s.name} className="flex items-center gap-2.5 text-[13px]">
+              {done ? (
+                <Check size={15} aria-hidden className="text-ink-muted" />
               ) : running ? (
-                <Loader2 size={13} className="animate-spin text-accent" />
+                <LoaderCircle size={15} aria-hidden className="animate-spin text-ink" />
               ) : s.state === "failed" ? (
-                <TriangleAlert size={13} className="text-danger" />
+                <TriangleAlert size={15} aria-hidden className="text-amber" />
               ) : (
-                <Circle size={13} className="text-ink-faint" />
+                <CircleDashed size={15} aria-hidden className="text-ink-muted" />
               )}
-              <span className={s.state === "pending" ? "text-ink-faint" : "text-ink"}>
-                {LABELS[s.name] ?? s.name}
+              <span className={running ? "text-ink" : "text-ink-muted"}>{LABELS[s.name] ?? s.name}</span>
+              <span className="ml-auto font-mono text-xs text-ink-muted">
+                {s.state === "skipped" ? "in file" : running ? "running" : s.state === "pending" ? "" : s.state}
               </span>
-              {s.state === "skipped" && <span className="text-2xs text-ink-faint">(file has one)</span>}
-              {s.seconds != null && s.state === "done" && (
-                <span className="ml-auto font-mono text-2xs text-ink-faint">{s.seconds.toFixed(1)}s</span>
-              )}
             </li>
           );
         })}
       </ol>
-      <div className="mt-3 flex items-center gap-2">
-        {prep.state === "missing" || prep.state === "failed" ? (
-          <Button tone="primary" onClick={() => start.mutate()} disabled={start.isPending}>
-            {prep.state === "failed" ? "Retry" : "Prepare now"}
-          </Button>
-        ) : (
-          prep.job_id && (
-            <Button tone="danger" onClick={() => void api.cancelJob(prep.job_id!)}>
-              Cancel
-            </Button>
-          )
-        )}
-        <Hint>Runs once; later launches reuse the cache.</Hint>
-      </div>
-    </Section>
+      {prep.state === "missing" || prep.state === "failed" ? (
+        <Button tone="primary" className="mt-3" onClick={() => start.mutate()} disabled={start.isPending}>
+          {prep.state === "failed" ? "Retry" : "Prepare now"}
+        </Button>
+      ) : (
+        <p className="mt-3 text-xs leading-relaxed text-ink-muted">
+          Runs in the background.{" "}
+          {hasFileEmbedding
+            ? "The stage shows the embedding stored in the file meanwhile."
+            : "The stage fills in when the UMAP is ready."}
+        </p>
+      )}
+    </>
   );
 }

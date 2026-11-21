@@ -139,7 +139,20 @@ export function useCreateRun() {
 }
 
 export function useRun(id: string | null) {
-  return useQuery({ queryKey: keys.run(id ?? ""), queryFn: () => api.run(id!), enabled: id !== null });
+  return useQuery({
+    queryKey: keys.run(id ?? ""),
+    queryFn: () => api.run(id!),
+    enabled: id !== null,
+    // Clonal scoring and stability run in the background: poll until the verdict stops waiting on them.
+    refetchInterval: (q) => {
+      const trust = q.state.data?.trust;
+      const waiting =
+        trust?.clonal?.status === "pending" ||
+        trust?.stability?.status === "pending" ||
+        trust?.tree_support?.checks.some((c) => c.state === "pending");
+      return waiting ? 2000 : false;
+    },
+  });
 }
 
 export interface RunCells {
@@ -173,14 +186,6 @@ export function useCurves(id: string | null, embedding: string | null) {
     queryFn: () => api.curves(id!, embedding!),
     enabled: id !== null && embedding !== null,
     ...forever,
-  });
-}
-
-export function useRenameLineage(runId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ lineage, name }: { lineage: number; name: string }) => api.renameLineage(runId, lineage, name),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.run(runId) }),
   });
 }
 
@@ -221,24 +226,6 @@ export function useHeatmap(runId: string | null, lineage: number | null, topN = 
       };
     },
     enabled: runId !== null && lineage !== null,
-    ...forever,
-  });
-}
-
-export function useComparison(a: string | null, b: string | null) {
-  return useQuery({
-    queryKey: ["compare", a ?? "", b ?? ""],
-    queryFn: () => api.compare(a!, b!),
-    enabled: a !== null && b !== null && a !== b,
-    ...forever,
-  });
-}
-
-export function useDisagreement(a: string | null, b: string | null) {
-  return useQuery({
-    queryKey: ["compare-cells", a ?? "", b ?? ""],
-    queryFn: async () => (await api.compareCells(a!, b!)).get("rank_difference", "f32").data,
-    enabled: a !== null && b !== null && a !== b,
     ...forever,
   });
 }
