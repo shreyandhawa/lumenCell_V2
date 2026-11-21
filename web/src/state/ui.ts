@@ -20,6 +20,10 @@ export interface UiState {
   cursor: number | null;
   playing: boolean;
   sheetOpen: boolean;
+  /** Point size as a multiple of the default for this many cells. */
+  pointSize: number;
+  /** Far cells fade toward the stage in 3-D. */
+  fog: boolean;
 
   setEmbedding: (name: string) => void;
   setColorBy: (c: ColorBy | null) => void;
@@ -31,6 +35,8 @@ export interface UiState {
   setCursor: (t: number | null) => void;
   setPlaying: (on: boolean) => void;
   setSheetOpen: (open: boolean) => void;
+  setPointSize: (k: number) => void;
+  setFog: (on: boolean) => void;
 }
 
 export const MAX_TREND_GENES = 4;
@@ -46,6 +52,8 @@ export const useUi = create<UiState>((set) => ({
   cursor: null,
   playing: false,
   sheetOpen: true,
+  pointSize: 1,
+  fog: true,
 
   setEmbedding: (embedding) => set({ embedding }),
   setColorBy: (colorBy) => set({ colorBy }),
@@ -58,4 +66,6 @@ export const useUi = create<UiState>((set) => ({
   setCursor: (cursor) => set({ cursor }),
   setPlaying: (playing) => set({ playing }),
   setSheetOpen: (sheetOpen) => set({ sheetOpen }),
+  setPointSize: (pointSize) => set({ pointSize }),
+  setFog: (fog) => set({ fog }),
 }));

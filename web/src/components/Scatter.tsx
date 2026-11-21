@@ -2,7 +2,7 @@ import { OrbitView, type OrbitViewState } from "@deck.gl/core";
 import { DataFilterExtension } from "@deck.gl/extensions";
 import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL from "@deck.gl/react";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, SlidersHorizontal } from "lucide-react";
 import { animate } from "motion";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -20,75 +20,37 @@ import {
 } from "@/api/queries";
 import { Legend } from "@/components/Legend";
 import { useCellColors } from "@/components/useCellColors";
+import { Gimbal } from "@/components/scatter/Gimbal";
+import { useStageSize } from "@/components/scatter/useStageSize";
 import { describeRoot } from "@/components/trajectory/RootPicker";
 import { fmt } from "@/components/ui";
+import { type Camera, FLAT, fitZoom as fitZoomFor, lerp, lerpCam, TILTED } from "@/lib/camera";
+import { normalise, type Vec3 } from "@/lib/embedding";
+import { DepthFadeExtension } from "@/lib/gl/depthFade";
+import { useCamera } from "@/state/camera";
 import { useUi } from "@/state/ui";
 
 const LEIDEN = "lumencell_leiden";
 const FILTER = new DataFilterExtension({ filterSize: 1 });
+const FADE = new DepthFadeExtension();
 // The stage fills the window; the data is centred in the space between the rail, the sheet and the bar.
 const RAIL = 304;
 const SHEET = 384;
 const BAR = 80;
-const FLAT = { rotationX: 0, rotationOrbit: 0 };
-const TILTED = { rotationX: 18, rotationOrbit: -32 };
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
-/** How much the farthest cells fade in 3-D (share of their alpha taken away). */
-const FAR_FADE = 0.75;
+/** How far the farthest cells fade toward the stage in 3-D (0 = not at all, 1 = into the stage). */
+const FOG = 0.6;
+/** The stage colour per theme (index.css --color-stage): what fog and faint cells fade toward. */
+const STAGE = { dark: [0, 0, 0], light: [244, 246, 243] } as const;
+const VIEW_ID = "stage";
 
-type Camera = Pick<OrbitViewState, "target" | "zoom" | "rotationX" | "rotationOrbit">;
-type Vec3 = [number, number, number];
-
-function useSize(): [React.RefObject<HTMLDivElement | null>, { width: number; height: number }] {
-  const ref = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => {
-      if (entry) setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, size];
-}
-
+/** On-screen point radius at the fitted zoom, in pixels. */
 function pointRadius(n: number): number {
   if (n < 5_000) return 3;
   if (n < 50_000) return 2;
   return 1.4;
 }
-
-/** Centre an (n x dims) embedding on 0 and scale its longest side to 1, as xyz (z = 0 in 2-D). */
-function normalise(src: Float32Array, dims: 2 | 3) {
-  const lo = [Infinity, Infinity, Infinity];
-  const hi = [-Infinity, -Infinity, -Infinity];
-  for (let i = 0; i < src.length; i++) {
-    const v = src[i]!;
-    const k = i % dims;
-    if (Number.isFinite(v)) {
-      lo[k] = Math.min(lo[k]!, v);
-      hi[k] = Math.max(hi[k]!, v);
-    }
-  }
-  const mid = [0, 1, 2].map((k) => (k < dims ? (lo[k]! + hi[k]!) / 2 : 0));
-  const span = Math.max(...[0, 1, 2].map((k) => (k < dims ? hi[k]! - lo[k]! : 0))) || 1;
-  const map = (p: ArrayLike<number>): Vec3 => [0, 1, 2].map((k) => (k < dims ? (p[k]! - mid[k]!) / span : 0)) as Vec3;
-  const n = src.length / dims;
-  const xyz = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) xyz.set(map(src.subarray(i * dims, i * dims + dims)), i * 3);
-  return { xyz, map };
-}
-
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const lerpCam = (a: Camera, b: Camera, t: number): Camera => ({
-  target: [0, 1, 2].map((k) => lerp(a.target[k] ?? 0, b.target[k] ?? 0, t)) as Vec3,
-  zoom: lerp(a.zoom as number, b.zoom as number, t),
-  rotationX: lerp(a.rotationX ?? 0, b.rotationX ?? 0, t),
-  rotationOrbit: lerp(a.rotationOrbit ?? 0, b.rotationOrbit ?? 0, t),
-});
 
 export function Scatter() {
   const embedding = useUi((s) => s.embedding);
@@ -101,6 +63,11 @@ export function Scatter() {
   const focus = useUi((s) => s.focusLineage);
   const sheetOpen = useUi((s) => s.sheetOpen);
   const colorBy = useUi((s) => s.colorBy);
+  const pointSize = useUi((s) => s.pointSize);
+  const setPointSize = useUi((s) => s.setPointSize);
+  const fog = useUi((s) => s.fog);
+  const setFog = useUi((s) => s.setFog);
+  const [optionsOpen, setOptionsOpen] = useState(false);
 
   const dataset = useDataset().data;
   const n = dataset?.n_obs ?? 0;
@@ -125,19 +92,19 @@ export function Scatter() {
   const flat = useMemo(() => (flatRaw && flatRaw.length === n * 2 ? normalise(flatRaw, 2) : null), [flatRaw, n]);
   const deep = useMemo(() => (deepRaw && deepRaw.length === n * 3 ? normalise(deepRaw, 3) : null), [deepRaw, n]);
 
-  const [containerRef, size] = useSize();
+  const [containerRef, size] = useStageSize();
   const sheetVisible = run !== undefined && sheetOpen;
   const [padTween, setPadTween] = useState(0);
   const padRight = reduce ? (sheetVisible ? SHEET : 0) : padTween;
   const padding = { left: RAIL, right: padRight, top: 0, bottom: BAR };
   const stageView = useMemo(
-    () => new OrbitView({ id: "stage", orbitAxis: "Y", padding: { left: RAIL, right: padRight, top: 0, bottom: BAR } }),
+    () => new OrbitView({ id: VIEW_ID, orbitAxis: "Y", padding: { left: RAIL, right: padRight, top: 0, bottom: BAR } }),
     [padRight],
   );
-  const fitZoom = Math.log2(
-    0.8 * Math.max(120, Math.min(size.width - padding.left - padding.right, size.height - padding.bottom)),
-  );
-  const [userViewState, setViewState] = useState<OrbitViewState | null>(null);
+  const fitZoom = fitZoomFor(size.width - padding.left - padding.right, size.height - padding.bottom);
+  const userViewState = useCamera((s) => s.cameras[VIEW_ID] ?? null);
+  const setCamera = useCamera((s) => s.setCamera);
+  const setViewState = (vs: OrbitViewState) => setCamera(VIEW_ID, vs);
   // The first fit, until the user or an animation moves the camera.
   const viewState = useMemo<OrbitViewState | null>(
     () =>
@@ -227,25 +194,6 @@ export function Scatter() {
     [stageView, viewState, size.width, size.height],
   );
 
-  // In 3-D, far cells fade: alpha falls with view-space depth.
-  const fill = useMemo(() => {
-    if (!colors || !positions || t === 0 || !viewport) return colors;
-    const m = viewport.viewMatrix as unknown as number[];
-    const depth = new Float32Array(n);
-    let near = -Infinity;
-    let far = Infinity;
-    for (let i = 0; i < n; i++) {
-      const d = m[2]! * positions[i * 3]! + m[6]! * positions[i * 3 + 1]! + m[10]! * positions[i * 3 + 2]! + m[14]!;
-      depth[i] = d;
-      near = Math.max(near, d);
-      far = Math.min(far, d);
-    }
-    const span = near - far || 1;
-    const out = colors.slice();
-    for (let i = 0; i < n; i++) out[i * 4 + 3] = Math.round(colors[i * 4 + 3]! * (1 - FAR_FADE * t * ((near - depth[i]!) / span)));
-    return out;
-  }, [colors, positions, t, viewport, n]);
-
   const ptValues = useMemo(() => {
     const out = new Float32Array(n).fill(-1);
     if (cells) for (let i = 0; i < n; i++) if (Number.isFinite(cells.pseudotime[i]!)) out[i] = cells.pseudotime[i]!;
@@ -274,39 +222,53 @@ export function Scatter() {
       length: n,
       attributes: {
         getPosition: { value: positions!, size: 3 },
-        getFillColor: { value: fill!, size: 4, normalized: true },
+        getFillColor: { value: colors!, size: 4, normalized: true },
         getFilterValue: { value: ptValues, size: 1 },
       },
     }),
-    [n, positions, fill, ptValues],
+    [n, positions, colors, ptValues],
   );
   const ink: [number, number, number, number] = theme === "dark" ? [243, 245, 242, 190] : [20, 23, 22, 170];
   const layers = [];
-  if (positions && fill) {
-    const r = pointRadius(n);
-    const overdraw = { depthCompare: "always", depthWriteEnabled: false } as const;
+  if (positions && colors) {
+    // Cells are balls of one size in embedding units (near ones look bigger in 3-D), sized so they
+    // are r pixels at the fitted zoom, and never smaller than 0.6 r or larger than 3 r before perspective.
+    const r = pointRadius(n) * pointSize;
+    const radius = r / 2 ** fitZoom;
+    // The fog spans the box that holds the cells, which moves with them while morphing.
+    const box = (k: 0 | 1) =>
+      [0, 1, 2].map((j) => (flat && deep ? lerp(flat.bounds[k][j]!, deep.bounds[k][j]!, t) : (flat?.bounds[k][j] ?? 0))) as Vec3;
     layers.push(
+      // A faint ghost of every cell, so cells past the cursor still show where they are. Drawn first,
+      // without depth, so cells always cover it.
       new ScatterplotLayer({
         id: "halo",
         data: haloData,
         getFillColor: theme === "dark" ? [255, 255, 255, 10] : [0, 0, 0, 14],
         radiusUnits: "pixels",
         getRadius: r + 1.5,
-        parameters: overdraw,
-        updateTriggers: { getFillColor: theme },
+        billboard: true,
+        parameters: { depthCompare: "always", depthWriteEnabled: false },
+        updateTriggers: { getFillColor: theme, getRadius: r },
       }),
       new ScatterplotLayer({
         id: "cells",
         data: cellData,
-        radiusUnits: "pixels",
-        getRadius: r,
+        radiusUnits: "common",
+        getRadius: radius,
+        radiusMinPixels: 0.6 * r,
+        radiusMaxPixels: 3 * r,
+        billboard: true,
         pickable: true,
         autoHighlight: true,
         highlightColor: theme === "dark" ? [255, 255, 255, 220] : [0, 0, 0, 200],
-        parameters: overdraw,
-        extensions: [FILTER],
+        extensions: [FILTER, FADE],
         filterRange: [-2, limit],
         filterSoftRange: [-2, limit - 0.06],
+        depthFadeStage: STAGE[theme],
+        depthFadeStrength: fog ? FOG * t : 0,
+        depthFadeBounds: [box(0), box(1)],
+        updateTriggers: { getRadius: radius },
       }),
     );
   }
@@ -320,6 +282,7 @@ export function Scatter() {
         getColor: (d) => (d.lineage === focus ? [224, 51, 143, 255] : ink),
         getWidth: (d) => (d.lineage === focus ? 3 : 1.5),
         widthUnits: "pixels",
+        billboard: true,
         jointRounded: true,
         capRounded: true,
         parameters: { depthCompare: "always" },
@@ -336,7 +299,7 @@ export function Scatter() {
   const p = run?.provenance;
   const caption =
     view === "3d"
-      ? `DC1–DC3 · ${p?.inference_rep === "X_diffmap" ? `3 of ${p.inference_dims}` : "the first 3"} diffusion components · far cells fade`
+      ? `DC1–DC3 · ${p?.inference_rep === "X_diffmap" ? `3 of ${p.inference_dims}` : "the first 3"} diffusion components${fog ? " · far cells fade" : ""}`
       : !embedding
         ? ""
         : paths.length && p
@@ -439,45 +402,56 @@ export function Scatter() {
 
       {viewState && (
         <div className="absolute z-10 flex items-end gap-3" style={{ right, bottom: raised ? 316 : 120 }}>
-          <button
-            type="button"
-            aria-label="Reset view"
-            onClick={reset}
-            className="press grid size-8 place-items-center rounded-md bg-panel text-ink"
-          >
-            <RotateCcw size={16} />
-          </button>
+          <div className="relative flex flex-col gap-1.5">
+            {optionsOpen && (
+              <div
+                id="display-options"
+                role="group"
+                aria-label="Display options"
+                className="absolute right-0 bottom-[76px] w-56 rounded-xl bg-panel p-3 text-[13px] text-ink"
+              >
+                <label className="flex flex-col gap-1.5">
+                  <span className="flex justify-between">
+                    Point size <span className="font-mono text-xs text-ink-muted">{pointSize.toFixed(2)}×</span>
+                  </span>
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={3}
+                    step={0.25}
+                    value={pointSize}
+                    onChange={(e) => setPointSize(Number(e.target.value))}
+                    className="accent-ink"
+                  />
+                </label>
+                <label className="mt-3 flex items-center gap-2">
+                  <input type="checkbox" checked={fog} onChange={(e) => setFog(e.target.checked)} className="accent-ink" />
+                  Fade far cells in depth
+                </label>
+              </div>
+            )}
+            <button
+              type="button"
+              aria-label="Display options"
+              aria-expanded={optionsOpen}
+              aria-controls="display-options"
+              onClick={() => setOptionsOpen((o) => !o)}
+              className={`press grid size-8 place-items-center rounded-md text-ink ${optionsOpen ? "bg-panel-raised" : "bg-panel"}`}
+            >
+              <SlidersHorizontal size={16} />
+            </button>
+            <button
+              type="button"
+              aria-label="Reset view"
+              onClick={reset}
+              className="press grid size-8 place-items-center rounded-md bg-panel text-ink"
+            >
+              <RotateCcw size={16} />
+            </button>
+          </div>
           {t > 0 && viewport && <Gimbal m={viewport.viewMatrix as unknown as number[]} />}
         </div>
       )}
     </div>
-  );
-}
-
-/** Which way DC1, DC2 and DC3 point on screen. */
-function Gimbal({ m }: { m: number[] }) {
-  const axes = (["DC1", "DC2", "DC3"] as const).map((name, k) => {
-    const [x, y, z] = [m[k * 4]!, m[k * 4 + 1]!, m[k * 4 + 2]!];
-    const len = Math.hypot(x, y, z) || 1;
-    return { name, x: (x / len) * 30, y: (-y / len) * 30 };
-  });
-  return (
-    <svg
-      role="img"
-      aria-label="Orientation of DC1, DC2 and DC3"
-      viewBox="-48 -48 96 96"
-      className="size-24 rounded-full bg-stage/80 text-ink-muted"
-    >
-      <circle r={47} fill="none" stroke="currentColor" strokeOpacity={0.5} />
-      {axes.map((a) => (
-        <g key={a.name}>
-          <line x1={0} y1={0} x2={a.x} y2={a.y} stroke="var(--color-ink)" strokeWidth={1.25} />
-          <text x={a.x * 1.3} y={a.y * 1.3 + 3} textAnchor="middle" className="fill-ink-muted font-mono text-[9px]">
-            {a.name}
-          </text>
-        </g>
-      ))}
-      <circle r={2.5} fill="var(--color-ink)" />
-    </svg>
   );
 }
