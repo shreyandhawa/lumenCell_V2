@@ -377,6 +377,39 @@ warming up); `pca` took 71 s both times.
 matrix (`keep_matrix=False`), and the expression it serves is the cache's lognorm,
 held once and by gene.
 
+## The last three 100k-cell budgets
+
+Measured once, on 2026-11-22, with `benchmarks/perf/timing_100k.py` (the
+numbers are in `benchmarks/results/perf-100k-2026-11-22.json`) and
+`benchmarks/perf/first_paint.cjs`. The dataset is `lumencell synth
+.lumencell/perf/synth100k.h5ad --n-cells 100000` (2,000 genes, bifurcation,
+realistic preset), prepared with `lumencell prepare`, with the root from
+`lumencell roots` (`cluster:lumencell_leiden=1`). Each `lumencell run` ran under
+`/usr/bin/time -l`, under `caffeinate -i`, alone on the machine, with a 60-minute
+cap. The budgets were not changed to fit the results.
+
+| | budget | result | peak RSS | gate |
+|---|---|---|---|---|
+| Palantir, `lumencell run --method palantir` | < 10 min | 158.7 s | 2,218 MB | pass |
+| scFates, `lumencell run --method scfates_ppt` | < 10 min | 27.9 s | 1,375 MB | pass |
+| first paint, time to first WebGL draw of points | < 1.5 s | median 408 ms (378, 485, 408) | | pass |
+
+- First paint is headless Chromium with `--use-angle=metal --enable-gpu`, on a
+  server started with the prepared dataset and the root. It is the first
+  instanced draw of at least 1,000 instances (the points), measured from
+  navigation; first contentful paint was 116 to 184 ms. The server's own start
+  is not in the number, and the GPU is not checked separately.
+- Prepare, for this run only: 234 s wall, 2.5 GB peak RSS (macOS reports a 4.0 GB
+  peak footprint). The earlier table shows 135 to 163 s on another run, so the
+  spread is large. Prepare is within its 8-minute budget here too.
+- A first attempt at scFates used the name `scfates`. That name is not
+  registered (the methods are `paga_dpt`, `palantir` and `scfates_ppt`), so the
+  run exited at once with status 2 after 5 s. It measured nothing, and its
+  record was removed from the results file. The number above is the scFates
+  method that is registered.
+- These are timings only. They say nothing about the quality of either method's
+  output on the synthetic data, which the branching benchmarks cover.
+
 ## Issue 6: CI on GitHub Actions
 
 **Now.** `.github/workflows/ci.yml` runs `make ci` on every pull request and on

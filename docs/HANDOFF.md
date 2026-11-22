@@ -29,7 +29,7 @@ The full loop works and is covered end to end:
 | A3 Palantir, A4 scFates adapters | done |
 | A5 trends, heatmap, compare + C4/C5 web views | done (see deviations) |
 | A6 real benchmark | done, acceptance **not** met (see results) |
-| I2 packaging + 100k-cell performance budgets | packaging done in 0.1.0 (#61): the wheel bundles `web_dist`, and CI installs it without Node and starts `lumencell demo`. Budgets measured for prep, `paga_dpt` and the server, all within budget (`docs/backend-robustness-2.md`); Palantir, scFates and first paint are not measured |
+| I2 packaging + 100k-cell performance budgets | packaging done in 0.1.0 (#61): the wheel bundles `web_dist`, and CI installs it without Node and starts `lumencell demo`. Budgets measured for prep, `paga_dpt`, the server, Palantir (159 s), scFates (28 s) and first paint (median 408 ms), all within budget (`docs/backend-robustness-2.md`) |
 
 ## The 3-D viewer (0.3.0, 2026-11-21)
 
@@ -192,10 +192,9 @@ failures are all about branch structure.
 
 ## Open work, in suggested order
 
-1. **Performance at 100k cells, the rest.** Prep, `paga_dpt`, one gene and the
-   heatmap are measured and within budget (`docs/backend-robustness-2.md`).
-   Still to record on `lumencell synth --n-cells 100000`: Palantir and scFates
-   under 10 min, first paint under 1.5 s.
+1. **Performance at 100k cells: done.** Prep, `paga_dpt`, one gene, the heatmap,
+   Palantir (159 s), scFates (28 s) and first paint (408 ms median) are all
+   measured and within budget (`docs/backend-robustness-2.md`).
 2. **Branching, tuned on pancreas only.** Candidates:
    - Leiden resolution for PAGA, or refining cells at forks.
    - The `q` and `eps` settings of Palantir's `select_branch_cells`.

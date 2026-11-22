@@ -1,0 +1,68 @@
+{
+  "date": "2026-11-22",
+  "n_cells": 100000,
+  "machine": "macOS-26.6.2-arm64-arm-64bit-Mach-O, 10 logical CPUs",
+  "budgets_s": {
+    "palantir": 600,
+    "scfates_ppt": 600
+  },
+  "cap_s": 3600,
+  "root": "cluster:lumencell_leiden=1",
+  "steps": {
+    "prepare": {
+      "wall_s": 234.4,
+      "peak_rss_mb": 2503,
+      "status": 0,
+      "stdout": "normalize  done       4.79s\nhvg        done       4.43s\npca        done     141.46s\nneighbors  done      24.38s\nleiden     done       7.55s\ndiffmap    done       2.31s\npaga       done       2.80s\numap       done      41.01s\ncell_cycle done       0.01s\ncell cycle: not scored (only 0 of 97 Tirosh 2016 genes were found; at least 20 are needed)\nreceptor genes: 0 matched (symbols from var_names)\n",
+      "stderr_tail": "                   0  messages sent\n                   0  messages received\n                   0  signals received\n                4338  voluntary context switches\n              563255  involuntary context switches\n       2597107021261  instructions retired\n        861157394069  cycles elapsed\n          4041952760  peak memory footprint"
+    },
+    "roots": {
+      "wall_s": 4.8,
+      "peak_rss_mb": 1562,
+      "status": 0,
+      "stderr_tail": "                   0  messages sent\n                   0  messages received\n                   0  signals received\n                2712  voluntary context switches\n               26950  involuntary context switches\n         21377537685  instructions retired\n         14025183823  cycles elapsed\n          2264074424  peak memory footprint"
+    }
+  },
+  "methods": {
+    "palantir": {
+      "wall_s": 158.7,
+      "peak_rss_mb": 2218,
+      "status": 0,
+      "stderr_tail": "                   0  messages sent\n                   0  messages received\n                   0  signals received\n                1444  voluntary context switches\n              603791  involuntary context switches\n        597204553408  instructions retired\n        554289491505  cycles elapsed\n          5125181904  peak memory footprint",
+      "gate": "pass"
+    },
+    "scfates_ppt": {
+      "wall_s": 27.9,
+      "peak_rss_mb": 1375,
+      "status": 0,
+      "stderr_tail": "                   0  messages sent\n                   0  messages received\n                   0  signals received\n                4080  voluntary context switches\n               97121  involuntary context switches\n        286410287169  instructions retired\n        108707499992  cycles elapsed\n          3112782704  peak memory footprint",
+      "gate": "pass"
+    }
+  },
+  "first_paint": {
+    "budget_ms": 1500,
+    "median_first_points_ms": 408,
+    "verdict": "pass",
+    "runs": [
+      {
+        "run": 1,
+        "first_points_ms": 378,
+        "fcp_ms": 184,
+        "wall_ms": 389
+      },
+      {
+        "run": 2,
+        "first_points_ms": 485,
+        "fcp_ms": 116,
+        "wall_ms": 493
+      },
+      {
+        "run": 3,
+        "first_points_ms": 408,
+        "fcp_ms": 172,
+        "wall_ms": 437
+      }
+    ],
+    "note": "server launched with the prepared dataset and root; headless Chromium with --use-angle=metal --enable-gpu; first instanced WebGL draw of >=1000 instances"
+  }
+}
