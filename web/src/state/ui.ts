@@ -9,6 +9,8 @@ export type ColorBy =
   /** Palantir's per-cell fate entropy; only runs that serve `extras.entropy` offer it. */
   | { kind: "entropy" };
 
+export type View = "2d" | "3d" | "split";
+
 export interface UiState {
   embedding: string | null;
   colorBy: ColorBy | null;
@@ -17,7 +19,8 @@ export interface UiState {
   /** Genes the user picked, shown first in the gene trends. */
   trendGenes: string[];
   theme: "dark" | "light";
-  view: "2d" | "3d";
+  /** One stage that morphs between the 2-D embedding and DC1-DC3, or both side by side. */
+  view: View;
   /** The pseudotime cursor shared by the bar and the gene trends; null until the user plays or scrubs. */
   cursor: number | null;
   playing: boolean;
@@ -33,7 +36,7 @@ export interface UiState {
   setFocusLineage: (id: number | null) => void;
   addTrendGene: (gene: string) => void;
   setTheme: (t: "dark" | "light") => void;
-  setView: (v: "2d" | "3d") => void;
+  setView: (v: View) => void;
   setCursor: (t: number | null) => void;
   setPlaying: (on: boolean) => void;
   setSheetOpen: (open: boolean) => void;
