@@ -43,8 +43,13 @@ link reopens it; Export PNG saves the plot with its legend and where it came fro
 
 Results so far: [docs/results.md](docs/results.md)
 
-> Early development (M1). Usable on real data, but every method is still labelled
-> experimental: see the benchmark below.
+> **Known limits.** Every method is labelled experimental: each misses at least one
+> benchmark gate. The misses are about branch structure (where lineages split), not
+> pseudotime order, which agrees with the known stages on all three real datasets
+> (Spearman 0.72 to 0.95). Only bone marrow has the two passing methods the plan asked
+> for. The trust panel shows each method's reference results, failures included.
+> Tuning the branch settings further was declined: the held-out datasets have already
+> been measured, so a gain could not be shown to carry over. See the benchmark below.
 
 ## Principles
 

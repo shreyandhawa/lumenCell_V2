@@ -1,6 +1,6 @@
 # Handoff: lumenCell V2, Milestone 1
 
-Status as of 2026-11-22, commit `e108989` on `main`, version 0.3.0 (tagged releases: v0.1.0, v0.2.0). No pull requests are open.
+Status as of 2026-11-22, commit `f7dee86` on `main`, version 0.4.0 (not tagged yet; tagged releases v0.1.0 to v0.3.0). Milestone 1 is closed: see "Milestone 1 close-out" below.
 Read this first if you are picking the project up; the README covers usage.
 
 ## What exists
@@ -48,7 +48,7 @@ Sheih NHL-6 (21,762 cells), and orbiting 100k synthetic cells holds 60 fps on an
 | 7 overlays | #71 | the 3-D axis picker; PAGA and neighbour-graph overlays |
 | 8 share | #72 | the view in the URL hash, PNG export, saved views and a camera tour; version 0.3.0 |
 
-All eight were squash-merged to `main` in order on 2026-11-22. 0.3.0 is not tagged yet.
+All eight were squash-merged to `main` in order on 2026-11-22, and v0.3.0 was tagged and published to PyPI the same day.
 
 Not built, on purpose or for later: lasso-as-root (no such root kind), undo, sphere or box
 selectors, a draggable split divider, hiding neighbour edges past the cursor, saved views in
@@ -183,30 +183,41 @@ failures are all about branch structure.
   form is drawn from each method's JSON Schema (`/methods`); terminals are the
   labels of the method's `cluster_key` column. The server's validation errors
   show under their fields.
-- **Reference benchmark scores** are not yet shown in the trust panel
-  (`reference_scores` is empty).
+- **Reference benchmark results** are shown in the trust panel (#74), one row per
+  dataset and gate, failures included. They ship as
+  `src/lumencell/bench/reference_scores.json`; rebuild it with
+  `uv run python -m lumencell.bench.reference` after a new result or a threshold
+  change (a unit test fails while it is stale).
 - **CI runs on GitHub Actions** (`.github/workflows/ci.yml`): the `make ci`
   steps on Ubuntu with Python 3.13 from `.python-version`. There is still no
   Python 3.14 job.
 - **The browser mock layer (MSW)** is used only in component tests, not as a
   standalone mock server.
 
-## Open work, in suggested order
+## Milestone 1 close-out (2026-11-22)
 
-1. **Performance at 100k cells: done.** Prep, `paga_dpt`, one gene, the heatmap,
-   Palantir (159 s), scFates (28 s) and first paint (408 ms median) are all
-   measured and within budget (`docs/backend-robustness-2.md`).
-2. **Branching, tuned on pancreas only.** Candidates:
-   - Leiden resolution for PAGA, or refining cells at forks.
-   - The `q` and `eps` settings of Palantir's `select_branch_cells`.
-   - scFates `nodes` and `minbranchlength`.
-   - Handling spurious tips on single-lineage data.
+Done:
+- **Performance at 100k cells** (#75). Prep, `paga_dpt`, one gene, the heatmap,
+  Palantir (159 s), scFates (28 s) and first paint (408 ms median) are all measured
+  and within budget (`docs/backend-robustness-2.md`).
+- **App inputs.** The run form sets method parameters from each method's JSON Schema,
+  with terminal names picked from the cluster column's labels (#76); the trust panel
+  shows the method's reference results (#74).
+- **Viewer zoom** (#77). The camera's target stays over the cells and the zoom stops
+  four levels past the fit, so zooming in can no longer leave an empty, black plot.
+- **Repo setup.** `.github/workflows/ci.yml` mirrors `make ci`.
 
-   Re-run `make bench-synth` (no regressions allowed) and `make bench-real`, and
-   log every change.
-3. **App inputs:** terminals and a parameter form, plus reference scores in the
-   trust panel.
-4. **Repo setup:** done. `.github/workflows/ci.yml` mirrors `make ci`.
+Declined:
+- **Branch tuning on pancreas.** Bone marrow and gastrulation, the held-out sets, have
+  already been measured, so a gain from tuning on pancreas could not be shown to carry
+  over, and the plan's rule is that gates are never moved to fit results. The failures
+  stay published. If this is picked up again, it needs held-out data that has not been
+  seen. The levers that were listed: Leiden resolution or fork refinement for PAGA,
+  Palantir's `select_branch_cells` `q` and `eps`, scFates `nodes` and
+  `minbranchlength`, and spurious tips on single-lineage data.
+
+Not scheduled: the C1 to C4 verdict redesign and column subsetting in the Daniel
+matrix reader, both from the T-cell pivot (`docs/superpowers/HANDOFF.md`).
 
 ## Gotchas met along the way
 
