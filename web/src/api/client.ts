@@ -94,6 +94,8 @@ export const api = {
         })
       ).arrayBuffer(),
     ),
+  paga: (embedding: string) => getJson<T.PagaGraph>(`/graph/paga?embedding=${enc(embedding)}`),
+  knn: () => getLcb("/graph/knn"),
   compare: (a: string, b: string) => getJson<T.Comparison>(`/compare?a=${enc(a)}&b=${enc(b)}`),
   compareCells: (a: string, b: string) => getLcb(`/compare/cells?a=${enc(a)}&b=${enc(b)}`),
   job: (id: string) => getJson<T.JobInfo>(`/jobs/${enc(id)}`),

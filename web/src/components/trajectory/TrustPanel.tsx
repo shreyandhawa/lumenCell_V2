@@ -4,6 +4,7 @@ import type * as T from "@/api/generated";
 import { useCurves, useDataset, useMethods } from "@/api/queries";
 import { describeRoot } from "@/components/trajectory/RootPicker";
 import { KeyValues, Label, Mark } from "@/components/ui";
+import { axesLabel, axesName } from "@/lib/axes";
 import { useUi } from "@/state/ui";
 
 // These labels describe C1 (connectivity) and C5 (clonal support) only, and hold only while
@@ -166,7 +167,8 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
   const embedding = useUi((s) => s.embedding);
   const setSheetOpen = useUi((s) => s.setSheetOpen);
   const curves = useCurves(run.run_id, embedding).data;
-  const curves3 = useCurves(run.run_id, "dc123").data;
+  const axes = useUi((s) => s.axes);
+  const curves3 = useCurves(run.run_id, axesName(axes)).data;
   const dataset = useDataset().data;
   const fidelity = (cs: T.Curves | undefined, lineage: number) => {
     const f = cs?.curves.find((c) => c.lineage === lineage)?.fidelity;
@@ -237,7 +239,7 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
             label="Curve fidelity"
             rows={run.lineages.map((l) => [
               l.name,
-              `${embedding ?? "2-D"} ${fidelity(curves, l.id)} · DC1–DC3 ${fidelity(curves3, l.id)}`,
+              `${embedding ?? "2-D"} ${fidelity(curves, l.id)} · ${axesLabel(axes)} ${fidelity(curves3, l.id)}`,
             ])}
           />
         </section>

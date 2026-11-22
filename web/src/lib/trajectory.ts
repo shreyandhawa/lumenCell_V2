@@ -14,16 +14,17 @@ export interface PlacedMilestone {
 type Lerp = (a: Vec3, b: Vec3) => Vec3;
 
 /**
- * Milestones of the run at their projected positions: in the 2-D view, the 3-D view, or between
- * them while morphing (`mix`). A milestone missing from one view keeps the other's position.
+ * Milestones of the run (or PAGA's clusters: anything with an id) at their projected positions: in
+ * the 2-D view, the 3-D view, or between them while morphing (`mix`). One missing from a view keeps
+ * the other's position.
  */
-export function placeMilestones(
-  milestones: readonly { id: number; kind: MilestoneKind; label: string; pseudotime: number }[],
+export function placeMilestones<M extends { id: number }>(
+  milestones: readonly M[],
   flat: ReadonlyMap<number, Vec3> | null,
   deep: ReadonlyMap<number, Vec3> | null,
   mix: Lerp,
-): PlacedMilestone[] {
-  const out: PlacedMilestone[] = [];
+): (M & { position: Vec3 })[] {
+  const out: (M & { position: Vec3 })[] = [];
   for (const m of milestones) {
     const a = flat?.get(m.id);
     const b = deep?.get(m.id);

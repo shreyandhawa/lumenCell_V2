@@ -46,7 +46,7 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await expect(page.getByRole("combobox", { name: "Colour by" })).toHaveCount(0);
   await expect(page.getByText("Pseudotime appears after a run")).toBeVisible();
   await page.getByRole("button", { name: "3-D", exact: true }).click();
-  await expect(page.getByText(/DC1–DC3 · the first 3 diffusion components/)).toBeVisible();
+  await expect(page.getByText(/DC1–DC3 · 3 of \d+ diffusion components/)).toBeVisible();
   await page.getByRole("button", { name: "2-D", exact: true }).click();
 
   // 3. Use the root stored in the file (the first suggestion).
@@ -88,6 +88,19 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await page.getByRole("button", { name: "Display options" }).click();
   await page.getByRole("checkbox", { name: "Fade far cells in depth" }).uncheck();
   await expect(page.getByText(/far cells fade/)).toHaveCount(0);
+  // Other diffusion components: z = DC4 relabels the caption and the gimbal; DC3 again restores them.
+  await page.getByRole("combobox", { name: "Z axis" }).selectOption("4");
+  await expect(page.getByText(/DC1, DC2, DC4 · 3 of \d+ diffusion components/)).toBeVisible();
+  await expect(page.getByRole("img", { name: "Orientation of DC1, DC2 and DC4" })).toBeVisible();
+  await page.getByRole("combobox", { name: "Z axis" }).selectOption("3");
+  await expect(page.getByRole("img", { name: "Orientation of DC1, DC2 and DC3" })).toBeVisible();
+  // Graphs drawn over the view: PAGA and the neighbour graph load (and draw without a console error).
+  const graphs = Promise.all([page.waitForResponse(/\/graph\/paga\?embedding=/), page.waitForResponse(/\/graph\/knn/)]);
+  await page.getByRole("checkbox", { name: "PAGA cluster graph" }).check();
+  await page.getByRole("checkbox", { name: "Neighbour graph" }).check();
+  for (const res of await graphs) expect(res.status()).toBe(200);
+  await page.getByRole("checkbox", { name: "PAGA cluster graph" }).uncheck();
+  await page.getByRole("checkbox", { name: "Neighbour graph" }).uncheck();
   await page.getByRole("button", { name: "Display options" }).click();
   // Keyboard: Shift+arrow orbits, R resets. Auto-rotate stays off under reduced motion.
   const gimbal = () =>
