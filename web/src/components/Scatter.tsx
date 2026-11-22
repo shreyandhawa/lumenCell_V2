@@ -32,7 +32,7 @@ import { useStageSize } from "@/components/scatter/useStageSize";
 import { describeRoot } from "@/components/trajectory/RootPicker";
 import { fmt, Select } from "@/components/ui";
 import { axesLabel, axesName, setAxis } from "@/lib/axes";
-import { type Camera, FLAT, fitZoom as fitZoomFor, lerp, lerpCam, TILTED } from "@/lib/camera";
+import { type Camera, clampTarget, FLAT, fitZoom as fitZoomFor, lerp, lerpCam, TILTED } from "@/lib/camera";
 import { normalise, type Vec3 } from "@/lib/embedding";
 import { type Point, selectInPolygon } from "@/lib/geometry";
 import { exportPng } from "@/lib/exportPng";
@@ -88,6 +88,12 @@ function perPositions<T>(fn: (p: Positions) => T): (p: Positions) => T {
     return v;
   };
 }
+
+/**
+ * How far past the fitted view the zoom may go. Deeper, the view sits in the empty space between
+ * cells and draws nothing; the target is also kept over the cells (see onViewStateChange).
+ */
+const MAX_ZOOM_PAST_FIT = 4;
 
 /** On-screen point radius at the fitted zoom, in pixels. */
 function pointRadius(n: number): number {
@@ -174,10 +180,14 @@ export function Scatter() {
   const viewState = useMemo<OrbitViewState | null>(
     () =>
       userViewState ??
-      (flat && size.width ? { target: [0, 0, 0], ...FLAT, zoom: fitZoom, minZoom: fitZoom - 3, maxZoom: fitZoom + 6 } : null),
+      (flat && size.width ? { target: [0, 0, 0], ...FLAT, zoom: fitZoom, minZoom: fitZoom - 3, maxZoom: fitZoom + MAX_ZOOM_PAST_FIT } : null),
     [userViewState, flat, size.width, fitZoom],
   );
   const [t, setT] = useState(0); // 0 = 2-D embedding, 1 = DC1-DC3; in between while morphing
+  // The box that holds the cells at this point of the morph, the same blend the fog uses.
+  const morphBox = (flat && deep
+    ? [0, 1].map((k) => [0, 1, 2].map((j) => lerp(flat.bounds[k as 0 | 1][j]!, deep.bounds[k as 0 | 1][j]!, t))) as [Vec3, Vec3]
+    : flat?.bounds) as [Vec3, Vec3] | undefined;
 
   // Side by side: two panes share the free stage, each fitted and moved on its own.
   const split = view === "split" && flat !== null && deep !== null;
@@ -191,7 +201,7 @@ export function Scatter() {
       ...cam,
       zoom: paneFit,
       minZoom: paneFit - 3,
-      maxZoom: paneFit + 6,
+      maxZoom: paneFit + MAX_ZOOM_PAST_FIT,
     });
     return { flat: cameras.flat ?? fit(FLAT), deep: cameras.deep ?? fit(TILTED) };
   }, [split, cameras.flat, cameras.deep, paneFit]);
@@ -711,7 +721,11 @@ export function Scatter() {
           onViewStateChange={({ viewId, viewState: vs }) => {
             if (!paneStates && t !== 0 && t !== 1) return;
             setSpinning(false);
-            setCamera(paneStates ? viewId : VIEW_ID, vs as OrbitViewState);
+            // The target stays over the cells, so a zoom or pan cannot carry the view off the plot.
+            const next = vs as OrbitViewState;
+            const box = paneStates ? (viewId === "deep" ? deep?.bounds : flat?.bounds) : morphBox;
+            const target = box ? clampTarget(next.target as Vec3, box) : (next.target as Vec3);
+            setCamera(paneStates ? viewId : VIEW_ID, { ...next, target });
           }}
           // Arrows pan, -/= zoom; with Shift they orbit, in 3-D only. Side by side, each pane has its own.
           controller={paneStates ? undefined : t === 0 ? flatControl(true) : t === 1 ? deepControl(true, lasso) : false}

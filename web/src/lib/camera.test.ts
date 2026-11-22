@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { depthRange, FLAT, fitZoom, lerpCam, TILTED } from "@/lib/camera";
+import { clampTarget, depthRange, FLAT, fitZoom, lerpCam, TILTED } from "@/lib/camera";
 
 describe("camera", () => {
   it("fits the unit-span data to 80% of the shorter side, with a floor for tiny stages", () => {
@@ -29,5 +29,14 @@ describe("camera", () => {
     expect(n2).toBeCloseTo(Math.hypot(4, 4), 9);
     // the camera inside the box: near is 0
     expect(depthRange([0, 0, 0.5], box)[0]).toBe(0);
+  });
+
+  it("keeps the target inside the cells' box on x and y, and leaves z alone", () => {
+    const box = [
+      [-1, -1, 0],
+      [1, 1, 0],
+    ] as [[number, number, number], [number, number, number]];
+    expect(clampTarget([0.2, -0.4, 0], box)).toEqual([0.2, -0.4, 0]);
+    expect(clampTarget([3, -5, 0.7], box)).toEqual([1, -1, 0.7]);
   });
 });
