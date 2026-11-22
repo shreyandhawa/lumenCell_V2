@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 import { expect, type Page, test } from "@playwright/test";
 
 test.use({ reducedMotion: "reduce" });
@@ -10,6 +11,24 @@ function watchErrors(page: Page): string[] {
   });
   page.on("pageerror", (err) => errors.push(err.message));
   return errors;
+}
+
+/** Share of the plot's pixels that are not the dark stage: 0 means nothing was drawn. */
+function drawnShare(page: Page): Promise<number> {
+  return page
+    .locator("canvas")
+    .first()
+    .evaluate((gl: HTMLCanvasElement) => {
+      const copy = document.createElement("canvas");
+      copy.width = gl.width;
+      copy.height = gl.height;
+      const ctx = copy.getContext("2d")!;
+      ctx.drawImage(gl, 0, 0);
+      const { data } = ctx.getImageData(0, 0, copy.width, copy.height);
+      let drawn = 0;
+      for (let i = 0; i < data.length; i += 4) if (data[i]! + data[i + 1]! + data[i + 2]! > 30) drawn++;
+      return drawn / (data.length / 4);
+    });
 }
 
 test("prepare, choose a root, run, and inspect the lineages", async ({ page }) => {
@@ -25,7 +44,7 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await expect(page.getByRole("button", { name: /Run PAGA/ })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Colour by" })).toHaveCount(0);
   await expect(page.getByText("Pseudotime appears after a run")).toBeVisible();
-  await expect(page.getByRole("button", { name: "3-D" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "3-D", exact: true })).toBeDisabled();
 
   // 3. Use the root stored in the file (the first suggestion).
   const suggestions = page.getByRole("list", { name: "Suggested roots" });
@@ -54,11 +73,18 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await expect(first).toContainText("focused");
 
   // 7. The 3-D view: DC1-DC3 with the gimbal, then back to 2-D.
-  await page.getByRole("button", { name: "3-D" }).click();
-  await expect(page.getByRole("button", { name: "3-D" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "3-D", exact: true }).click();
+  await expect(page.getByRole("button", { name: "3-D", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText(/DC1–DC3 · 3 of \d+ diffusion components/)).toBeVisible();
   await expect(page.getByRole("img", { name: "Orientation of DC1, DC2 and DC3" })).toBeVisible();
-  await page.getByRole("button", { name: "2-D" }).click();
+  // The cells are drawn (the depth shader compiled and ran), and the fog can be turned off.
+  await expect.poll(() => drawnShare(page)).toBeGreaterThan(0.001);
+  await expect(page.getByText(/far cells fade/)).toBeVisible();
+  await page.getByRole("button", { name: "Display options" }).click();
+  await page.getByRole("checkbox", { name: "Fade far cells in depth" }).uncheck();
+  await expect(page.getByText(/far cells fade/)).toHaveCount(0);
+  await page.getByRole("button", { name: "Display options" }).click();
+  await page.getByRole("button", { name: "2-D", exact: true }).click();
   await expect(page.getByRole("img", { name: "Orientation of DC1, DC2 and DC3" })).toHaveCount(0);
 
   // 8. Scrub pseudotime with the keyboard; the gene trends open on the same cursor.
@@ -70,9 +96,9 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await expect(trends.getByRole("list", { name: "Genes" }).getByRole("listitem")).toHaveCount(4);
 
   // 9. Play, then pause.
-  await page.getByRole("button", { name: "Play" }).click();
-  await page.getByRole("button", { name: "Pause" }).click();
-  await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
 
   // 10. Hide and show the Evidence sheet; switch to the light theme.
   await evidence.getByRole("button", { name: "Hide evidence" }).click();
