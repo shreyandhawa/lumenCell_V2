@@ -2,8 +2,8 @@ import { OrbitView, type OrbitViewState } from "@deck.gl/core";
 import { DataFilterExtension } from "@deck.gl/extensions";
 import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL from "@deck.gl/react";
-import { RotateCcw, SlidersHorizontal } from "lucide-react";
-import { animate } from "motion";
+import { Rotate3d, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { animate, cubicBezier } from "motion";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -39,6 +39,11 @@ const SHEET = 384;
 const BAR = 80;
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
+const MORPH_SECONDS = 0.6;
+// The GPU moves the cells on the same curve as the camera, so the root pin and curves stay on them.
+const MORPH = { duration: MORPH_SECONDS * 1000, easing: cubicBezier(...EASE_IN_OUT) };
+/** Auto-rotate speed, degrees per second. */
+const SPIN = 12;
 /** How far the farthest cells fade toward the stage in 3-D (0 = not at all, 1 = into the stage). */
 const FOG = 0.6;
 /** The stage colour per theme (index.css --color-stage): what fog and faint cells fade toward. */
@@ -75,7 +80,8 @@ export function Scatter() {
   const run = useRun(runId).data;
   const runState = useRuns().data?.runs.find((r) => r.run_id === uiRunId)?.state;
   const flatRaw = useEmbedding(embedding).data;
-  const deepRaw = useEmbedding(runId ? "dc123" : null).data;
+  // DC1-DC3 come from preparation, so 3-D (and picking a root in it) opens before any run.
+  const deepRaw = useEmbedding(dataset?.prep.state === "ready" ? "dc123" : null).data;
   const curves2 = useCurves(runId, embedding).data;
   const curves3 = useCurves(runId, runId ? "dc123" : null).data;
   const cells = useRunCells(runId).data;
@@ -127,11 +133,6 @@ export function Scatter() {
     return () => c.stop();
   }, [sheetVisible, reduce]);
 
-  // 3-D needs a finished run.
-  useEffect(() => {
-    if (!runId && view === "3d") setView("2d");
-  }, [runId, view, setView]);
-
   const tween = (to: Camera, toT: number, seconds: number, ease: readonly number[]) => {
     const from = live.current.viewState;
     const t0 = live.current.t;
@@ -157,11 +158,37 @@ export function Scatter() {
     const toT = view === "3d" ? 1 : 0;
     if (live.current.t === toT || (toT === 1 && !deep)) return;
     const cam = { target: [0, 0, 0] as Vec3, zoom: live.current.fitZoom, ...(toT ? TILTED : FLAT) };
-    return tween(cam, toT, 0.6, EASE_IN_OUT);
+    return tween(cam, toT, MORPH_SECONDS, EASE_IN_OUT);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tween reads live values; only these start a morph
   }, [view, deep]);
 
-  const reset = () => tween({ target: [0, 0, 0], zoom: fitZoom, ...(view === "3d" ? TILTED : FLAT) }, t, 0.3, EASE_OUT);
+  // Auto-rotate, in 3-D only; any drag, key or reset stops it.
+  const [spinning, setSpinning] = useState(false);
+  const spin = spinning && t === 1 && !reduce;
+  useEffect(() => {
+    if (!spin) return;
+    let last = performance.now();
+    let id = requestAnimationFrame(function step(now) {
+      const vs = live.current.viewState;
+      if (vs) setCamera(VIEW_ID, { ...vs, rotationOrbit: (vs.rotationOrbit ?? 0) + ((now - last) / 1000) * SPIN });
+      last = now;
+      id = requestAnimationFrame(step);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [spin, setCamera]);
+
+  // deck.gl makes its root focusable for the keyboard controls once it has loaded; name it and say
+  // which keys work.
+  const labelPlot = () => {
+    const root = containerRef.current?.querySelector<HTMLElement>('[tabindex="0"]');
+    root?.setAttribute("role", "application");
+    root?.setAttribute("aria-label", "Plot. Arrow keys pan, minus and equals zoom, Shift with arrows orbits in 3-D, R resets.");
+  };
+
+  const reset = () => {
+    setSpinning(false);
+    tween({ target: [0, 0, 0], zoom: fitZoom, ...(view === "3d" ? TILTED : FLAT) }, t, 0.3, EASE_OUT);
+  };
 
   // The set piece: when a run finishes, pseudotime washes out from the root, once. It holds at 0
   // from the moment the run is done, so the finished colours never flash before the wash starts.
@@ -180,14 +207,17 @@ export function Scatter() {
     return () => c.stop();
   }, [cells, washing]);
 
-  const positions = useMemo(() => {
-    if (!flat) return null;
-    if (!deep || t === 0) return flat.xyz;
-    if (t === 1) return deep.xyz;
-    const out = new Float32Array(flat.xyz.length);
-    for (let i = 0; i < out.length; i++) out[i] = lerp(flat.xyz[i]!, deep.xyz[i]!, t);
-    return out;
-  }, [flat, deep, t]);
+  // One attribute object per embedding: deck.gl starts the GPU morph when the object changes, so a
+  // recolour (which rebuilds the layer data) never restarts it.
+  const flatAttr = useMemo(() => (flat ? { value: flat.xyz, size: 3 } : null), [flat]);
+  const deepAttr = useMemo(() => (deep ? { value: deep.xyz, size: 3 } : null), [deep]);
+  const positions = view === "3d" && deepAttr ? deepAttr : flatAttr;
+  /** Where cell i is now, mid-morph included: the GPU's interpolation, repeated for one cell (the root pin). */
+  const at = (i: number): Vec3 | null => {
+    if (!flat || i < 0 || i >= n) return null;
+    const p = [0, 1, 2].map((k) => (deep ? lerp(flat.xyz[i * 3 + k]!, deep.xyz[i * 3 + k]!, t) : flat.xyz[i * 3 + k]!));
+    return p.every(Number.isFinite) ? (p as Vec3) : null;
+  };
 
   const viewport = useMemo(
     () => (viewState && size.width ? stageView.makeViewport({ width: size.width, height: size.height, viewState }) : null),
@@ -216,12 +246,12 @@ export function Scatter() {
     });
   }, [curves2, curves3, flat, deep, t]);
 
-  const haloData = useMemo(() => ({ length: n, attributes: { getPosition: { value: positions!, size: 3 } } }), [n, positions]);
+  const haloData = useMemo(() => ({ length: n, attributes: { getPosition: positions! } }), [n, positions]);
   const cellData = useMemo(
     () => ({
       length: n,
       attributes: {
-        getPosition: { value: positions!, size: 3 },
+        getPosition: positions!,
         getFillColor: { value: colors!, size: 4, normalized: true },
         getFilterValue: { value: ptValues, size: 1 },
       },
@@ -238,6 +268,7 @@ export function Scatter() {
     // The fog spans the box that holds the cells, which moves with them while morphing.
     const box = (k: 0 | 1) =>
       [0, 1, 2].map((j) => (flat && deep ? lerp(flat.bounds[k][j]!, deep.bounds[k][j]!, t) : (flat?.bounds[k][j] ?? 0))) as Vec3;
+    const transitions = reduce ? undefined : { getPosition: MORPH };
     layers.push(
       // A faint ghost of every cell, so cells past the cursor still show where they are. Drawn first,
       // without depth, so cells always cover it.
@@ -249,6 +280,7 @@ export function Scatter() {
         getRadius: r + 1.5,
         billboard: true,
         parameters: { depthCompare: "always", depthWriteEnabled: false },
+        transitions,
         updateTriggers: { getFillColor: theme, getRadius: r },
       }),
       new ScatterplotLayer({
@@ -268,6 +300,7 @@ export function Scatter() {
         depthFadeStage: STAGE[theme],
         depthFadeStrength: fog ? FOG * t : 0,
         depthFadeBounds: [box(0), box(1)],
+        transitions,
         updateTriggers: { getRadius: radius },
       }),
     );
@@ -292,8 +325,8 @@ export function Scatter() {
   }
 
   // The root pin follows the root cell through pans, zooms and the morph.
-  const rootXyz = root && positions ? Array.from(positions.subarray(root.cell_index * 3, root.cell_index * 3 + 3)) : null;
-  const pin = viewport && rootXyz?.every(Number.isFinite) ? viewport.project(rootXyz) : null;
+  const rootXyz = root ? at(root.cell_index) : null;
+  const pin = viewport && rootXyz ? viewport.project(rootXyz) : null;
 
   const embeddingInfo = dataset?.embeddings.find((e) => e.name === embedding);
   const p = run?.provenance;
@@ -311,15 +344,34 @@ export function Scatter() {
   const raised = cursor !== null && run !== undefined; // the gene trends sit above the bar
 
   return (
-    <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-stage" data-testid="scatter">
+    <div
+      ref={containerRef}
+      className="absolute inset-0 overflow-hidden bg-stage"
+      data-testid="scatter"
+      onKeyDown={(e) => {
+        // R resets the view, from the plot or its controls (never while typing in a field).
+        const field = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
+        if (e.key.toLowerCase() === "r" && !field && !e.metaKey && !e.ctrlKey && !e.altKey && viewState) reset();
+      }}
+    >
       {viewState && (
         <DeckGL
           views={stageView}
           viewState={viewState}
+          onLoad={labelPlot}
           onViewStateChange={({ viewState: vs }) => {
-            if (t === 0 || t === 1) setViewState(vs as OrbitViewState);
+            if (t !== 0 && t !== 1) return;
+            setSpinning(false);
+            setViewState(vs as OrbitViewState);
           }}
-          controller={t === 0 ? { dragMode: "pan", dragRotate: false } : t === 1 ? { dragMode: "rotate" } : false}
+          // Arrows pan, -/= zoom; with Shift they orbit, in 3-D only.
+          controller={
+            t === 0
+              ? { dragMode: "pan", dragRotate: false, keyboard: { rotateSpeedX: 0, rotateSpeedY: 0 } }
+              : t === 1
+                ? { dragMode: "rotate" }
+                : false
+          }
           layers={layers}
           onClick={(info) => {
             if (!picking || info.layer?.id !== "cells" || info.index < 0 || !clusters?.codes) return;
@@ -383,8 +435,11 @@ export function Scatter() {
             type="button"
             aria-pressed={view === v}
             disabled={v === "3d" && !deep}
-            title={v === "3d" && !deep ? "3-D opens once a run has finished" : undefined}
-            onClick={() => setView(v)}
+            title={v === "3d" && !deep ? "3-D opens once preparation has finished" : undefined}
+            onClick={() => {
+              setSpinning(false);
+              setView(v);
+            }}
             className={`press h-[26px] rounded-md px-2.5 text-[13px] disabled:text-ink-faint ${
               view === v ? "bg-panel-raised text-ink" : "text-ink-muted hover:text-ink"
             }`}
@@ -408,7 +463,7 @@ export function Scatter() {
                 id="display-options"
                 role="group"
                 aria-label="Display options"
-                className="absolute right-0 bottom-[76px] w-56 rounded-xl bg-panel p-3 text-[13px] text-ink"
+                className="absolute right-0 bottom-full mb-2 w-56 rounded-xl bg-panel p-3 text-[13px] text-ink"
               >
                 <label className="flex flex-col gap-1.5">
                   <span className="flex justify-between">
@@ -440,9 +495,23 @@ export function Scatter() {
             >
               <SlidersHorizontal size={16} />
             </button>
+            {t === 1 && (
+              <button
+                type="button"
+                aria-label="Auto-rotate"
+                aria-pressed={spin}
+                disabled={reduce}
+                title={reduce ? "Off while your system asks for reduced motion" : undefined}
+                onClick={() => setSpinning((s) => !s)}
+                className={`press grid size-8 place-items-center rounded-md text-ink disabled:text-ink-faint ${spin ? "bg-panel-raised" : "bg-panel"}`}
+              >
+                <Rotate3d size={16} />
+              </button>
+            )}
             <button
               type="button"
               aria-label="Reset view"
+              title="Reset view (R)"
               onClick={reset}
               className="press grid size-8 place-items-center rounded-md bg-panel text-ink"
             >
