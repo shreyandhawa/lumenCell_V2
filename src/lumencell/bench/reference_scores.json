@@ -1,0 +1,580 @@
+{
+  "methods": {
+    "paga_dpt": [
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Pseudotime, global",
+        "gate": "pt_spearman_global",
+        "score": 0.8607,
+        "threshold": "≥ 0.9",
+        "passed": false,
+        "detail": "worst case; fails 3 of 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Pseudotime, per lineage",
+        "gate": "pt_spearman_lineage",
+        "score": 0.9498,
+        "threshold": "≥ 0.85",
+        "passed": true,
+        "detail": "worst case; passes all 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Branch accuracy",
+        "gate": "branch_accuracy",
+        "score": 0.8125,
+        "threshold": "≥ 0.9",
+        "passed": false,
+        "detail": "worst case; fails 3 of 9 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Lineage recall",
+        "gate": "lineage_recall",
+        "score": 1.0,
+        "threshold": "≥ 1.0",
+        "passed": true,
+        "detail": "worst case; passes all 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Spurious branches",
+        "gate": "n_spurious",
+        "score": 1.0,
+        "threshold": "≤ 1",
+        "passed": true,
+        "detail": "worst case; passes all 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Root pseudotime excess",
+        "gate": "root_pt_excess",
+        "score": 0.1052,
+        "threshold": "≤ 0.1",
+        "passed": false,
+        "detail": "worst case; fails 1 of 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Clonal excess ratio",
+        "gate": "clonal_excess_ratio",
+        "score": 0.3011,
+        "threshold": "≥ 0.5",
+        "passed": false,
+        "detail": "worst case; fails 6 of 9 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Clonal p-value",
+        "gate": "clonal_p",
+        "score": 0.001,
+        "threshold": "≤ 0.01",
+        "passed": true,
+        "detail": "worst case; passes all 9 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Bone marrow (human CD34+)",
+        "metric": "Pseudotime, per lineage",
+        "gate": "pt_spearman_lineage",
+        "score": 0.7307,
+        "threshold": "≥ 0.7",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Bone marrow (human CD34+)",
+        "metric": "Branch accuracy",
+        "gate": "branch_accuracy",
+        "score": 0.6171,
+        "threshold": "≥ 0.75",
+        "passed": false,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Bone marrow (human CD34+)",
+        "metric": "Lineage recall",
+        "gate": "lineage_recall",
+        "score": 0.5,
+        "threshold": "≥ 1.0",
+        "passed": false,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "LCMV CD8+ T cells (mouse)",
+        "metric": "Pseudotime, per lineage",
+        "gate": "pt_spearman_lineage",
+        "score": null,
+        "threshold": "≥ 0.7",
+        "passed": null,
+        "detail": "lineage gates: not measured (no gated lineage, declared 2026-11-20)",
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "LCMV CD8+ T cells (mouse)",
+        "metric": "Branch accuracy",
+        "gate": "branch_accuracy",
+        "score": null,
+        "threshold": "≥ 0.8",
+        "passed": null,
+        "detail": "lineage gates: not measured (no gated lineage, declared 2026-11-20)",
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "LCMV CD8+ T cells (mouse)",
+        "metric": "Lineage recall",
+        "gate": "lineage_recall",
+        "score": null,
+        "threshold": "≥ 1.0",
+        "passed": null,
+        "detail": "lineage gates: not measured (no gated lineage, declared 2026-11-20)",
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Gastrulation (mouse, erythroid)",
+        "metric": "Pseudotime, global",
+        "gate": "pt_spearman_global",
+        "score": 0.7505,
+        "threshold": "≥ 0.6",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Gastrulation (mouse, erythroid)",
+        "metric": "Terminal share",
+        "gate": "terminal_share",
+        "score": 0.9388,
+        "threshold": "≥ 0.8",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Pancreas (mouse, E15.5)",
+        "metric": "Pseudotime, per lineage",
+        "gate": "pt_spearman_lineage",
+        "score": 0.9477,
+        "threshold": "≥ 0.7",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Pancreas (mouse, E15.5)",
+        "metric": "Branch accuracy",
+        "gate": "branch_accuracy",
+        "score": 0.6306,
+        "threshold": "≥ 0.8",
+        "passed": false,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Pancreas (mouse, E15.5)",
+        "metric": "Lineage recall",
+        "gate": "lineage_recall",
+        "score": 0.5,
+        "threshold": "≥ 1.0",
+        "passed": false,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      }
+    ],
+    "palantir": [
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Pseudotime, global",
+        "gate": "pt_spearman_global",
+        "score": 0.903,
+        "threshold": "≥ 0.9",
+        "passed": true,
+        "detail": "worst case; passes all 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Pseudotime, per lineage",
+        "gate": "pt_spearman_lineage",
+        "score": 0.9144,
+        "threshold": "≥ 0.85",
+        "passed": true,
+        "detail": "worst case; passes all 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Branch accuracy",
+        "gate": "branch_accuracy",
+        "score": 0.9027,
+        "threshold": "≥ 0.9",
+        "passed": true,
+        "detail": "worst case; passes all 9 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Lineage recall",
+        "gate": "lineage_recall",
+        "score": 1.0,
+        "threshold": "≥ 1.0",
+        "passed": true,
+        "detail": "worst case; passes all 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Spurious branches",
+        "gate": "n_spurious",
+        "score": 1.0,
+        "threshold": "≤ 1",
+        "passed": true,
+        "detail": "worst case; passes all 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Root pseudotime excess",
+        "gate": "root_pt_excess",
+        "score": 0.1773,
+        "threshold": "≤ 0.1",
+        "passed": false,
+        "detail": "worst case; fails 2 of 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Clonal excess ratio",
+        "gate": "clonal_excess_ratio",
+        "score": 0.367,
+        "threshold": "≥ 0.5",
+        "passed": false,
+        "detail": "worst case; fails 7 of 9 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Clonal p-value",
+        "gate": "clonal_p",
+        "score": 0.001,
+        "threshold": "≤ 0.01",
+        "passed": true,
+        "detail": "worst case; passes all 9 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Bone marrow (human CD34+)",
+        "metric": "Pseudotime, per lineage",
+        "gate": "pt_spearman_lineage",
+        "score": 0.732,
+        "threshold": "≥ 0.7",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Bone marrow (human CD34+)",
+        "metric": "Branch accuracy",
+        "gate": "branch_accuracy",
+        "score": 0.9426,
+        "threshold": "≥ 0.75",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Bone marrow (human CD34+)",
+        "metric": "Lineage recall",
+        "gate": "lineage_recall",
+        "score": 1.0,
+        "threshold": "≥ 1.0",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "LCMV CD8+ T cells (mouse)",
+        "metric": "Pseudotime, per lineage",
+        "gate": "pt_spearman_lineage",
+        "score": null,
+        "threshold": "≥ 0.7",
+        "passed": null,
+        "detail": "lineage gates: not measured (no gated lineage, declared 2026-11-20)",
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "LCMV CD8+ T cells (mouse)",
+        "metric": "Branch accuracy",
+        "gate": "branch_accuracy",
+        "score": null,
+        "threshold": "≥ 0.8",
+        "passed": null,
+        "detail": "lineage gates: not measured (no gated lineage, declared 2026-11-20)",
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "LCMV CD8+ T cells (mouse)",
+        "metric": "Lineage recall",
+        "gate": "lineage_recall",
+        "score": null,
+        "threshold": "≥ 1.0",
+        "passed": null,
+        "detail": "lineage gates: not measured (no gated lineage, declared 2026-11-20)",
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Gastrulation (mouse, erythroid)",
+        "metric": "Pseudotime, global",
+        "gate": "pt_spearman_global",
+        "score": 0.7226,
+        "threshold": "≥ 0.6",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Gastrulation (mouse, erythroid)",
+        "metric": "Terminal share",
+        "gate": "terminal_share",
+        "score": 0.5792,
+        "threshold": "≥ 0.8",
+        "passed": false,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Pancreas (mouse, E15.5)",
+        "metric": "Pseudotime, per lineage",
+        "gate": "pt_spearman_lineage",
+        "score": 0.9445,
+        "threshold": "≥ 0.7",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Pancreas (mouse, E15.5)",
+        "metric": "Branch accuracy",
+        "gate": "branch_accuracy",
+        "score": 0.8368,
+        "threshold": "≥ 0.8",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Pancreas (mouse, E15.5)",
+        "metric": "Lineage recall",
+        "gate": "lineage_recall",
+        "score": 1.0,
+        "threshold": "≥ 1.0",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      }
+    ],
+    "scfates_ppt": [
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Pseudotime, global",
+        "gate": "pt_spearman_global",
+        "score": 0.8685,
+        "threshold": "≥ 0.9",
+        "passed": false,
+        "detail": "worst case; fails 2 of 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Pseudotime, per lineage",
+        "gate": "pt_spearman_lineage",
+        "score": 0.9795,
+        "threshold": "≥ 0.85",
+        "passed": true,
+        "detail": "worst case; passes all 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Branch accuracy",
+        "gate": "branch_accuracy",
+        "score": 0.971,
+        "threshold": "≥ 0.9",
+        "passed": true,
+        "detail": "worst case; passes all 9 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Lineage recall",
+        "gate": "lineage_recall",
+        "score": 1.0,
+        "threshold": "≥ 1.0",
+        "passed": true,
+        "detail": "worst case; passes all 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Spurious branches",
+        "gate": "n_spurious",
+        "score": 0.0,
+        "threshold": "≤ 1",
+        "passed": true,
+        "detail": "worst case; passes all 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Root pseudotime excess",
+        "gate": "root_pt_excess",
+        "score": -0.0345,
+        "threshold": "≤ 0.1",
+        "passed": true,
+        "detail": "worst case; passes all 12 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Clonal excess ratio",
+        "gate": "clonal_excess_ratio",
+        "score": 0.4434,
+        "threshold": "≥ 0.5",
+        "passed": false,
+        "detail": "worst case; fails 5 of 9 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Synthetic, 12 cases",
+        "metric": "Clonal p-value",
+        "gate": "clonal_p",
+        "score": 0.001,
+        "threshold": "≤ 0.01",
+        "passed": true,
+        "detail": "worst case; passes all 9 cases",
+        "source": "benchmarks/baseline.json @ 857d03d"
+      },
+      {
+        "dataset": "Bone marrow (human CD34+)",
+        "metric": "Pseudotime, per lineage",
+        "gate": "pt_spearman_lineage",
+        "score": 0.6681,
+        "threshold": "≥ 0.7",
+        "passed": false,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Bone marrow (human CD34+)",
+        "metric": "Branch accuracy",
+        "gate": "branch_accuracy",
+        "score": 0.7884,
+        "threshold": "≥ 0.75",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Bone marrow (human CD34+)",
+        "metric": "Lineage recall",
+        "gate": "lineage_recall",
+        "score": 1.0,
+        "threshold": "≥ 1.0",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "LCMV CD8+ T cells (mouse)",
+        "metric": "Pseudotime, per lineage",
+        "gate": "pt_spearman_lineage",
+        "score": null,
+        "threshold": "≥ 0.7",
+        "passed": null,
+        "detail": "lineage gates: not measured (no gated lineage, declared 2026-11-20)",
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "LCMV CD8+ T cells (mouse)",
+        "metric": "Branch accuracy",
+        "gate": "branch_accuracy",
+        "score": null,
+        "threshold": "≥ 0.8",
+        "passed": null,
+        "detail": "lineage gates: not measured (no gated lineage, declared 2026-11-20)",
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "LCMV CD8+ T cells (mouse)",
+        "metric": "Lineage recall",
+        "gate": "lineage_recall",
+        "score": null,
+        "threshold": "≥ 1.0",
+        "passed": null,
+        "detail": "lineage gates: not measured (no gated lineage, declared 2026-11-20)",
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Gastrulation (mouse, erythroid)",
+        "metric": "Pseudotime, global",
+        "gate": "pt_spearman_global",
+        "score": 0.8046,
+        "threshold": "≥ 0.6",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Gastrulation (mouse, erythroid)",
+        "metric": "Terminal share",
+        "gate": "terminal_share",
+        "score": 0.6107,
+        "threshold": "≥ 0.8",
+        "passed": false,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Pancreas (mouse, E15.5)",
+        "metric": "Pseudotime, per lineage",
+        "gate": "pt_spearman_lineage",
+        "score": 0.9415,
+        "threshold": "≥ 0.7",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Pancreas (mouse, E15.5)",
+        "metric": "Branch accuracy",
+        "gate": "branch_accuracy",
+        "score": 0.7547,
+        "threshold": "≥ 0.8",
+        "passed": false,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      },
+      {
+        "dataset": "Pancreas (mouse, E15.5)",
+        "metric": "Lineage recall",
+        "gate": "lineage_recall",
+        "score": 1.0,
+        "threshold": "≥ 1.0",
+        "passed": true,
+        "detail": null,
+        "source": "benchmarks/results/real-2026-11-20.json @ a7d69c4"
+      }
+    ]
+  }
+}

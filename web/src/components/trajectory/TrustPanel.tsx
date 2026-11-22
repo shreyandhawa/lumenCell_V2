@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import type * as T from "@/api/generated";
 import { useCurves, useDataset, useMethods } from "@/api/queries";
 import { describeRoot } from "@/components/trajectory/RootPicker";
+import { ReferenceResults } from "@/components/trajectory/ReferenceResults";
 import { KeyValues, Label, Mark } from "@/components/ui";
 import { axesLabel, axesName } from "@/lib/axes";
 import { useUi } from "@/state/ui";
@@ -226,6 +227,11 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
       <section aria-label="Clones against nulls" className={rule}>
         <Label>Clones against nulls</Label>
         <Clones clonal={clonal} />
+      </section>
+
+      <section aria-label="Reference results" className={rule}>
+        <Label>Reference results</Label>
+        <ReferenceResults rows={method?.reference_scores ?? []} />
       </section>
 
       {run.lineages.length > 0 && (

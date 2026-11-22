@@ -110,6 +110,12 @@ describe("App", () => {
     const fidelity = within(trust).getByRole("region", { name: "Curve fidelity" });
     expect(within(fidelity).getByText("Erythroid")).toBeInTheDocument();
     expect(within(fidelity).getByText(/– · DC1–DC3 –/)).toBeInTheDocument();
+    // The published reference rows: failures and unmeasured gates are listed, not hidden.
+    const reference = within(trust).getByRole("region", { name: "Reference results" });
+    expect(within(reference).getByRole("heading", { name: "Pancreas (mouse, E15.5)" })).toBeInTheDocument();
+    expect(within(reference).getByText("Fail")).toBeInTheDocument();
+    expect(within(reference).getByText("Not measured")).toBeInTheDocument();
+    expect(within(reference).getByText(/not a score for your dataset/)).toBeInTheDocument();
     const colourBy = screen.getByRole("combobox", { name: "Colour by" });
     expect((within(colourBy).getByRole("option", { name: "Pseudotime" }) as HTMLOptionElement).disabled).toBe(false);
   });

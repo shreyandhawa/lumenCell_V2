@@ -919,11 +919,9 @@ export type MethodInfo = {
     /**
      * Reference Scores
      *
-     * Benchmark scores of the current defaults, by metric.
+     * The method's published benchmark results, one row per dataset and gate. These are reference results, not a score for the user's data.
      */
-    reference_scores: {
-        [key: string]: number;
-    };
+    reference_scores: Array<ReferenceRow>;
 };
 
 /**
@@ -1181,6 +1179,60 @@ export type Provenance = {
      * Terminals Source
      */
     terminals_source: 'user' | 'auto';
+};
+
+/**
+ * ReferenceRow
+ */
+export type ReferenceRow = {
+    /**
+     * Dataset
+     *
+     * The benchmark dataset. Never the user's own data.
+     */
+    dataset: string;
+    /**
+     * Detail
+     *
+     * How many cases failed, or why the gate was not measured.
+     */
+    detail: string | null;
+    /**
+     * Gate
+     *
+     * The gate's key in benchmarks/thresholds.toml.
+     */
+    gate: string;
+    /**
+     * Metric
+     *
+     * What the gate measures, in plain words.
+     */
+    metric: string;
+    /**
+     * Passed
+     *
+     * Whether the gate passed. Null when not measured.
+     */
+    passed: boolean | null;
+    /**
+     * Score
+     *
+     * The worst case's value (synthetic) or the measured value (real). Null if not measured.
+     */
+    score: number | null;
+    /**
+     * Source
+     *
+     * The committed result file and commit the row was read from.
+     */
+    source: string;
+    /**
+     * Threshold
+     *
+     * The gate's bound, as declared in benchmarks/thresholds.toml.
+     */
+    threshold: string;
 };
 
 /**

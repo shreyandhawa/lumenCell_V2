@@ -1657,12 +1657,12 @@
             "type": "object"
           },
           "reference_scores": {
-            "additionalProperties": {
-              "type": "number"
+            "description": "The method's published benchmark results, one row per dataset and gate. These are reference results, not a score for the user's data.",
+            "items": {
+              "$ref": "#/components/schemas/ReferenceRow"
             },
-            "description": "Benchmark scores of the current defaults, by metric.",
             "title": "Reference Scores",
-            "type": "object"
+            "type": "array"
           }
         },
         "required": [
@@ -2156,6 +2156,84 @@
           "created_at"
         ],
         "title": "Provenance",
+        "type": "object"
+      },
+      "ReferenceRow": {
+        "additionalProperties": false,
+        "properties": {
+          "dataset": {
+            "description": "The benchmark dataset. Never the user's own data.",
+            "title": "Dataset",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many cases failed, or why the gate was not measured.",
+            "title": "Detail"
+          },
+          "gate": {
+            "description": "The gate's key in benchmarks/thresholds.toml.",
+            "title": "Gate",
+            "type": "string"
+          },
+          "metric": {
+            "description": "What the gate measures, in plain words.",
+            "title": "Metric",
+            "type": "string"
+          },
+          "passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the gate passed. Null when not measured.",
+            "title": "Passed"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The worst case's value (synthetic) or the measured value (real). Null if not measured.",
+            "title": "Score"
+          },
+          "source": {
+            "description": "The committed result file and commit the row was read from.",
+            "title": "Source",
+            "type": "string"
+          },
+          "threshold": {
+            "description": "The gate's bound, as declared in benchmarks/thresholds.toml.",
+            "title": "Threshold",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset",
+          "metric",
+          "gate",
+          "score",
+          "threshold",
+          "passed",
+          "detail",
+          "source"
+        ],
+        "title": "ReferenceRow",
         "type": "object"
       },
       "ResolvedRoot": {
