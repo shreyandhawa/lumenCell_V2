@@ -21,6 +21,15 @@ export function fitZoom(width: number, height: number): number {
 }
 
 /**
+ * The camera's target, held inside the box that holds the cells on x and y, so a zoom or a pan cannot
+ * carry the view off the plot into empty space. z is left as it is.
+ */
+export function clampTarget(target: ArrayLike<number>, [lo, hi]: readonly [Vec3, Vec3]): Vec3 {
+  const at = (k: 0 | 1) => Math.min(Math.max(target[k]!, lo[k]!), hi[k]!);
+  return [at(0), at(1), target[2] ?? 0];
+}
+
+/**
  * The nearest and farthest camera distances of the box that holds every cell: the depth fog runs
  * from clear at the first to faded at the second.
  */
