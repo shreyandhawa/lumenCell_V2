@@ -160,6 +160,8 @@ export interface RunCells {
   membership: Uint8Array;
   primaryLineage: Int16Array;
   nLineages: number;
+  /** Fate entropy, from methods that compute it (Palantir); null otherwise. */
+  entropy: Float32Array | null;
 }
 
 export function useRunCells(id: string | null) {
@@ -173,6 +175,7 @@ export function useRunCells(id: string | null) {
         membership: membership.data,
         primaryLineage: c.get("primary_lineage", "i16").data,
         nLineages: membership.shape[0] ?? 0,
+        entropy: c.arrays.has("extras.entropy") ? c.get("extras.entropy", "f32").data : null,
       };
     },
     enabled: id !== null,

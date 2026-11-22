@@ -21,7 +21,7 @@ function encode(c: ColorBy | null): string {
 function decode(v: string): ColorBy | null {
   if (v.startsWith("obs:")) return { kind: "obs", column: v.slice(4) };
   if (v.startsWith("gene:")) return { kind: "gene", gene: v.slice(5) };
-  if (v === "pseudotime" || v === "lineage") return { kind: v };
+  if (v === "pseudotime" || v === "lineage" || v === "entropy") return { kind: v };
   return null;
 }
 
@@ -119,6 +119,7 @@ export function Sidebar() {
                   <optgroup label="Trajectory">
                     <option value="pseudotime">Pseudotime</option>
                     <option value="lineage">Lineage</option>
+                    {run.cell_arrays.includes("extras.entropy") && <option value="entropy">Fate entropy</option>}
                   </optgroup>
                   <optgroup label="Annotations">
                     {columns.map((c) => (

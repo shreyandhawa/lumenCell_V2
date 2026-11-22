@@ -166,7 +166,12 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
   const embedding = useUi((s) => s.embedding);
   const setSheetOpen = useUi((s) => s.setSheetOpen);
   const curves = useCurves(run.run_id, embedding).data;
+  const curves3 = useCurves(run.run_id, "dc123").data;
   const dataset = useDataset().data;
+  const fidelity = (cs: T.Curves | undefined, lineage: number) => {
+    const f = cs?.curves.find((c) => c.lineage === lineage)?.fidelity;
+    return f === null || f === undefined ? "–" : f.toFixed(2);
+  };
   const method = useMethods().data?.methods.find((m) => m.name === run.provenance.method);
   const p = run.provenance;
   const ts = run.trust?.tree_support ?? null;
@@ -220,6 +225,23 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
         <Label>Clones against nulls</Label>
         <Clones clonal={clonal} />
       </section>
+
+      {run.lineages.length > 0 && (
+        <section aria-label="Curve fidelity" className={rule}>
+          <Label>Curve fidelity</Label>
+          <p className="mb-2 text-xs leading-snug text-ink-muted">
+            How well each drawn curve keeps its cells' pseudotime order (Spearman, 1 is perfect). A low value means
+            the view bends the lineage, not that the lineage is wrong.
+          </p>
+          <KeyValues
+            label="Curve fidelity"
+            rows={run.lineages.map((l) => [
+              l.name,
+              `${embedding ?? "2-D"} ${fidelity(curves, l.id)} · DC1–DC3 ${fidelity(curves3, l.id)}`,
+            ])}
+          />
+        </section>
+      )}
 
       <section aria-label="Provenance" className={rule}>
         <Label>Provenance</Label>

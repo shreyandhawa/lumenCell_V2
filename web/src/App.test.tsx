@@ -34,8 +34,15 @@ const server = setupServer(
   http.get(api("/methods"), () => HttpResponse.json(fx.methods)),
   http.get(api("/trajectories"), () => HttpResponse.json({ runs: state.runs })),
   http.get(api("/trajectories/run1"), () => HttpResponse.json(fx.run)),
-  http.get(api("/trajectories/run1/curves"), () =>
-    HttpResponse.json({ run_id: "run1", embedding: "umap", curve_source: "binned", curves: [], milestones: [], warnings: [] }),
+  http.get(api("/trajectories/run1/curves"), ({ request }) =>
+    HttpResponse.json({
+      run_id: "run1",
+      embedding: new URL(request.url).searchParams.get("embedding"),
+      curve_source: "binned",
+      curves: [],
+      milestones: [],
+      warnings: [],
+    }),
   ),
 );
 
@@ -95,10 +102,14 @@ describe("App", () => {
     state.root = fx.resolvedRoot;
     state.runs = [{ run_id: "run1", method: "paga_dpt", state: "done", created_at: "2026-11-10T00:00:00Z", n_lineages: 1, error: null }];
     renderApp();
-    expect(await screen.findByText("Erythroid")).toBeInTheDocument();
+    expect(within(await screen.findByRole("list", { name: "Lineages" })).getByText("Erythroid")).toBeInTheDocument();
     const trust = screen.getByRole("complementary", { name: "Evidence" });
     expect(within(trust).getByText("X_diffmap, 10 components")).toBeInTheDocument();
     expect(within(trust).getByText("2 cells are not connected.")).toBeInTheDocument();
+    // Curve fidelity is listed per lineage for the 2-D view and DC1-DC3 (no curves in this fixture).
+    const fidelity = within(trust).getByRole("region", { name: "Curve fidelity" });
+    expect(within(fidelity).getByText("Erythroid")).toBeInTheDocument();
+    expect(within(fidelity).getByText(/– · DC1–DC3 –/)).toBeInTheDocument();
     const colourBy = screen.getByRole("combobox", { name: "Colour by" });
     expect((within(colourBy).getByRole("option", { name: "Pseudotime" }) as HTMLOptionElement).disabled).toBe(false);
   });
