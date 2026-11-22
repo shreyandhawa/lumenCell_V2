@@ -371,6 +371,9 @@ class RunTrust(Model):
 class DatasetInfo(Model):
     schema_version: int
     name: str
+    fingerprint: str = Field(
+        description="A cheap identity of the file, the one runs record; a shared view link names it."
+    )
     n_obs: int
     n_vars: int
     x_kind: XKind

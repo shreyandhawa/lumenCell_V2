@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import fs from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 
 test.use({ reducedMotion: "reduce" });
@@ -115,6 +116,17 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await page.keyboard.press("r");
   await expect.poll(gimbal).toBe(tilted);
   await expect(page.getByRole("button", { name: "Auto-rotate" })).toBeDisabled();
+  // Saved views: save one, turn away, go back to it. Playing a tour is off under reduced motion.
+  await page.getByRole("button", { name: "Camera tour" }).click();
+  await page.getByRole("button", { name: "Save this view" }).click();
+  const saved = await gimbal();
+  await page.getByRole("application", { name: /^Plot/ }).focus();
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expect.poll(gimbal).not.toBe(saved);
+  await page.getByRole("button", { name: "Go to view 1" }).click();
+  await expect.poll(gimbal).toBe(saved);
+  await expect(page.getByRole("button", { name: "Play tour" })).toBeDisabled();
+  await page.getByRole("button", { name: "Camera tour" }).click();
   // Lasso: a drag around the middle of the plot selects cells; Esc clears them.
   await page.getByRole("button", { name: "Lasso select" }).click();
   const selection = page.getByRole("group", { name: "Selection" });
@@ -181,9 +193,25 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await page.getByRole("button", { name: "Switch to light theme" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 
-  // 11. The run is kept: after a reload it is open again.
+  // 11. Export PNG: a real PNG of the plot, with its legend and provenance drawn in.
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export PNG" }).click();
+  const png = fs.readFileSync((await (await download).path())!);
+  expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+
+  // 12. The view is in the address: after a reload the run, focus, cursor, 3-D view and axes are back.
+  await page.getByRole("button", { name: "3-D", exact: true }).click();
+  await page.getByRole("button", { name: "Display options" }).click();
+  await page.getByRole("combobox", { name: "Z axis" }).selectOption("4");
+  await page.getByRole("button", { name: "Display options" }).click();
+  const cursorText = await page.getByText(/^pt \d\.\d\d$/).innerText();
+  await expect.poll(() => page.evaluate(() => location.hash)).toContain("axes=1%2C2%2C4");
   await page.reload();
   await expect(page.getByRole("list", { name: "Lineages" }).getByRole("listitem")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "3-D", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("img", { name: "Orientation of DC1, DC2 and DC4" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Lineages" }).getByRole("button").first()).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText(cursorText, { exact: true })).toBeVisible();
 
   expect(errors, errors.join("\n")).toEqual([]);
 });

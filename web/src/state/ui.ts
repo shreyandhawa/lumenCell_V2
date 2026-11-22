@@ -10,6 +10,21 @@ export type ColorBy =
   /** Palantir's per-cell fate entropy; only runs that serve `extras.entropy` offer it. */
   | { kind: "entropy" };
 
+/** One string per colouring, as the Colour by menu and a shared link write it. */
+export function colorByKey(c: ColorBy | null): string {
+  if (!c) return "";
+  if (c.kind === "obs") return `obs:${c.column}`;
+  if (c.kind === "gene") return `gene:${c.gene}`;
+  return c.kind;
+}
+
+export function parseColorBy(v: string): ColorBy | null {
+  if (v.startsWith("obs:") && v.length > 4) return { kind: "obs", column: v.slice(4) };
+  if (v.startsWith("gene:") && v.length > 5) return { kind: "gene", gene: v.slice(5) };
+  if (v === "pseudotime" || v === "lineage" || v === "entropy") return { kind: v };
+  return null;
+}
+
 export type View = "2d" | "3d" | "split";
 
 export interface UiState {

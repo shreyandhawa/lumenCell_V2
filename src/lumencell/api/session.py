@@ -151,6 +151,7 @@ class Session:
         return models.DatasetInfo(
             schema_version=models.SCHEMA_VERSION,
             name=self.ds.name,
+            fingerprint=self.ds.fingerprint,
             n_obs=self.ds.n_obs,
             n_vars=self.ds.n_vars,
             x_kind=self.ds.x_kind,

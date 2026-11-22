@@ -7,6 +7,7 @@ import { Scatter } from "@/components/Scatter";
 import { Sidebar } from "@/components/Sidebar";
 import { cursorLeft, PseudotimeBar } from "@/components/trajectory/PseudotimeBar";
 import { TrustPanel } from "@/components/trajectory/TrustPanel";
+import { useSharedView } from "@/components/useSharedView";
 import { useUi } from "@/state/ui";
 
 const LEIDEN = "lumencell_leiden";
@@ -49,6 +50,7 @@ export default function App() {
   const sheetOpen = useUi((s) => s.sheetOpen);
   const setSheetOpen = useUi((s) => s.setSheetOpen);
   useDefaults();
+  useSharedView(); // after the defaults, so a link's choices win
 
   if (dataset.isLoading) {
     return (

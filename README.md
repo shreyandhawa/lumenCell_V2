@@ -25,6 +25,22 @@ weak: clones do not back these lineages any better than plain expression cluster
   </tr>
 </table>
 
+<table>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-split.png" alt="UMAP and diffusion components 1 to 3 side by side, the hovered cell ringed in both"></td>
+    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-lasso.png" alt="A lasso selection in 3-D with its breakdown by Leiden cluster"></td>
+    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-paga.png" alt="The PAGA cluster graph drawn over diffusion components 1 to 3"></td>
+  </tr>
+  <tr>
+    <td>Split view: the 2-D embedding and DC1–DC3 side by side, with one hover, selection and cursor.</td>
+    <td>Lasso cells in 2-D or 3-D; turn the view and intersect to narrow a selection.</td>
+    <td>PAGA and the neighbour graph drawn over any view, on any three diffusion components.</td>
+  </tr>
+</table>
+
+The address bar always names the view on screen (run, colouring, cameras, cursor, axes), so a
+link reopens it; Export PNG saves the plot with its legend and where it came from.
+
 Results so far: [docs/results.md](docs/results.md)
 
 > Early development (M1). Usable on real data, but every method is still labelled

@@ -7,6 +7,7 @@ export function dataset(prep: T.PrepStatus["state"], root: T.ResolvedRoot | null
   return {
     schema_version: 1,
     name: "synthetic",
+    fingerprint: "f00dcafe",
     n_obs: 4,
     n_vars: 3,
     x_kind: "counts",

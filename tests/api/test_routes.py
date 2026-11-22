@@ -47,9 +47,10 @@ def _lcb(res: object) -> binary.Decoded:
 # ---- before prep (tests run in file order) ---------------------------------------------
 
 
-def test_dataset_before_prep(client: TestClient) -> None:
+def test_dataset_before_prep(client: TestClient, session: Session) -> None:
     info = client.get("/api/v1/dataset").json()
     assert info["n_obs"] == 800 and info["x_kind"] == "counts"
+    assert info["fingerprint"] == session.view.ds.fingerprint
     assert info["prep"]["state"] in ("missing", "running")
     assert info["embeddings"] == []
     assert info["root"] is None

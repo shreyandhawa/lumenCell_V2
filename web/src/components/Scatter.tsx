@@ -2,7 +2,7 @@ import { type Layer, OrbitView, type OrbitViewState, type Viewport } from "@deck
 import { DataFilterExtension } from "@deck.gl/extensions";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL, { type DeckGLRef } from "@deck.gl/react";
-import { Lasso, Rotate3d, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { ImageDown, Lasso, Rotate3d, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { animate, cubicBezier } from "motion";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -12,6 +12,7 @@ import {
   useDoneRunId,
   useEmbedding,
   useKnnGraph,
+  useMethods,
   useObs,
   usePagaGraph,
   useRoot,
@@ -22,6 +23,7 @@ import {
 } from "@/api/queries";
 import { Legend } from "@/components/Legend";
 import { useCellColors } from "@/components/useCellColors";
+import { CameraTour } from "@/components/scatter/CameraTour";
 import { Gimbal } from "@/components/scatter/Gimbal";
 import { type Ends, knnLayer, pagaLayers, type PlacedNode } from "@/components/scatter/graphLayers";
 import { type GroupBy, SelectionBar } from "@/components/scatter/SelectionBar";
@@ -33,6 +35,7 @@ import { axesLabel, axesName, setAxis } from "@/lib/axes";
 import { type Camera, FLAT, fitZoom as fitZoomFor, lerp, lerpCam, TILTED } from "@/lib/camera";
 import { normalise, type Vec3 } from "@/lib/embedding";
 import { type Point, selectInPolygon } from "@/lib/geometry";
+import { exportPng } from "@/lib/exportPng";
 import { DepthFadeExtension } from "@/lib/gl/depthFade";
 import { edgeEnds } from "@/lib/graph";
 import { combine, projectAll } from "@/lib/selection";
@@ -118,6 +121,7 @@ export function Scatter() {
   const n = dataset?.n_obs ?? 0;
   const root = useRoot().data?.root ?? null;
   const run = useRun(runId).data;
+  const methods = useMethods().data?.methods;
   const runState = useRuns().data?.runs.find((r) => r.run_id === uiRunId)?.state;
   const flatRaw = useEmbedding(embedding).data;
   // DC1-DC3 come from preparation, so 3-D (and picking a root in it) opens before any run.
@@ -259,15 +263,20 @@ export function Scatter() {
     return () => c.stop();
   };
 
-  // The 2-D <-> 3-D morph: positions and camera move together.
+  // The 2-D <-> 3-D morph: positions and camera move together. It waits for the stage's first
+  // camera and, into 3-D, for the diffusion components; it runs again when they arrive.
+  const staged = viewState !== null;
   useEffect(() => {
     if (view === "split") return; // the panes do not morph; the stage morphs when it is shown again
     const toT = view === "3d" ? 1 : 0;
-    if (live.current.t === toT || (toT === 1 && !deep)) return;
-    const cam = { target: [0, 0, 0] as Vec3, zoom: live.current.fitZoom, ...(toT ? TILTED : FLAT) };
+    if (live.current.t === toT || (toT === 1 && !deep) || !staged) return;
+    // A shared link's 3-D camera, once; otherwise the default tilt.
+    const { arrival, setArrival } = useCamera.getState();
+    if (arrival && toT === 1) setArrival(null);
+    const cam = (toT === 1 && arrival) || { target: [0, 0, 0] as Vec3, zoom: live.current.fitZoom, ...(toT ? TILTED : FLAT) };
     return tween(cam, toT, MORPH_SECONDS, EASE_IN_OUT);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tween reads live values; only these start a morph
-  }, [view, deep]);
+  }, [view, deep, staged]);
 
   // Auto-rotate, in 3-D only (the right pane side by side); any drag, key or reset stops it.
   const [spinning, setSpinning] = useState(false);
@@ -616,6 +625,41 @@ export function Scatter() {
   // Side by side, the 3-D caption sits beside the view buttons when there is room, else below them.
   const captionRoom = size.width - toggleRight - 172 - (RAIL + half + 12);
   const gimbalAt = paneViewports ? paneViewports[1] : t > 0 ? viewport : null;
+  const axisNames = [`DC${axes[0]}`, `DC${axes[1]}`, `DC${axes[2]}`] as const;
+
+  // The plot as a PNG, with its caption, root, legend, gimbal and provenance.
+  const savePng = async () => {
+    const deck = deckRef.current?.deck;
+    const gl = containerRef.current?.querySelector("canvas");
+    if (!deck || !gl || !dataset) return;
+    deck.redraw("export"); // draw now: the canvas is read in this same task
+    const css = getComputedStyle(document.documentElement);
+    const token = (name: string) => css.getPropertyValue(`--color-${name}`).trim();
+    const method = run && methods?.find((m) => m.name === run.provenance.method);
+    const footer = [
+      `lumenCell ${dataset.versions.lumencell ?? ""}`,
+      `${dataset.name} · ${dataset.fingerprint}`,
+      run ? `${method?.label ?? run.provenance.method}${method?.experimental ? " (experimental)" : ""} · run ${run.run_id}` : "no run",
+      new Date().toLocaleDateString("en-CA"), // YYYY-MM-DD, local
+    ].join(" · ");
+    const blob = await exportPng({
+      gl,
+      crop: { x: RAIL, y: 0, width: size.width - RAIL - padRight, height: size.height - BAR },
+      colors: { stage: token("stage"), ink: token("ink"), muted: token("ink-muted"), accent: token("accent") },
+      font: getComputedStyle(document.body).fontFamily,
+      captions: paneStates ? [flatCaption, dcCaption] : [caption],
+      pins: pins.flatMap((pin) => (pin ? [{ x: pin[0], y: pin[1] }] : [])),
+      pinLabel: root ? `Root · ${describeRoot(root.spec)}` : "",
+      legend,
+      gimbal: gimbalAt ? { m: gimbalAt.viewMatrix, names: axisNames } : null,
+      footer,
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `lumencell-${dataset.name}-${view}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
   const raised = cursor !== null && run !== undefined; // the gene trends sit above the bar
 
   return (
@@ -920,6 +964,16 @@ export function Scatter() {
             >
               <SlidersHorizontal size={16} />
             </button>
+            <button
+              type="button"
+              aria-label="Export PNG"
+              title="Save the plot as a PNG, with its legend and where it came from"
+              onClick={() => void savePng()}
+              className="press grid size-8 place-items-center rounded-md bg-panel text-ink"
+            >
+              <ImageDown size={16} />
+            </button>
+            {t === 1 && !paneStates && <CameraTour id={VIEW_ID} reduce={reduce} onStart={() => setSpinning(false)} />}
             {(paneStates || t === 1) && (
               <button
                 type="button"
@@ -943,7 +997,7 @@ export function Scatter() {
               <RotateCcw size={16} />
             </button>
           </div>
-          {gimbalAt && <Gimbal m={gimbalAt.viewMatrix as unknown as number[]} names={[`DC${axes[0]}`, `DC${axes[1]}`, `DC${axes[2]}`]} />}
+          {gimbalAt && <Gimbal m={gimbalAt.viewMatrix as unknown as number[]} names={axisNames} />}
         </div>
       )}
     </div>
