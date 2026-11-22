@@ -67,6 +67,8 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   );
   await expect(evidence.getByRole("region", { name: "Provenance" })).toContainText("X_diffmap");
   await expect(evidence.getByRole("region", { name: "Provenance" })).toContainText("experimental");
+  // Each lineage's curve fidelity, on the 2-D embedding and on DC1-DC3.
+  await expect(evidence.getByRole("region", { name: "Curve fidelity" })).toContainText(/DC1–DC3 -?\d\.\d\d/);
 
   // 6. Focus a lineage.
   const first = lineages.getByRole("button").first();

@@ -37,7 +37,7 @@ export function useCellColors(): CellColors {
 
   const obsColumn = colorBy?.kind === "obs" ? colorBy.column : null;
   const gene = colorBy?.kind === "gene" ? colorBy.gene : null;
-  const needsRun = colorBy?.kind === "pseudotime" || colorBy?.kind === "lineage";
+  const needsRun = colorBy?.kind === "pseudotime" || colorBy?.kind === "lineage" || colorBy?.kind === "entropy";
   const obs = useObs(obsColumn);
   const expr = useGeneExpression(gene);
   const cells = useRunCells(needsRun ? runId : null);
@@ -97,6 +97,17 @@ export function useCellColors(): CellColors {
         colors: colorsForValues(pt, [0, 1]),
         legend: { kind: "continuous", title: "pseudotime", domain: [0, 1] },
         describe: (i) => (Number.isFinite(pt[i]!) ? `pseudotime ${pt[i]!.toFixed(3)}` : "no pseudotime"),
+        loading: false,
+      };
+    }
+    if (colorBy.kind === "entropy") {
+      const values = c.entropy;
+      if (!values) return none;
+      const domain = robustDomain(values);
+      return {
+        colors: colorsForValues(values, domain),
+        legend: { kind: "continuous", title: "fate entropy (Palantir)", domain },
+        describe: (i) => (Number.isFinite(values[i]!) ? `fate entropy ${values[i]!.toFixed(2)}` : "no fate entropy"),
         loading: false,
       };
     }

@@ -1,6 +1,6 @@
 import { OrbitView, type OrbitViewState } from "@deck.gl/core";
 import { DataFilterExtension } from "@deck.gl/extensions";
-import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL from "@deck.gl/react";
 import { Rotate3d, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { animate, cubicBezier } from "motion";
@@ -21,12 +21,14 @@ import {
 import { Legend } from "@/components/Legend";
 import { useCellColors } from "@/components/useCellColors";
 import { Gimbal } from "@/components/scatter/Gimbal";
+import { trajectoryLayers } from "@/components/scatter/trajectoryLayers";
 import { useStageSize } from "@/components/scatter/useStageSize";
 import { describeRoot } from "@/components/trajectory/RootPicker";
 import { fmt } from "@/components/ui";
 import { type Camera, FLAT, fitZoom as fitZoomFor, lerp, lerpCam, TILTED } from "@/lib/camera";
 import { normalise, type Vec3 } from "@/lib/embedding";
 import { DepthFadeExtension } from "@/lib/gl/depthFade";
+import { centroid, cursorPoint, type PlacedMilestone, placeMilestones, prefixTo } from "@/lib/trajectory";
 import { useCamera } from "@/state/camera";
 import { useUi } from "@/state/ui";
 
@@ -246,6 +248,34 @@ export function Scatter() {
     });
   }, [curves2, curves3, flat, deep, t]);
 
+  const mix = (a: Vec3, b: Vec3) => a.map((v, k) => lerp(v, b[k]!, t)) as Vec3;
+  const where = (cs: typeof curves2, norm: typeof flat) =>
+    cs && norm ? new Map(cs.milestones.map((m) => [m.id, norm.map([m.x, m.y, m.z ?? 0])] as const)) : null;
+  const milestones = run
+    ? placeMilestones(run.milestones, t < 1 ? where(curves2, flat) : null, t > 0 ? where(curves3, deep) : null, mix)
+    : [];
+
+  // The playhead: where the focused lineage's cells are at the cursor, in each view.
+  const heads = useMemo(() => {
+    if (cursor === null || focus === null || !cells || !flat || focus >= cells.nLineages) return null;
+    const member = cells.membership.subarray(focus * n, (focus + 1) * n);
+    const a = cursorPoint(cells.pseudotime, member, flat.xyz, cursor);
+    const b = deep ? cursorPoint(cells.pseudotime, member, deep.xyz, cursor) : null;
+    return { a, b };
+  }, [cursor, focus, cells, flat, deep, n]);
+  const head = heads && (heads.a && heads.b ? mix(heads.a, heads.b) : t < 0.5 ? heads.a : heads.b);
+  const focusPath = paths.find((p) => p.lineage === focus)?.path;
+  const travelled = head && focusPath ? prefixTo(focusPath, head) : null;
+
+  // Focusing a lineage in 3-D turns the camera around it.
+  useEffect(() => {
+    const vs = live.current.viewState;
+    const centre = focusPath && centroid(focusPath);
+    if (live.current.t !== 1 || !vs || !centre) return;
+    return tween({ target: centre, zoom: vs.zoom, rotationX: vs.rotationX, rotationOrbit: vs.rotationOrbit }, 1, 0.45, EASE_OUT);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a focus change moves the camera
+  }, [focus]);
+
   const haloData = useMemo(() => ({ length: n, attributes: { getPosition: positions! } }), [n, positions]);
   const cellData = useMemo(
     () => ({
@@ -305,24 +335,24 @@ export function Scatter() {
       }),
     );
   }
-  if (paths.length) {
-    const ordered = [...paths.filter((p) => p.lineage !== focus), ...paths.filter((p) => p.lineage === focus)];
-    layers.push(
-      new PathLayer({
-        id: "curves",
-        data: ordered,
-        getPath: (d) => d.path,
-        getColor: (d) => (d.lineage === focus ? [224, 51, 143, 255] : ink),
-        getWidth: (d) => (d.lineage === focus ? 3 : 1.5),
-        widthUnits: "pixels",
-        billboard: true,
-        jointRounded: true,
-        capRounded: true,
-        parameters: { depthCompare: "always" },
-        updateTriggers: { getColor: [focus, theme], getWidth: focus },
-      }),
-    );
-  }
+  layers.push(...trajectoryLayers({ paths, milestones, focus, travelled, ink, stage: STAGE[theme] }));
+  const lineageName = (id: number) => run?.lineages.find((l) => l.id === id)?.name ?? `lineage ${id + 1}`;
+  // The shown colour's value, then pseudotime and lineage when they are not already that value.
+  const describeCell = (i: number) => {
+    const parts = [describe(i) ?? `cell ${i}`];
+    const pt = cells?.pseudotime[i];
+    const primary = cells?.primaryLineage[i];
+    if (colorBy?.kind !== "pseudotime" && pt !== undefined && Number.isFinite(pt)) parts.push(`pseudotime ${pt.toFixed(2)}`);
+    if (colorBy?.kind !== "lineage" && primary !== undefined && primary > -2)
+      parts.push(primary === -1 ? "shared trunk" : lineageName(primary));
+    return parts.join(" · ");
+  };
+  const describeMilestone = (m: PlacedMilestone) => {
+    const end = run?.lineages.find((l) => l.terminal_milestone === m.id);
+    return m.kind === "tip" && end
+      ? `End of ${end.name} · pseudotime ${m.pseudotime.toFixed(2)}`
+      : `Fork · pseudotime ${m.pseudotime.toFixed(2)}`;
+  };
 
   // The root pin follows the root cell through pans, zooms and the morph.
   const rootXyz = root ? at(root.cell_index) : null;
@@ -378,10 +408,16 @@ export function Scatter() {
             const code = clusters.codes[info.index]!;
             if (code >= 0) setRoot.mutate({ kind: "cluster", key: clusterColumn, value: clusters.categories[code]! });
           }}
-          getTooltip={({ index, layer }) =>
-            layer?.id === "cells" && index >= 0
+          getTooltip={({ index, layer, object }) => {
+            const text =
+              layer?.id === "milestones"
+                ? describeMilestone(object as PlacedMilestone)
+                : layer?.id === "cells" && index >= 0
+                  ? describeCell(index)
+                  : null;
+            return text
               ? {
-                  text: describe(index) ?? `cell ${index}`,
+                  text,
                   style: {
                     background: "var(--color-panel-raised)",
                     color: "var(--color-ink)",
@@ -391,8 +427,8 @@ export function Scatter() {
                     padding: "4px 6px",
                   },
                 }
-              : null
-          }
+              : null;
+          }}
           getCursor={({ isDragging, isHovering }) =>
             isDragging ? "grabbing" : isHovering && picking ? "crosshair" : t === 1 ? "grab" : "default"
           }

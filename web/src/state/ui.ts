@@ -5,7 +5,9 @@ export type ColorBy =
   | { kind: "obs"; column: string }
   | { kind: "gene"; gene: string }
   | { kind: "pseudotime" }
-  | { kind: "lineage" };
+  | { kind: "lineage" }
+  /** Palantir's per-cell fate entropy; only runs that serve `extras.entropy` offer it. */
+  | { kind: "entropy" };
 
 export interface UiState {
   embedding: string | null;
