@@ -20,6 +20,7 @@ from lumencell.api.dataset_view import DatasetView
 from lumencell.api.errors import ApiError
 from lumencell.api.runs import Runs
 from lumencell.api.state import StateStore, default_state_dir
+from lumencell.bench.reference_data import rows_for
 from lumencell.clonal.isolation import scoring_only_message
 from lumencell.data.loader import Dataset, load
 from lumencell.engine.context import LEIDEN_KEY
@@ -242,7 +243,7 @@ class Session:
                     experimental=m.experimental,
                     experimental_note=m.experimental_note,
                     params_schema=m.Params.model_json_schema(),
-                    reference_scores={},
+                    reference_scores=[models.ReferenceRow.model_validate(r) for r in rows_for(m.name)],
                 )
             )
         return models.MethodList(methods=out)

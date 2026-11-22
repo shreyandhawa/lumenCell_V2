@@ -227,6 +227,12 @@ def test_methods(client: TestClient) -> None:
     assert m["available"] is True and m["experimental"] is True
     assert "n_dcs" in m["params_schema"]["properties"]
     assert "palantir" in methods
+    # The rows are the method's published results, failures included, never a score for the user's data.
+    rows = m["reference_scores"]
+    assert {r["dataset"] for r in rows} >= {"Synthetic, 12 cases", "Pancreas (mouse, E15.5)"}
+    assert all(r["source"] for r in rows)
+    bone_marrow = [r for r in rows if r["dataset"].startswith("Bone marrow")]
+    assert {r["gate"]: r["passed"] for r in bone_marrow}["lineage_recall"] is False
 
 
 # ---- root and runs ---------------------------------------------------------------------

@@ -404,6 +404,20 @@ class GeneSearchResult(Model):
 # ---- methods ----------------------------------------------------------------------
 
 
+class ReferenceRow(Model):
+    dataset: str = Field(description="The benchmark dataset. Never the user's own data.")
+    metric: str = Field(description="What the gate measures, in plain words.")
+    gate: str = Field(description="The gate's key in benchmarks/thresholds.toml.")
+    score: float | None = Field(
+        None,
+        description="The worst case's value (synthetic) or the measured value (real). Null if not measured.",
+    )
+    threshold: str = Field(description="The gate's bound, as declared in benchmarks/thresholds.toml.")
+    passed: bool | None = Field(None, description="Whether the gate passed. Null when not measured.")
+    detail: str | None = Field(None, description="How many cases failed, or why the gate was not measured.")
+    source: str = Field(description="The committed result file and commit the row was read from.")
+
+
 class MethodInfo(Model):
     name: str
     label: str
@@ -416,8 +430,10 @@ class MethodInfo(Model):
         None, description="Why the method is experimental, from the benchmark."
     )
     params_schema: dict[str, Any] = Field(description="JSON Schema of the method's parameters.")
-    reference_scores: dict[str, float] = Field(
-        default_factory=dict, description="Benchmark scores of the current defaults, by metric."
+    reference_scores: list[ReferenceRow] = Field(
+        default_factory=list,
+        description="The method's published benchmark results, one row per dataset and gate. "
+        "These are reference results, not a score for the user's data.",
     )
 
 
