@@ -1,6 +1,6 @@
 # Handoff: lumenCell V2, Milestone 1
 
-Status as of 2026-11-13, commit `bfb2539` on `main` (67 commits, all pushed). Phase 1 Tasks 8 to 15 sit in open stacked PRs #14 to #21, not yet merged.
+Status as of 2026-11-22, commit `e108989` on `main`, version 0.3.0 (tagged releases: v0.1.0, v0.2.0). No pull requests are open.
 Read this first if you are picking the project up; the README covers usage.
 
 ## What exists
@@ -29,7 +29,7 @@ The full loop works and is covered end to end:
 | A3 Palantir, A4 scFates adapters | done |
 | A5 trends, heatmap, compare + C4/C5 web views | done (see deviations) |
 | A6 real benchmark | done, acceptance **not** met (see results) |
-| I2 packaging + 100k-cell performance budgets | budgets measured for prep, `paga_dpt` and the server, all within budget (`docs/backend-robustness-2.md`); Palantir, scFates and first paint are not in that table; packaging **not started** |
+| I2 packaging + 100k-cell performance budgets | packaging done in 0.1.0 (#61): the wheel bundles `web_dist`, and CI installs it without Node and starts `lumencell demo`. Budgets measured for prep, `paga_dpt` and the server, all within budget (`docs/backend-robustness-2.md`); Palantir, scFates and first paint are not measured |
 
 ## The 3-D viewer (0.3.0, 2026-11-21)
 
@@ -48,9 +48,7 @@ Sheih NHL-6 (21,762 cells), and orbiting 100k synthetic cells holds 60 fps on an
 | 7 overlays | #71 | the 3-D axis picker; PAGA and neighbour-graph overlays |
 | 8 share | #72 | the view in the URL hash, PNG export, saved views and a camera tour; version 0.3.0 |
 
-Merge them in order. `main` squash-merges, so after each merge rebase the next branch onto
-`main`, dropping the merged commit. #71 carries a cherry-picked copy of #69 (it needs the API):
-merge #69 first and the copy drops out on rebase.
+All eight were squash-merged to `main` in order on 2026-11-22. 0.3.0 is not tagged yet.
 
 Not built, on purpose or for later: lasso-as-root (no such root kind), undo, sphere or box
 selectors, a draggable split divider, hiding neighbour edges past the cursor, saved views in
@@ -194,16 +192,11 @@ failures are all about branch structure.
 
 ## Open work, in suggested order
 
-1. **I2 packaging.** `src/lumencell/web_dist/` is gitignored, so the wheel needs
-   it declared under `[tool.hatch.build.targets.wheel] artifacts`. Done when a
-   clean venv `pip install ".[all]"` followed by `lumencell launch` serves the
-   app.
-2. **Performance at 100k cells.** Generate a large synthetic dataset with
-   `lumencell synth --n-cells 100000` (the generator already works in chunks)
-   and record against the plan's budgets: prep under 8 min, `paga_dpt` under
-   30 s, Palantir and scFates under 10 min, first paint under 1.5 s, one gene
-   under 50 ms, heatmap under 2 s.
-3. **Branching, tuned on pancreas only.** Candidates:
+1. **Performance at 100k cells, the rest.** Prep, `paga_dpt`, one gene and the
+   heatmap are measured and within budget (`docs/backend-robustness-2.md`).
+   Still to record on `lumencell synth --n-cells 100000`: Palantir and scFates
+   under 10 min, first paint under 1.5 s.
+2. **Branching, tuned on pancreas only.** Candidates:
    - Leiden resolution for PAGA, or refining cells at forks.
    - The `q` and `eps` settings of Palantir's `select_branch_cells`.
    - scFates `nodes` and `minbranchlength`.
@@ -211,9 +204,9 @@ failures are all about branch structure.
 
    Re-run `make bench-synth` (no regressions allowed) and `make bench-real`, and
    log every change.
-4. **App inputs:** terminals and a parameter form, plus reference scores in the
+3. **App inputs:** terminals and a parameter form, plus reference scores in the
    trust panel.
-5. **Repo setup:** done. `.github/workflows/ci.yml` mirrors `make ci`.
+4. **Repo setup:** done. `.github/workflows/ci.yml` mirrors `make ci`.
 
 ## Gotchas met along the way
 
