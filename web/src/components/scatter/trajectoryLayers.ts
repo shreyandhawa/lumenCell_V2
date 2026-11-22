@@ -21,11 +21,13 @@ export interface TrajectoryLayersInput {
   travelled: Vec3[] | null;
   ink: RGBA;
   stage: readonly [number, number, number];
+  /** Prepended to every layer id: the pane the layers belong to in the split view. */
+  prefix?: string;
 }
 
 const ON_TOP = { depthCompare: "always", depthWriteEnabled: false } as const;
 
-export function trajectoryLayers({ paths, milestones, focus, travelled, ink, stage }: TrajectoryLayersInput): Layer[] {
+export function trajectoryLayers({ paths, milestones, focus, travelled, ink, stage, prefix = "" }: TrajectoryLayersInput): Layer[] {
   const layers: Layer[] = [];
   const ordered = [...paths.filter((p) => p.lineage !== focus), ...paths.filter((p) => p.lineage === focus)];
   const color = (d: { lineage: number }, alpha: number): RGBA =>
@@ -44,14 +46,14 @@ export function trajectoryLayers({ paths, milestones, focus, travelled, ink, sta
     layers.push(
       new PathLayer({
         ...common,
-        id: "curves-behind",
+        id: `${prefix}curves-behind`,
         getColor: (d) => color(d, d.lineage === focus ? 255 : 70),
         parameters: ON_TOP,
         updateTriggers: { getColor: [focus, ink], getWidth: focus },
       }),
       new PathLayer({
         ...common,
-        id: "curves",
+        id: `${prefix}curves`,
         getColor: (d) => color(d, 255),
         updateTriggers: { getColor: [focus, ink], getWidth: focus },
       }),
@@ -60,7 +62,7 @@ export function trajectoryLayers({ paths, milestones, focus, travelled, ink, sta
   if (travelled && travelled.length > 1) {
     layers.push(
       new PathLayer({
-        id: "travelled",
+        id: `${prefix}travelled`,
         data: [travelled],
         getPath: (d: Vec3[]) => d,
         getColor: ACCENT,
@@ -72,7 +74,7 @@ export function trajectoryLayers({ paths, milestones, focus, travelled, ink, sta
         parameters: ON_TOP,
       }),
       new ScatterplotLayer({
-        id: "playhead",
+        id: `${prefix}playhead`,
         data: [travelled[travelled.length - 1]!],
         getPosition: (d: Vec3) => d,
         getFillColor: ACCENT,
@@ -93,7 +95,7 @@ export function trajectoryLayers({ paths, milestones, focus, travelled, ink, sta
   if (marks.length) {
     layers.push(
       new ScatterplotLayer({
-        id: "milestones",
+        id: `${prefix}milestones`,
         data: marks,
         getPosition: (d: PlacedMilestone) => d.position,
         getFillColor: (d: PlacedMilestone) => (d.kind === "tip" ? ink : [...stage, 255]),

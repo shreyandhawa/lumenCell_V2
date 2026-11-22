@@ -1,4 +1,4 @@
-import { OrbitView, type OrbitViewState } from "@deck.gl/core";
+import { type Layer, OrbitView, type OrbitViewState, type Viewport } from "@deck.gl/core";
 import { DataFilterExtension } from "@deck.gl/extensions";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL, { type DeckGLRef } from "@deck.gl/react";
@@ -55,6 +55,31 @@ const FOG = 0.6;
 /** The stage colour per theme (index.css --color-stage): what fog and faint cells fade toward. */
 const STAGE = { dark: [0, 0, 0], light: [244, 246, 243] } as const;
 const VIEW_ID = "stage";
+/** The split view: the 2-D embedding on the left, DC1-DC3 on the right, each with its own camera. */
+const PANES = ["flat", "deep"] as const;
+type Pane = (typeof PANES)[number];
+type Positions = { value: Float32Array; size: number };
+const ON_TOP = { depthCompare: "always", depthWriteEnabled: false } as const;
+/** A layer id without its pane: "deep:cells" -> "cells". */
+const kind = (id: string | undefined) => id?.slice(id.indexOf(":") + 1);
+/** 2-D: drag and arrows pan, never rotate. */
+const flatControl = (keys: boolean) => ({
+  dragMode: "pan" as const,
+  dragRotate: false,
+  keyboard: keys && { rotateSpeedX: 0, rotateSpeedY: 0 },
+});
+/** 3-D: drag orbits. With the lasso on, the left drag draws, so the right drag (deck's alternate mode) orbits. */
+const deepControl = (keys: boolean, lasso: boolean) => ({ dragMode: lasso ? ("pan" as const) : ("rotate" as const), keyboard: keys });
+
+/** ``fn``, kept per positions object: deck.gl uploads every attribute again when the data object changes. */
+function perPositions<T>(fn: (p: Positions) => T): (p: Positions) => T {
+  const seen = new WeakMap<Positions, T>();
+  return (p) => {
+    let v = seen.get(p);
+    if (v === undefined) seen.set(p, (v = fn(p)));
+    return v;
+  };
+}
 
 /** On-screen point radius at the fitted zoom, in pixels. */
 function pointRadius(n: number): number {
@@ -102,6 +127,8 @@ export function Scatter() {
   // The lasso tool: a left drag draws, other buttons and keys still move the view.
   const [lasso, setLasso] = useState(false);
   const [drawing, setDrawing] = useState<Point[] | null>(null);
+  // Side by side, the hovered cell is ringed in both panes.
+  const [hovered, setHovered] = useState<number | null>(null);
   const { mask, op, setMask } = useSelection();
   const deckRef = useRef<DeckGLRef>(null);
   const clusters = useObs(picking || lasso || mask ? clusterColumn : null).data;
@@ -121,7 +148,6 @@ export function Scatter() {
   const fitZoom = fitZoomFor(size.width - padding.left - padding.right, size.height - padding.bottom);
   const userViewState = useCamera((s) => s.cameras[VIEW_ID] ?? null);
   const setCamera = useCamera((s) => s.setCamera);
-  const setViewState = (vs: OrbitViewState) => setCamera(VIEW_ID, vs);
   // The first fit, until the user or an animation moves the camera.
   const viewState = useMemo<OrbitViewState | null>(
     () =>
@@ -131,10 +157,54 @@ export function Scatter() {
   );
   const [t, setT] = useState(0); // 0 = 2-D embedding, 1 = DC1-DC3; in between while morphing
 
+  // Side by side: two panes share the free stage, each fitted and moved on its own.
+  const split = view === "split" && flat !== null && deep !== null;
+  const half = Math.max(0, Math.floor((size.width - RAIL - padRight) / 2));
+  const paneFit = fitZoomFor(half, size.height - BAR);
+  const cameras = useCamera((s) => s.cameras);
+  const paneStates = useMemo<Record<Pane, OrbitViewState> | null>(() => {
+    if (!split) return null;
+    const fit = (cam: typeof FLAT): OrbitViewState => ({
+      target: [0, 0, 0],
+      ...cam,
+      zoom: paneFit,
+      minZoom: paneFit - 3,
+      maxZoom: paneFit + 6,
+    });
+    return { flat: cameras.flat ?? fit(FLAT), deep: cameras.deep ?? fit(TILTED) };
+  }, [split, cameras.flat, cameras.deep, paneFit]);
+  // deck.gl gives every key to every view, so only the pane the pointer was over last has keys.
+  const [active, setActive] = useState<Pane>("deep");
+  const paneAt = (x: number): Pane => (x < RAIL + half ? "flat" : "deep");
+  const paneViews = useMemo(
+    () =>
+      split
+        ? PANES.map(
+            (id, k) =>
+              new OrbitView({
+                id,
+                orbitAxis: "Y",
+                x: RAIL + k * half,
+                width: half,
+                padding: { bottom: BAR },
+                controller: id === "flat" ? flatControl(active === id) : deepControl(active === id, lasso),
+              }),
+          )
+        : null,
+    [split, half, active, lasso],
+  );
+  const paneViewports = useMemo(
+    () =>
+      paneViews && paneStates && size.width
+        ? paneViews.map((v) => v.makeViewport({ width: size.width, height: size.height, viewState: paneStates[v.id as Pane] }))
+        : null,
+    [paneViews, paneStates, size.width, size.height],
+  );
+
   // Live values for the animations below, which must not restart when these change.
-  const live = useRef({ viewState, t, fitZoom, padRight });
+  const live = useRef({ viewState, t, fitZoom, padRight, paneStates });
   useEffect(() => {
-    live.current = { viewState, t, fitZoom, padRight };
+    live.current = { viewState, t, fitZoom, padRight, paneStates };
   });
 
   // The sheet opening or closing moves the stage centre with it.
@@ -144,13 +214,20 @@ export function Scatter() {
     return () => c.stop();
   }, [sheetVisible, reduce]);
 
-  const tween = (to: Camera, toT: number, seconds: number, ease: readonly number[]) => {
-    const from = live.current.viewState;
+  /** Move a camera (the stage's unless a pane is named) and the morph toward toT together. */
+  const tween = (
+    to: Camera,
+    toT: number,
+    seconds: number,
+    ease: readonly number[],
+    id: string = VIEW_ID,
+    from: OrbitViewState | null = live.current.viewState,
+  ) => {
     const t0 = live.current.t;
     if (!from) return () => {};
     if (reduce) {
       setT(toT);
-      setViewState({ ...from, ...to });
+      setCamera(id, { ...from, ...to });
       return () => {};
     }
     const c = animate(0, 1, {
@@ -158,7 +235,7 @@ export function Scatter() {
       ease: [...ease] as [number, number, number, number],
       onUpdate: (p) => {
         setT(lerp(t0, toT, p));
-        setViewState({ ...from, ...lerpCam(from as Camera, to, p) });
+        setCamera(id, { ...from, ...lerpCam(from as Camera, to, p) });
       },
     });
     return () => c.stop();
@@ -166,6 +243,7 @@ export function Scatter() {
 
   // The 2-D <-> 3-D morph: positions and camera move together.
   useEffect(() => {
+    if (view === "split") return; // the panes do not morph; the stage morphs when it is shown again
     const toT = view === "3d" ? 1 : 0;
     if (live.current.t === toT || (toT === 1 && !deep)) return;
     const cam = { target: [0, 0, 0] as Vec3, zoom: live.current.fitZoom, ...(toT ? TILTED : FLAT) };
@@ -173,15 +251,16 @@ export function Scatter() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tween reads live values; only these start a morph
   }, [view, deep]);
 
-  // Auto-rotate, in 3-D only; any drag, key or reset stops it.
+  // Auto-rotate, in 3-D only (the right pane side by side); any drag, key or reset stops it.
   const [spinning, setSpinning] = useState(false);
-  const spin = spinning && t === 1 && !reduce;
+  const spin = spinning && (split || t === 1) && !reduce;
   useEffect(() => {
     if (!spin) return;
     let last = performance.now();
     let id = requestAnimationFrame(function step(now) {
-      const vs = live.current.viewState;
-      if (vs) setCamera(VIEW_ID, { ...vs, rotationOrbit: (vs.rotationOrbit ?? 0) + ((now - last) / 1000) * SPIN });
+      const panes = live.current.paneStates;
+      const vs = panes ? panes.deep : live.current.viewState;
+      if (vs) setCamera(panes ? "deep" : VIEW_ID, { ...vs, rotationOrbit: (vs.rotationOrbit ?? 0) + ((now - last) / 1000) * SPIN });
       last = now;
       id = requestAnimationFrame(step);
     });
@@ -193,11 +272,19 @@ export function Scatter() {
   const labelPlot = () => {
     const root = containerRef.current?.querySelector<HTMLElement>('[tabindex="0"]');
     root?.setAttribute("role", "application");
-    root?.setAttribute("aria-label", "Plot. Arrow keys pan, minus and equals zoom, Shift with arrows orbits in 3-D, R resets.");
+    root?.setAttribute(
+      "aria-label",
+      "Plot. Arrow keys pan, minus and equals zoom, Shift with arrows orbits in 3-D, R resets. Side by side, keys move the side the pointer was over last.",
+    );
   };
 
   const reset = () => {
     setSpinning(false);
+    if (paneStates) {
+      for (const id of PANES)
+        tween({ target: [0, 0, 0], zoom: paneFit, ...(id === "deep" ? TILTED : FLAT) }, t, 0.3, EASE_OUT, id, paneStates[id]);
+      return;
+    }
     tween({ target: [0, 0, 0], zoom: fitZoom, ...(view === "3d" ? TILTED : FLAT) }, t, 0.3, EASE_OUT);
   };
 
@@ -224,9 +311,9 @@ export function Scatter() {
   const deepAttr = useMemo(() => (deep ? { value: deep.xyz, size: 3 } : null), [deep]);
   const positions = view === "3d" && deepAttr ? deepAttr : flatAttr;
   /** Where cell i is now, mid-morph included: the GPU's interpolation, repeated for one cell (the root pin). */
-  const at = (i: number): Vec3 | null => {
+  const at = (i: number, tt = t): Vec3 | null => {
     if (!flat || i < 0 || i >= n) return null;
-    const p = [0, 1, 2].map((k) => (deep ? lerp(flat.xyz[i * 3 + k]!, deep.xyz[i * 3 + k]!, t) : flat.xyz[i * 3 + k]!));
+    const p = [0, 1, 2].map((k) => (deep ? lerp(flat.xyz[i * 3 + k]!, deep.xyz[i * 3 + k]!, tt) : flat.xyz[i * 3 + k]!));
     return p.every(Number.isFinite) ? (p as Vec3) : null;
   };
 
@@ -243,26 +330,29 @@ export function Scatter() {
   // Cells past the cursor (or the wash) keep only their halo.
   const limit = cells ? (cursor ?? (washing ? wash : 2)) : 2;
 
-  const paths = useMemo(() => {
+  const shapes = useMemo(() => {
     const shape = (cs: typeof curves2, norm: typeof flat) =>
       cs && norm ? cs.curves.filter((c) => c.points.length > 1).map((c) => ({ lineage: c.lineage, path: c.points.map(norm.map) })) : null;
-    const a = shape(curves2, flat);
-    const b = shape(curves3, deep);
-    if (t === 0 || !b) return a ?? [];
-    if (t === 1 || !a) return b;
+    return { a: shape(curves2, flat), b: shape(curves3, deep) };
+  }, [curves2, curves3, flat, deep]);
+  /** The curves at tt: 0 on the 2-D embedding, 1 on DC1-DC3, in between while morphing. */
+  const pathsAt = (tt: number) => {
+    const { a, b } = shapes;
+    if (tt === 0 || !b) return a ?? [];
+    if (tt === 1 || !a) return b;
     return a.map((c, i) => {
       const d = b[i];
-      if (!d || d.path.length !== c.path.length) return t < 0.5 ? c : (d ?? c);
-      return { lineage: c.lineage, path: c.path.map((p, k) => [0, 1, 2].map((j) => lerp(p[j]!, d.path[k]![j]!, t)) as Vec3) };
+      if (!d || d.path.length !== c.path.length) return tt < 0.5 ? c : (d ?? c);
+      return { lineage: c.lineage, path: c.path.map((p, k) => [0, 1, 2].map((j) => lerp(p[j]!, d.path[k]![j]!, tt)) as Vec3) };
     });
-  }, [curves2, curves3, flat, deep, t]);
+  };
+  const paths = pathsAt(t);
 
-  const mix = (a: Vec3, b: Vec3) => a.map((v, k) => lerp(v, b[k]!, t)) as Vec3;
+  const mixAt = (tt: number) => (a: Vec3, b: Vec3) => a.map((v, k) => lerp(v, b[k]!, tt)) as Vec3;
   const where = (cs: typeof curves2, norm: typeof flat) =>
     cs && norm ? new Map(cs.milestones.map((m) => [m.id, norm.map([m.x, m.y, m.z ?? 0])] as const)) : null;
-  const milestones = run
-    ? placeMilestones(run.milestones, t < 1 ? where(curves2, flat) : null, t > 0 ? where(curves3, deep) : null, mix)
-    : [];
+  const milestonesAt = (tt: number) =>
+    run ? placeMilestones(run.milestones, tt < 1 ? where(curves2, flat) : null, tt > 0 ? where(curves3, deep) : null, mixAt(tt)) : [];
 
   // The playhead: where the focused lineage's cells are at the cursor, in each view.
   const heads = useMemo(() => {
@@ -272,52 +362,60 @@ export function Scatter() {
     const b = deep ? cursorPoint(cells.pseudotime, member, deep.xyz, cursor) : null;
     return { a, b };
   }, [cursor, focus, cells, flat, deep, n]);
-  const head = heads && (heads.a && heads.b ? mix(heads.a, heads.b) : t < 0.5 ? heads.a : heads.b);
-  const focusPath = paths.find((p) => p.lineage === focus)?.path;
-  const travelled = head && focusPath ? prefixTo(focusPath, head) : null;
+  /** The focused lineage's curve up to where its cells are at the cursor, at tt. */
+  const travelledAt = (tt: number) => {
+    const head = heads && (heads.a && heads.b ? mixAt(tt)(heads.a, heads.b) : tt < 0.5 ? heads.a : heads.b);
+    const path = pathsAt(tt).find((p) => p.lineage === focus)?.path;
+    return head && path ? prefixTo(path, head) : null;
+  };
+  const deepFocus = shapes.b?.find((p) => p.lineage === focus)?.path;
 
-  // Focusing a lineage in 3-D turns the camera around it.
+  // Focusing a lineage in 3-D (the right pane side by side) turns the camera around it.
   useEffect(() => {
-    const vs = live.current.viewState;
-    const centre = focusPath && centroid(focusPath);
-    if (live.current.t !== 1 || !vs || !centre) return;
-    return tween({ target: centre, zoom: vs.zoom, rotationX: vs.rotationX, rotationOrbit: vs.rotationOrbit }, 1, 0.45, EASE_OUT);
+    const centre = deepFocus && centroid(deepFocus);
+    const pane = paneStates?.deep;
+    const vs = pane ?? live.current.viewState;
+    if ((!pane && live.current.t !== 1) || !vs || !centre) return;
+    const to = { target: centre, zoom: vs.zoom, rotationX: vs.rotationX, rotationOrbit: vs.rotationOrbit };
+    return pane ? tween(to, live.current.t, 0.45, EASE_OUT, "deep", pane) : tween(to, 1, 0.45, EASE_OUT);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only a focus change moves the camera
   }, [focus]);
 
-  const haloData = useMemo(() => ({ length: n, attributes: { getPosition: positions! } }), [n, positions]);
+  const haloOf = useMemo(() => perPositions((pos) => ({ length: n, attributes: { getPosition: pos } })), [n]);
   const selected = useMemo(() => (mask ? Float32Array.from(mask) : null), [mask]);
-  const cellData = useMemo(
-    () => ({
-      length: n,
-      attributes: {
-        getPosition: positions!,
-        getFillColor: { value: colors!, size: 4, normalized: true },
-        getFilterValue: { value: ptValues, size: 1 },
-        ...(selected ? { getSelected: { value: selected, size: 1 } } : {}),
-      },
-    }),
-    [n, positions, colors, ptValues, selected],
+  const cellsOf = useMemo(
+    () =>
+      perPositions((pos) => ({
+        length: n,
+        attributes: {
+          getPosition: pos,
+          getFillColor: { value: colors!, size: 4, normalized: true },
+          getFilterValue: { value: ptValues, size: 1 },
+          ...(selected ? { getSelected: { value: selected, size: 1 } } : {}),
+        },
+      })),
+    [n, colors, ptValues, selected],
   );
   const ink: [number, number, number, number] = theme === "dark" ? [243, 245, 242, 190] : [20, 23, 22, 170];
-  const layers = [];
-  if (positions && colors) {
-    // Cells are balls of one size in embedding units (near ones look bigger in 3-D), sized so they
-    // are r pixels at the fitted zoom, and never smaller than 0.6 r or larger than 3 r before perspective.
-    const r = pointRadius(n) * pointSize;
-    const radius = r / 2 ** fitZoom;
+  // Cells are balls of one size in embedding units (near ones look bigger in 3-D), sized so they
+  // are r pixels at the fitted zoom, and never smaller than 0.6 r or larger than 3 r before perspective.
+  const r = pointRadius(n) * pointSize;
+  /** Everything drawn in one view, at tt between the 2-D embedding (0) and DC1-DC3 (1). */
+  const scene = (prefix: string, tt: number, pos: Positions | null, zoom: number): Layer[] => {
+    if (!pos || !colors) return [];
+    const radius = r / 2 ** zoom;
     // The fog spans the box that holds the cells, which moves with them while morphing.
     const box = (k: 0 | 1) =>
-      [0, 1, 2].map((j) => (flat && deep ? lerp(flat.bounds[k][j]!, deep.bounds[k][j]!, t) : (flat?.bounds[k][j] ?? 0))) as Vec3;
+      [0, 1, 2].map((j) => (flat && deep ? lerp(flat.bounds[k][j]!, deep.bounds[k][j]!, tt) : (flat?.bounds[k][j] ?? 0))) as Vec3;
     const transitions = reduce ? undefined : { getPosition: MORPH };
-    layers.push(
+    const out: Layer[] = [
       // A faint ghost of every cell, so cells past the cursor still show where they are. Drawn first,
       // without depth, so cells always cover it. Off while a selection shrinks the unselected cells,
       // where it would ring each of them.
       new ScatterplotLayer({
-        id: "halo",
+        id: `${prefix}halo`,
         visible: mask === null,
-        data: haloData,
+        data: haloOf(pos),
         getFillColor: theme === "dark" ? [255, 255, 255, 10] : [0, 0, 0, 14],
         radiusUnits: "pixels",
         getRadius: r + 1.5,
@@ -327,8 +425,8 @@ export function Scatter() {
         updateTriggers: { getFillColor: theme, getRadius: r },
       }),
       new ScatterplotLayer({
-        id: "cells",
-        data: cellData,
+        id: `${prefix}cells`,
+        data: cellsOf(pos),
         radiusUnits: "common",
         getRadius: radius,
         radiusMinPixels: 0.6 * r,
@@ -341,15 +439,45 @@ export function Scatter() {
         filterRange: [-2, limit],
         filterSoftRange: [-2, limit - 0.06],
         depthFadeStage: STAGE[theme],
-        depthFadeStrength: fog ? FOG * t : 0,
+        depthFadeStrength: fog ? FOG * tt : 0,
         depthFadeBounds: [box(0), box(1)],
         depthFadeDim: mask !== null,
         transitions,
         updateTriggers: { getRadius: radius, getSelected: mask },
       }),
-    );
-  }
-  layers.push(...trajectoryLayers({ paths, milestones, focus, travelled, ink, stage: STAGE[theme] }));
+      ...trajectoryLayers({
+        prefix,
+        paths: pathsAt(tt),
+        milestones: milestonesAt(tt),
+        focus,
+        travelled: travelledAt(tt),
+        ink,
+        stage: STAGE[theme],
+      }),
+    ];
+    if (paneStates && hovered !== null)
+      out.push(
+        new ScatterplotLayer({
+          id: `${prefix}hover`,
+          data: [hovered],
+          getPosition: (i: number) => [pos.value[i * 3]!, pos.value[i * 3 + 1]!, pos.value[i * 3 + 2]!],
+          filled: false,
+          stroked: true,
+          getLineColor: [ink[0], ink[1], ink[2], 255],
+          lineWidthUnits: "pixels",
+          getLineWidth: 1.5,
+          radiusUnits: "pixels",
+          getRadius: r + 5,
+          billboard: true,
+          parameters: ON_TOP,
+          updateTriggers: { getPosition: hovered },
+        }),
+      );
+    return out;
+  };
+  const layers = paneStates
+    ? [...scene("flat:", 0, flatAttr, paneFit), ...scene("deep:", 1, deepAttr, paneFit)]
+    : scene("", t, positions, fitZoom);
   const lineageName = (id: number) => run?.lineages.find((l) => l.id === id)?.name ?? `lineage ${id + 1}`;
   // The shown colour's value, then pseudotime and lineage when they are not already that value.
   const describeCell = (i: number) => {
@@ -382,15 +510,20 @@ export function Scatter() {
         : null;
 
   // A lasso takes every drawn cell inside it on screen, at any depth; cells past the cursor are not drawn.
+  // Side by side, it takes cells in the pane it starts in; each pane projects into its own pixels.
   const finishLasso = (poly: Point[]) => {
-    if (!viewport || !flat) return;
-    const xyz = t === 1 && deep ? deep.xyz : flat.xyz;
-    const next = selectInPolygon(projectAll(xyz, viewport.pixelProjectionMatrix as unknown as number[]), poly);
+    const pane = paneViewports ? paneAt(poly[0]![0]) : null;
+    const vp = paneViewports ? paneViewports[pane === "flat" ? 0 : 1]! : viewport;
+    if (!vp || !flat) return;
+    const xyz = (pane ? pane === "deep" : t === 1) && deep ? deep.xyz : flat.xyz;
+    const onPane = poly.map(([x, y]): Point => [x - vp.x, y - vp.y]);
+    const next = selectInPolygon(projectAll(xyz, vp.pixelProjectionMatrix as unknown as number[]), onPane);
     if (limit < 2) for (let i = 0; i < n; i++) if (ptValues[i]! > limit) next[i] = 0;
     setMask(combine(mask, next, op));
   };
   const selectGroupAt = (x: number, y: number) => {
-    const i = deckRef.current?.pickObject({ x, y, radius: 4, layerIds: ["cells"] })?.index ?? -1;
+    const layerIds = paneStates ? ["flat:cells", "deep:cells"] : ["cells"];
+    const i = deckRef.current?.pickObject({ x, y, radius: 4, layerIds })?.index ?? -1;
     const code = groupBy && i >= 0 ? groupBy.codes[i]! : -1;
     if (!groupBy || code < 0) return;
     const next = new Uint8Array(n);
@@ -402,15 +535,25 @@ export function Scatter() {
     return [e.clientX - r.left, e.clientY - r.top];
   };
 
-  // The root pin follows the root cell through pans, zooms and the morph.
-  const rootXyz = root ? at(root.cell_index) : null;
-  const pin = viewport && rootXyz ? viewport.project(rootXyz) : null;
+  // The root pin follows the root cell through pans, zooms and the morph; side by side, in each pane.
+  const pinOn = (vp: Viewport | null | undefined, xyz: Vec3 | null): Point | null => {
+    if (!vp || !xyz) return null;
+    const [x, y] = vp.project(xyz) as [number, number];
+    return x >= 0 && x <= vp.width && y >= 0 && y <= vp.height ? [vp.x + x, vp.y + y] : null;
+  };
+  const pins = !root
+    ? []
+    : paneViewports
+      ? paneViewports.map((vp, k) => pinOn(vp, at(root.cell_index, k)))
+      : [pinOn(viewport, at(root.cell_index))];
 
   const embeddingInfo = dataset?.embeddings.find((e) => e.name === embedding);
   const p = run?.provenance;
+  const dcCaption = `DC1–DC3 · ${p?.inference_rep === "X_diffmap" ? `3 of ${p.inference_dims}` : "the first 3"} diffusion components${fog ? " · far cells fade" : ""}`;
+  const flatCaption = `${embedding} · a 2-D display projection`;
   const caption =
     view === "3d"
-      ? `DC1–DC3 · ${p?.inference_rep === "X_diffmap" ? `3 of ${p.inference_dims}` : "the first 3"} diffusion components${fog ? " · far cells fade" : ""}`
+      ? dcCaption
       : !embedding
         ? ""
         : paths.length && p
@@ -419,6 +562,11 @@ export function Scatter() {
             ? `${embedding} · coloured by ${legend.title === "Leiden" ? "Leiden cluster" : legend.title}`
             : `${embedding}, ${embeddingInfo?.source === "file" ? "stored in the file" : "computed by lumenCell"} · ${fmt(n)} cells`;
   const right = Math.max(12, padRight);
+  // The view buttons sit clear of the "Show evidence" button when the sheet is hidden.
+  const toggleRight = Math.max(padRight + 6, run ? 126 : 18);
+  // Side by side, the 3-D caption sits beside the view buttons when there is room, else below them.
+  const captionRoom = size.width - toggleRight - 172 - (RAIL + half + 12);
+  const gimbalAt = paneViewports ? paneViewports[1] : t > 0 ? viewport : null;
   const raised = cursor !== null && run !== undefined; // the gene trends sit above the bar
 
   return (
@@ -426,6 +574,10 @@ export function Scatter() {
       ref={containerRef}
       className="absolute inset-0 overflow-hidden bg-stage"
       data-testid="scatter"
+      onPointerMove={(e) => {
+        const pane = paneStates ? paneAt(local(e)[0]) : active;
+        if (pane !== active) setActive(pane);
+      }}
       onKeyDown={(e) => {
         // R resets the view, from the plot or its controls (never while typing in a field). Esc clears the selection.
         const field = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
@@ -437,7 +589,7 @@ export function Scatter() {
       }}
       // In lasso mode a left drag on the plot draws, and never reaches deck.gl (capture phase).
       onPointerDownCapture={(e) => {
-        if (!lasso || e.button !== 0 || !(e.target instanceof HTMLCanvasElement) || (t !== 0 && t !== 1)) return;
+        if (!lasso || e.button !== 0 || !(e.target instanceof HTMLCanvasElement) || (!paneStates && t !== 0 && t !== 1)) return;
         e.stopPropagation();
         e.currentTarget.setPointerCapture(e.pointerId);
         setDrawing([local(e)]);
@@ -460,34 +612,29 @@ export function Scatter() {
       {viewState && (
         <DeckGL
           ref={deckRef}
-          views={stageView}
-          viewState={viewState}
+          views={paneViews ?? stageView}
+          viewState={paneStates ?? viewState}
           onLoad={labelPlot}
-          onViewStateChange={({ viewState: vs }) => {
-            if (t !== 0 && t !== 1) return;
+          onViewStateChange={({ viewId, viewState: vs }) => {
+            if (!paneStates && t !== 0 && t !== 1) return;
             setSpinning(false);
-            setViewState(vs as OrbitViewState);
+            setCamera(paneStates ? viewId : VIEW_ID, vs as OrbitViewState);
           }}
-          // Arrows pan, -/= zoom; with Shift they orbit, in 3-D only. With the lasso on in 3-D, the
-          // left drag draws, so the right drag (deck's alternate mode) orbits.
-          controller={
-            t === 0
-              ? { dragMode: "pan", dragRotate: false, keyboard: { rotateSpeedX: 0, rotateSpeedY: 0 } }
-              : t === 1
-                ? { dragMode: lasso ? "pan" : "rotate" }
-                : false
-          }
+          // Arrows pan, -/= zoom; with Shift they orbit, in 3-D only. Side by side, each pane has its own.
+          controller={paneStates ? undefined : t === 0 ? flatControl(true) : t === 1 ? deepControl(true, lasso) : false}
+          layerFilter={paneStates ? ({ layer, viewport: vp }) => layer.id.startsWith(`${vp.id}:`) : undefined}
+          onHover={paneStates ? (info) => setHovered(kind(info.layer?.id) === "cells" && info.index >= 0 ? info.index : null) : undefined}
           layers={layers}
           onClick={(info) => {
-            if (!picking || info.layer?.id !== "cells" || info.index < 0 || !clusters?.codes) return;
+            if (!picking || kind(info.layer?.id) !== "cells" || info.index < 0 || !clusters?.codes) return;
             const code = clusters.codes[info.index]!;
             if (code >= 0) setRoot.mutate({ kind: "cluster", key: clusterColumn, value: clusters.categories[code]! });
           }}
           getTooltip={({ index, layer, object }) => {
             const text =
-              layer?.id === "milestones"
+              kind(layer?.id) === "milestones"
                 ? describeMilestone(object as PlacedMilestone)
-                : layer?.id === "cells" && index >= 0
+                : kind(layer?.id) === "cells" && index >= 0
                   ? describeCell(index)
                   : null;
             return text
@@ -505,7 +652,15 @@ export function Scatter() {
               : null;
           }}
           getCursor={({ isDragging, isHovering }) =>
-            lasso ? "crosshair" : isDragging ? "grabbing" : isHovering && picking ? "crosshair" : t === 1 ? "grab" : "default"
+            lasso
+              ? "crosshair"
+              : isDragging
+                ? "grabbing"
+                : isHovering && picking
+                  ? "crosshair"
+                  : (paneStates ? active === "deep" : t === 1)
+                    ? "grab"
+                    : "default"
           }
         />
       )}
@@ -516,22 +671,47 @@ export function Scatter() {
         </div>
       )}
 
-      {root && pin && (
-        <div className="pointer-events-none absolute" style={{ left: pin[0], top: pin[1] }}>
-          <motion.span
-            key={root.obs_name}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.2, ease: EASE_OUT }}
-            className="absolute -top-2 -left-2 size-4 rounded-full border-2 border-stage bg-accent"
-          />
-          <span className="absolute -top-[11px] left-4 rounded bg-panel-raised px-1.5 py-0.5 text-xs whitespace-nowrap text-ink">
-            Root · {describeRoot(root.spec)}
-          </span>
-        </div>
-      )}
+      {root &&
+        pins.map(
+          (pin, k) =>
+            pin && (
+              <div key={k} className="pointer-events-none absolute" style={{ left: pin[0], top: pin[1] }}>
+                <motion.span
+                  key={root.obs_name}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.2, ease: EASE_OUT }}
+                  className="absolute -top-2 -left-2 size-4 rounded-full border-2 border-stage bg-accent"
+                />
+                {k === 0 && (
+                  <span className="absolute -top-[11px] left-4 rounded bg-panel-raised px-1.5 py-0.5 text-xs whitespace-nowrap text-ink">
+                    Root · {describeRoot(root.spec)}
+                  </span>
+                )}
+              </div>
+            ),
+        )}
 
-      <p className="pointer-events-none absolute top-[22px] left-[308px] text-xs text-ink-muted">{caption}</p>
+      {paneStates ? (
+        <>
+          <div aria-hidden className="pointer-events-none absolute inset-y-0 w-px bg-line" style={{ left: RAIL + half }} />
+          <p className="pointer-events-none absolute top-[22px] text-xs text-ink-muted" style={{ left: RAIL + 4, maxWidth: half - 16 }}>
+            {flatCaption}
+          </p>
+          <p
+            className="pointer-events-none absolute text-xs text-ink-muted"
+            style={
+              captionRoom >= 200
+                ? { top: 22, left: RAIL + half + 12, maxWidth: captionRoom }
+                : { top: 56, left: RAIL + half + 12, maxWidth: half - 24 }
+            }
+          >
+            {dcCaption}
+          </p>
+        </>
+      ) : (
+        <p className="pointer-events-none absolute top-[22px] left-[308px] text-xs text-ink-muted">{caption}</p>
+      )}
 
       {drawing && drawing.length > 1 && (
         <svg aria-hidden className="pointer-events-none absolute inset-0 size-full">
@@ -554,16 +734,21 @@ export function Scatter() {
         role="group"
         aria-label="View"
         className="absolute top-3 z-10 flex gap-0.5 rounded-lg bg-panel p-1"
-        // clear of the "Show evidence" button when the sheet is hidden
-        style={{ right: Math.max(padRight + 6, run ? 126 : 18) }}
+        style={{ right: toggleRight }}
       >
-        {(["2d", "3d"] as const).map((v) => (
+        {(["2d", "3d", "split"] as const).map((v) => (
           <button
             key={v}
             type="button"
             aria-pressed={view === v}
-            disabled={v === "3d" && !deep}
-            title={v === "3d" && !deep ? "3-D opens once preparation has finished" : undefined}
+            disabled={v !== "2d" && !deep}
+            title={
+              v !== "2d" && !deep
+                ? "3-D opens once preparation has finished"
+                : v === "split"
+                  ? "The 2-D embedding and DC1–DC3 side by side"
+                  : undefined
+            }
             onClick={() => {
               setSpinning(false);
               setView(v);
@@ -572,7 +757,7 @@ export function Scatter() {
               view === v ? "bg-panel-raised text-ink" : "text-ink-muted hover:text-ink"
             }`}
           >
-            {v === "2d" ? "2-D" : "3-D"}
+            {{ "2d": "2-D", "3d": "3-D", split: "Split" }[v]}
           </button>
         ))}
       </div>
@@ -636,7 +821,7 @@ export function Scatter() {
             >
               <SlidersHorizontal size={16} />
             </button>
-            {t === 1 && (
+            {(paneStates || t === 1) && (
               <button
                 type="button"
                 aria-label="Auto-rotate"
@@ -659,7 +844,7 @@ export function Scatter() {
               <RotateCcw size={16} />
             </button>
           </div>
-          {t > 0 && viewport && <Gimbal m={viewport.viewMatrix as unknown as number[]} />}
+          {gimbalAt && <Gimbal m={gimbalAt.viewMatrix as unknown as number[]} />}
         </div>
       )}
     </div>
