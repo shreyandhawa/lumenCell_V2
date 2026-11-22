@@ -1,6 +1,6 @@
 # Handoff: lumenCell V2, Milestone 1
 
-Status as of 2026-11-22, commit `f7dee86` on `main`, version 0.4.0 (not tagged yet; tagged releases v0.1.0 to v0.3.0). Milestone 1 is closed: see "Milestone 1 close-out" below.
+Status as of 2026-11-22, commit `f7dee86` on `main`, version 0.4.0 (tagged and on PyPI; tagged releases v0.1.0 to v0.4.0). Milestone 1 is closed: see "Milestone 1 close-out" below.
 Read this first if you are picking the project up; the README covers usage.
 
 ## What exists
