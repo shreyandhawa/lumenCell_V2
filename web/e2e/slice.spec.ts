@@ -56,8 +56,11 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await suggestions.getByRole("button").first().click();
   await expect(page.getByRole("region", { name: "Pick a root" })).toContainText("Chosen");
 
-  // 4. Run the method; the run finishes in the worker and two lineages appear.
+  // 4. Change a parameter (8 diffusion components, not 10), then run; the request carries it and two lineages appear.
+  await page.getByRole("spinbutton", { name: "N Dcs", exact: true }).fill("8");
+  const created = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/api/v1/trajectories"));
   await page.getByRole("button", { name: /Run PAGA \+ DPT/ }).click();
+  expect((await created).postDataJSON()).toMatchObject({ method: "paga_dpt", params: { n_dcs: 8 } });
   const lineages = page.getByRole("list", { name: "Lineages" });
   await expect(lineages.getByRole("listitem")).toHaveCount(2, { timeout: 120_000 });
   await expect(page.getByRole("combobox", { name: "Colour by" })).toHaveValue("pseudotime");

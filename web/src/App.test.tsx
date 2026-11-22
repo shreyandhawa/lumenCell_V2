@@ -19,6 +19,7 @@ interface State {
   root: T.ResolvedRoot | null;
   runs: T.RunSummary[];
   putRoot: unknown[];
+  posted: unknown[];
 }
 let state: State;
 
@@ -33,6 +34,10 @@ const server = setupServer(
   http.get(api("/root/suggestions"), () => HttpResponse.json(fx.suggestions)),
   http.get(api("/methods"), () => HttpResponse.json(fx.methods)),
   http.get(api("/trajectories"), () => HttpResponse.json({ runs: state.runs })),
+  http.post(api("/trajectories"), async ({ request }) => {
+    state.posted.push(await request.json());
+    return HttpResponse.json({ run_id: "run2", job_id: null, state: "done" }, { status: 201 });
+  }),
   http.get(api("/trajectories/run1"), () => HttpResponse.json(fx.run)),
   http.get(api("/trajectories/run1/curves"), ({ request }) =>
     HttpResponse.json({
@@ -50,7 +55,7 @@ beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 beforeEach(() => {
-  state = { dataset: fx.dataset("ready"), root: null, runs: [], putRoot: [] };
+  state = { dataset: fx.dataset("ready"), root: null, runs: [], putRoot: [], posted: [] };
   useUi.setState({ embedding: null, colorBy: null, runId: null, focusLineage: null, cursor: null });
 });
 
@@ -96,6 +101,59 @@ describe("App", () => {
     await waitFor(() => expect(state.putRoot).toEqual([{ root: { kind: "cluster", key: "cell_type", value: "stem" } }]));
     expect(await screen.findByRole("button", { name: /Run PAGA \+ DPT/ })).toBeInTheDocument();
     expect(screen.getByText(/Experimental/)).toBeInTheDocument();
+  });
+
+  it("runs with the parameter and the terminal the user set", async () => {
+    const user = userEvent.setup();
+    state.root = fx.resolvedRoot;
+    renderApp();
+    const dcs = await screen.findByRole("spinbutton", { name: "N Dcs" });
+    expect(dcs).toHaveValue(10);
+    await user.clear(dcs);
+    await user.type(dcs, "8");
+    await user.click(screen.getByRole("checkbox", { name: "1" }));
+    await user.click(screen.getByRole("button", { name: "Run PAGA + DPT" }));
+    await waitFor(() => expect(state.posted).toHaveLength(1));
+    expect(state.posted[0]).toEqual({
+      method: "paga_dpt",
+      params: { n_dcs: 8, min_connectivity: 0.05, cluster_key: "lumencell_leiden" },
+      terminals: ["1"],
+    });
+  });
+
+  it("blocks a value outside its range and says why", async () => {
+    const user = userEvent.setup();
+    state.root = fx.resolvedRoot;
+    renderApp();
+    const dcs = await screen.findByRole("spinbutton", { name: "N Dcs" });
+    await user.clear(dcs);
+    await user.type(dcs, "99");
+    expect(await screen.findByText("Must be at most 14.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run PAGA + DPT" })).toBeDisabled();
+    expect(state.posted).toEqual([]);
+  });
+
+  it("shows the server's validation errors under the field they name", async () => {
+    const user = userEvent.setup();
+    state.root = fx.resolvedRoot;
+    server.use(
+      http.post(api("/trajectories"), () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "invalid_params",
+              message: "The parameters for PAGA + DPT are not valid.",
+              detail: { errors: [{ loc: ["min_connectivity"], msg: "Server says no" }] },
+            },
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    renderApp();
+    await user.click(await screen.findByRole("button", { name: "Run PAGA + DPT" }));
+    expect(await screen.findByText("Server says no")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("The parameters for PAGA + DPT are not valid.");
   });
 
   it("shows lineages and the trust panel for a finished run", async () => {
