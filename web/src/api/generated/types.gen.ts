@@ -406,6 +406,12 @@ export type DatasetInfo = {
      */
     embeddings: Array<Embedding>;
     /**
+     * Fingerprint
+     *
+     * A cheap identity of the file, the one runs record; a shared view link names it.
+     */
+    fingerprint: string;
+    /**
      * Gene Symbol Column
      */
     gene_symbol_column: string | null;

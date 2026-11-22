@@ -31,6 +31,31 @@ The full loop works and is covered end to end:
 | A6 real benchmark | done, acceptance **not** met (see results) |
 | I2 packaging + 100k-cell performance budgets | budgets measured for prep, `paga_dpt` and the server, all within budget (`docs/backend-robustness-2.md`); Palantir, scFates and first paint are not in that table; packaging **not started** |
 
+## The 3-D viewer (0.3.0, 2026-11-21)
+
+Eight stacked PRs rebuilt the plot on deck.gl 9.4, after a survey of Cellucid, Cirrocumulus,
+inTRACKtive, UCSC Cell Browser, Vitessce and Cell Journey. Each phase was checked by eye on
+Sheih NHL-6 (21,762 cells), and orbiting 100k synthetic cells holds 60 fps on an Apple M4.
+
+| Phase | PR | What it added |
+|---|---|---|
+| 1 depth | #65 | `lib/gl/depthFade.ts`: fog toward the stage colour, real depth, points sized in world units |
+| 2 morph | #66 | the 2-D ↔ 3-D morph on the GPU; DC1–DC3 opens after preparation, before any run; keys, auto-rotate |
+| 3 trajectory | #67 | curves, forks, tips and the playhead in 3-D; curve fidelity per view; colour by Palantir entropy |
+| 4 selection | #68 | lasso in 2-D and 3-D with New / Add / Subtract / Intersect, Alt-click a group, a breakdown by group |
+| 5 graph API | #69 | `dc:i,j[,k]` views, `/graph/paga`, `/graph/knn`, a curves cache (backend only) |
+| 6 split | #70 | the 2-D embedding and DC1–DC3 side by side: shared hover, selection, cursor; keys follow the pointer |
+| 7 overlays | #71 | the 3-D axis picker; PAGA and neighbour-graph overlays |
+| 8 share | #72 | the view in the URL hash, PNG export, saved views and a camera tour; version 0.3.0 |
+
+Merge them in order. `main` squash-merges, so after each merge rebase the next branch onto
+`main`, dropping the merged commit. #71 carries a cherry-picked copy of #69 (it needs the API):
+merge #69 first and the copy drops out on rebase.
+
+Not built, on purpose or for later: lasso-as-root (no such root kind), undo, sphere or box
+selectors, a draggable split divider, hiding neighbour edges past the cursor, saved views in
+the link.
+
 ## How to work on it
 
 ```bash
@@ -206,6 +231,22 @@ failures are all about branch structure.
   Playwright.
 - **The 2019-era datasets trigger anndata `OldFormatWarning`.** It is harmless
   and filtered in the real-data tests.
+- **deck.gl extension attributes default to one value per vertex.** On an
+  instanced layer (one cell per instance) declare them with `stepMode: "dynamic"`,
+  or every cell reads cells 0 to 3's value. `depthFade.test.ts` pins this.
+- **deck.gl gives every key to every view's controller.** The split view turns
+  the keyboard off on the pane the pointer is not over.
+- **A disabled TanStack query keeps its cached data.** Check the toggle as well
+  as the data before drawing something the user turned off.
+- **Playwright's `getByRole` names match by substring.** "Display options"
+  contains "Play"; use `exact: true` for short names.
+- **`make web-e2e` serves `src/lumencell/web_dist`.** Run `make web-dist` first
+  when running it alone (`make ci` does). A failed run holds port 8799 for a few
+  seconds.
+- **The web code is formatted at 140 columns.** Prettier's default of 80 expands
+  objects, and a later pass at 140 keeps them expanded.
+- **Headless Chromium can use the real GPU.** `--use-angle=metal --enable-gpu
+  --ignore-gpu-blocklist` reaches Metal on macOS, for frame-time checks.
 - **Starlette suggests a different HTTP client package for TestClient.** It was
   not installed (the installer refused an unfamiliar package); the warning is
   filtered and `httpx` is kept.

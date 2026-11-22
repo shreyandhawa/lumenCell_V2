@@ -7,23 +7,9 @@ import { PrepProgress, prepCount } from "@/components/trajectory/PrepProgress";
 import { describeRoot, RootPicker } from "@/components/trajectory/RootPicker";
 import { MethodRunner } from "@/components/trajectory/Runs";
 import { fmt, Mark, Select, Step } from "@/components/ui";
-import { type ColorBy, useUi } from "@/state/ui";
+import { colorByKey, parseColorBy, useUi } from "@/state/ui";
 
 const LEIDEN = "lumencell_leiden";
-
-function encode(c: ColorBy | null): string {
-  if (!c) return "";
-  if (c.kind === "obs") return `obs:${c.column}`;
-  if (c.kind === "gene") return `gene:${c.gene}`;
-  return c.kind;
-}
-
-function decode(v: string): ColorBy | null {
-  if (v.startsWith("obs:")) return { kind: "obs", column: v.slice(4) };
-  if (v.startsWith("gene:")) return { kind: "gene", gene: v.slice(5) };
-  if (v === "pseudotime" || v === "lineage" || v === "entropy") return { kind: v };
-  return null;
-}
 
 /** The steps rail: Prepare, Pick a root, Run, Inspect. */
 export function Sidebar() {
@@ -114,7 +100,7 @@ export function Sidebar() {
                 <label htmlFor="colour-by" className="mb-1.5 block text-xs text-ink-muted">
                   Colour by
                 </label>
-                <Select id="colour-by" aria-label="Colour by" value={encode(colorBy)} onChange={(e) => setColorBy(decode(e.target.value))}>
+                <Select id="colour-by" aria-label="Colour by" value={colorByKey(colorBy)} onChange={(e) => setColorBy(parseColorBy(e.target.value))}>
                   <option value="">Nothing</option>
                   <optgroup label="Trajectory">
                     <option value="pseudotime">Pseudotime</option>
@@ -130,7 +116,7 @@ export function Sidebar() {
                   </optgroup>
                   {colorBy?.kind === "gene" && (
                     <optgroup label="Gene">
-                      <option value={encode(colorBy)}>{colorBy.gene}</option>
+                      <option value={colorByKey(colorBy)}>{colorBy.gene}</option>
                     </optgroup>
                   )}
                 </Select>
