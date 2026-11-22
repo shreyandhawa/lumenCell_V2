@@ -40,11 +40,13 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await expect(page.getByText("Where does the trajectory start?")).toBeVisible({ timeout: 120_000 });
   await expect(page.locator("canvas").first()).toBeVisible();
 
-  // 2. Nothing runs until a root is chosen; pseudotime and 3-D wait for a run.
+  // 2. Nothing runs until a root is chosen and pseudotime waits for a run, but 3-D opens after preparation.
   await expect(page.getByRole("button", { name: /Run PAGA/ })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Colour by" })).toHaveCount(0);
   await expect(page.getByText("Pseudotime appears after a run")).toBeVisible();
-  await expect(page.getByRole("button", { name: "3-D", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "3-D", exact: true }).click();
+  await expect(page.getByText(/DC1–DC3 · the first 3 diffusion components/)).toBeVisible();
+  await page.getByRole("button", { name: "2-D", exact: true }).click();
 
   // 3. Use the root stored in the file (the first suggestion).
   const suggestions = page.getByRole("list", { name: "Suggested roots" });
@@ -84,6 +86,19 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await page.getByRole("checkbox", { name: "Fade far cells in depth" }).uncheck();
   await expect(page.getByText(/far cells fade/)).toHaveCount(0);
   await page.getByRole("button", { name: "Display options" }).click();
+  // Keyboard: Shift+arrow orbits, R resets. Auto-rotate stays off under reduced motion.
+  const gimbal = () =>
+    page
+      .getByRole("img", { name: "Orientation of DC1, DC2 and DC3" })
+      .locator("line")
+      .evaluateAll((lines) => lines.map((l) => l.getAttribute("x2")).join());
+  const tilted = await gimbal();
+  await page.getByRole("application", { name: /^Plot/ }).focus();
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expect.poll(gimbal).not.toBe(tilted);
+  await page.keyboard.press("r");
+  await expect.poll(gimbal).toBe(tilted);
+  await expect(page.getByRole("button", { name: "Auto-rotate" })).toBeDisabled();
   await page.getByRole("button", { name: "2-D", exact: true }).click();
   await expect(page.getByRole("img", { name: "Orientation of DC1, DC2 and DC3" })).toHaveCount(0);
 
