@@ -32,6 +32,7 @@ from lumencell.api.models import (
     Lineage,
     LineageRename,
     MethodList,
+    PagaGraph,
     PrepStatus,
     ResolvedRoot,
     RootRequest,
@@ -103,7 +104,10 @@ def get_dataset(session: S) -> DatasetInfo:
     "/embeddings/{name}",
     tags=["dataset"],
     response_class=Response,
-    responses=_lcb1("Array `coords` f32[n_obs, 2]; f32[n_obs, 3] for `dc123`, diffusion components 1-3."),
+    responses=_lcb1(
+        "Array `coords` f32[n_obs, 2], or f32[n_obs, 3] for a 3-D view. Diffusion views: `dc12`, `dc123`, "
+        "or `dc:i,j` / `dc:i,j,k` for any two or three different components from 1 to n."
+    ),
 )
 def get_embedding(name: str, session: S) -> Response:
     from lumencell.api import binary
@@ -169,6 +173,30 @@ def get_expression(
     session: S, genes: Annotated[str, Query(description="Comma-separated gene symbols.")]
 ) -> Response:
     return lcb1(session.view.expression_payload(_csv(genes)))
+
+
+# ---- graphs -------------------------------------------------------------------------
+
+MAX_KNN_EDGES = 500_000
+
+
+@router.get("/graph/paga", tags=["graph"], responses=_ERRORS)
+def get_paga_graph(embedding: str, session: S) -> PagaGraph:
+    return session.view.paga_graph(embedding)
+
+
+@router.get(
+    "/graph/knn",
+    tags=["graph"],
+    response_class=Response,
+    responses=_lcb1(
+        "Arrays `src` u32[m], `dst` u32[m] (src < dst, cell indices) and `w` f32[m], the neighbour graph's "
+        "connectivities, each edge once. Above `max_edges` a seeded uniform sample; meta has `total_edges`, "
+        "`sampled` and `seed`."
+    ),
+)
+def get_knn_graph(session: S, max_edges: Annotated[int, Query(ge=1, le=MAX_KNN_EDGES)] = 50_000) -> Response:
+    return lcb1(session.view.knn_payload(max_edges))
 
 
 # ---- prep -------------------------------------------------------------------------

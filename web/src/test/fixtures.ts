@@ -17,7 +17,7 @@ export function dataset(prep: T.PrepStatus["state"], root: T.ResolvedRoot | null
         ? [{ name: "lumencell_leiden", kind: "categorical" as const, categories: ["0", "1"], colors: null, min: null, max: null }]
         : []),
     ],
-    embeddings: ready ? [{ name: "umap", dims: 2, source: "computed" }] : [],
+    embeddings: ready ? [{ name: "umap", dims: 2, source: "computed", components: null }] : [],
     default_embedding: ready ? "umap" : null,
     cluster_key: ready ? "lumencell_leiden" : null,
     label_key: "cell_type",

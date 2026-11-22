@@ -927,16 +927,30 @@
       "Embedding": {
         "additionalProperties": false,
         "properties": {
+          "components": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Diffusion views: how many components there are (DC1 to DCn); null otherwise.",
+            "title": "Components"
+          },
           "dims": {
+            "description": "2, or 3 for dc123.",
             "title": "Dims",
             "type": "integer"
           },
           "name": {
+            "description": "Diffusion views are dc12 (DC1, DC2) and dc123 (DC1-DC3); /embeddings also serves any two or three different components as dc:i,j or dc:i,j,k.",
             "title": "Name",
             "type": "string"
           },
           "source": {
-            "description": "file: read from obsm; computed: made by lumenCell's prep; diffusion: DC1 vs DC2.",
+            "description": "file: read from obsm; computed: made by lumenCell's prep; diffusion: DC components.",
             "enum": [
               "file",
               "computed",
@@ -949,7 +963,8 @@
         "required": [
           "name",
           "dims",
-          "source"
+          "source",
+          "components"
         ],
         "title": "Embedding",
         "type": "object"
@@ -1078,6 +1093,75 @@
           "r2"
         ],
         "title": "GeneTrend",
+        "type": "object"
+      },
+      "GraphEdge": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "description": "Cluster id; always below target.",
+            "title": "Source",
+            "type": "integer"
+          },
+          "target": {
+            "title": "Target",
+            "type": "integer"
+          },
+          "weight": {
+            "description": "PAGA connectivity, 0-1.",
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "source",
+          "target",
+          "weight"
+        ],
+        "title": "GraphEdge",
+        "type": "object"
+      },
+      "GraphNode": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Leiden cluster code (the categories of lumencell_leiden).",
+            "title": "Id",
+            "type": "integer"
+          },
+          "n_cells": {
+            "title": "N Cells",
+            "type": "integer"
+          },
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          },
+          "z": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set on 3-D views.",
+            "title": "Z"
+          }
+        },
+        "required": [
+          "id",
+          "x",
+          "y",
+          "z",
+          "n_cells"
+        ],
+        "title": "GraphNode",
         "type": "object"
       },
       "Health": {
@@ -1407,7 +1491,7 @@
             "type": "integer"
           },
           "points": {
-            "description": "Two coordinates per point; three on the 3-D diffusion view (embedding dc123).",
+            "description": "Two coordinates per point; three on 3-D views (dc123, dc:i,j,k).",
             "items": {
               "items": {
                 "type": "number"
@@ -1666,7 +1750,7 @@
                 "type": "null"
               }
             ],
-            "description": "Set on the 3-D diffusion view (embedding dc123).",
+            "description": "Set on 3-D views (dc123, dc:i,j,k).",
             "title": "Z"
           }
         },
@@ -1854,6 +1938,51 @@
           "max"
         ],
         "title": "ObsColumn",
+        "type": "object"
+      },
+      "PagaGraph": {
+        "additionalProperties": false,
+        "description": "PAGA over the Leiden clusters of prep, drawn on an embedding: a picture of the cluster graph.",
+        "properties": {
+          "cluster_key": {
+            "title": "Cluster Key",
+            "type": "string"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "embedding": {
+            "title": "Embedding",
+            "type": "string"
+          },
+          "nodes": {
+            "description": "Each cluster at the mean position of its cells; a cluster with no finite position is left out, with its edges.",
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "notices": {
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            },
+            "title": "Notices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "embedding",
+          "cluster_key",
+          "nodes",
+          "edges",
+          "notices"
+        ],
+        "title": "PagaGraph",
         "type": "object"
       },
       "PrepStage": {
@@ -3380,7 +3509,7 @@
                 }
               }
             },
-            "description": "LCB1 buffer. Array `coords` f32[n_obs, 2]; f32[n_obs, 3] for `dc123`, diffusion components 1-3."
+            "description": "LCB1 buffer. Array `coords` f32[n_obs, 2], or f32[n_obs, 3] for a 3-D view. Diffusion views: `dc12`, `dc123`, or `dc:i,j` / `dc:i,j,k` for any two or three different components from 1 to n."
           },
           "404": {
             "content": {
@@ -3527,6 +3656,114 @@
         "summary": "Search Genes",
         "tags": [
           "dataset"
+        ]
+      }
+    },
+    "/api/v1/graph/knn": {
+      "get": {
+        "operationId": "get_knn_graph_api_v1_graph_knn_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "max_edges",
+            "required": false,
+            "schema": {
+              "default": 50000,
+              "maximum": 500000,
+              "minimum": 1,
+              "title": "Max Edges",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.lumencell.lcb1": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "LCB1 buffer. Arrays `src` u32[m], `dst` u32[m] (src < dst, cell indices) and `w` f32[m], the neighbour graph's connectivities, each edge once. Above `max_edges` a seeded uniform sample; meta has `total_edges`, `sampled` and `seed`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Knn Graph",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/api/v1/graph/paga": {
+      "get": {
+        "operationId": "get_paga_graph_api_v1_graph_paga_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "embedding",
+            "required": true,
+            "schema": {
+              "title": "Embedding",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagaGraph"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown dataset column, gene, run or job."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Paga Graph",
+        "tags": [
+          "graph"
         ]
       }
     },

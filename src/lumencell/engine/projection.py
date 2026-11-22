@@ -15,6 +15,7 @@ inferred trajectory, and says so:
   the embedding distorts that lineage, and the UI should say so.
 """
 
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -26,6 +27,20 @@ from lumencell.engine.schema import Notice, TrajectoryResult
 
 N_BINS = 40
 FIDELITY_WARN = 0.8
+# The diffusion views: DCi is column i of the diffusion map (column 0 is the constant one).
+_DC_ALIASES = {"dc12": (1, 2), "dc123": (1, 2, 3)}
+_DC_NAME = re.compile(r"dc:([1-9]\d*),([1-9]\d*)(?:,([1-9]\d*))?")
+
+
+def diffusion_axes(name: str) -> tuple[int, ...] | None:
+    """The diffusion components a view name asks for, in order: ``dc12``, ``dc123`` or ``dc:i,j[,k]``.
+
+    None for any other name. Whether the dataset has those components is the caller's check.
+    """
+    if name in _DC_ALIASES:
+        return _DC_ALIASES[name]
+    m = _DC_NAME.fullmatch(name)
+    return tuple(int(g) for g in m.groups() if g is not None) if m else None
 
 
 @dataclass(frozen=True)
@@ -89,6 +104,13 @@ def project(result: TrajectoryResult, coords: npt.NDArray[np.floating], embeddin
     }
     root_id = next(m.id for m in result.milestones if m.kind == "root")
 
+    axes = diffusion_axes(embedding)
+    if axes:
+        *rest, last = [f"DC{i}" for i in axes]
+        where, hint = f"{', '.join(rest)} and {last}", "Try other diffusion components."
+    else:
+        where, hint = f"the {embedding} embedding", "Try the diffusion (DC) view."
+
     pt = result.pseudotime.astype(np.float64)
     curves: list[LineageCurve] = []
     warnings: list[Notice] = []
@@ -123,8 +145,8 @@ def project(result: TrajectoryResult, coords: npt.NDArray[np.floating], embeddin
                 Notice(
                     "embedding_distorts_lineage",
                     "warning",
-                    f"On the {embedding} embedding, lineage {lin.name!r} is drawn with fidelity {fid:.2f}: "
-                    "positions along the curve do not follow pseudotime well. Try the diffusion (DC) view.",
+                    f"On {where}, lineage {lin.name!r} is drawn with fidelity {fid:.2f}: "
+                    f"positions along the curve do not follow pseudotime well. {hint}",
                 )
             )
         curves.append(LineageCurve(lin.id, [tuple(float(v) for v in p) for p in curve], fid))

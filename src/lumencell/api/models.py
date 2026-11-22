@@ -66,10 +66,16 @@ class ObsColumn(Model):
 
 
 class Embedding(Model):
-    name: str
-    dims: int
+    name: str = Field(
+        description="Diffusion views are dc12 (DC1, DC2) and dc123 (DC1-DC3); /embeddings also serves "
+        "any two or three different components as dc:i,j or dc:i,j,k."
+    )
+    dims: int = Field(description="2, or 3 for dc123.")
     source: Literal["file", "computed", "diffusion"] = Field(
-        description="file: read from obsm; computed: made by lumenCell's prep; diffusion: DC1 vs DC2."
+        description="file: read from obsm; computed: made by lumenCell's prep; diffusion: DC components."
+    )
+    components: int | None = Field(
+        None, description="Diffusion views: how many components there are (DC1 to DCn); null otherwise."
     )
 
 
@@ -517,7 +523,7 @@ class TrajectoryRun(Model):
 class LineageCurve(Model):
     lineage: int
     points: list[tuple[float, ...]] = Field(
-        description="Two coordinates per point; three on the 3-D diffusion view (embedding dc123)."
+        description="Two coordinates per point; three on 3-D views (dc123, dc:i,j,k)."
     )
     fidelity: float | None = Field(
         None, description="Spearman of pseudotime against position along the drawn curve."
@@ -528,7 +534,7 @@ class MilestonePosition(Model):
     id: int
     x: float
     y: float
-    z: float | None = Field(None, description="Set on the 3-D diffusion view (embedding dc123).")
+    z: float | None = Field(None, description="Set on 3-D views (dc123, dc:i,j,k).")
 
 
 class Curves(Model):
@@ -538,6 +544,33 @@ class Curves(Model):
     curves: list[LineageCurve]
     milestones: list[MilestonePosition]
     warnings: list[Notice]
+
+
+class GraphNode(Model):
+    id: int = Field(description="Leiden cluster code (the categories of lumencell_leiden).")
+    x: float
+    y: float
+    z: float | None = Field(None, description="Set on 3-D views.")
+    n_cells: int
+
+
+class GraphEdge(Model):
+    source: int = Field(description="Cluster id; always below target.")
+    target: int
+    weight: float = Field(description="PAGA connectivity, 0-1.")
+
+
+class PagaGraph(Model):
+    """PAGA over the Leiden clusters of prep, drawn on an embedding: a picture of the cluster graph."""
+
+    embedding: str
+    cluster_key: str
+    nodes: list[GraphNode] = Field(
+        description="Each cluster at the mean position of its cells; "
+        "a cluster with no finite position is left out, with its edges."
+    )
+    edges: list[GraphEdge]
+    notices: list[Notice]
 
 
 class LineageRename(Model):
