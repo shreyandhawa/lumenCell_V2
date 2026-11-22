@@ -74,7 +74,35 @@ export const methods: T.MethodList = {
       install_hint: null,
       experimental: true,
       experimental_note: "It misses some gates.",
-      params_schema: { properties: {} },
+      params_schema: {
+        additionalProperties: false,
+        properties: {
+          n_dcs: {
+            default: 10,
+            description: "Diffusion components used by DPT.",
+            maximum: 14,
+            minimum: 2,
+            title: "N Dcs",
+            type: "integer",
+          },
+          min_connectivity: {
+            default: 0.05,
+            description: "PAGA tree edges weaker than this are cut.",
+            maximum: 1.0,
+            minimum: 0.0,
+            title: "Min Connectivity",
+            type: "number",
+          },
+          cluster_key: {
+            default: "lumencell_leiden",
+            description: "obs column whose groups become PAGA nodes.",
+            title: "Cluster Key",
+            type: "string",
+          },
+        },
+        title: "PagaDptParams",
+        type: "object",
+      },
       reference_scores: [
         {
           dataset: "Pancreas (mouse, E15.5)",

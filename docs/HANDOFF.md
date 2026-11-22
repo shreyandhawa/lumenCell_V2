@@ -179,9 +179,10 @@ failures are all about branch structure.
 
 - **Run comparison** is a panel (rank agreement, matched lineages, cells
   coloured by disagreement), not two synced scatter plots.
-- **Terminal names and method parameters** can't be set in the web app yet.
-  The API, the engine and `lumencell run` all support them; `/methods` already
-  serves each method's JSON Schema for building a form.
+- **Terminal names and method parameters** are set in the web run form. The
+  form is drawn from each method's JSON Schema (`/methods`); terminals are the
+  labels of the method's `cluster_key` column. The server's validation errors
+  show under their fields.
 - **Reference benchmark scores** are not yet shown in the trust panel
   (`reference_scores` is empty).
 - **CI runs on GitHub Actions** (`.github/workflows/ci.yml`): the `make ci`
