@@ -1,8 +1,8 @@
 import { OrbitView, type OrbitViewState } from "@deck.gl/core";
 import { DataFilterExtension } from "@deck.gl/extensions";
 import { ScatterplotLayer } from "@deck.gl/layers";
-import DeckGL from "@deck.gl/react";
-import { Rotate3d, RotateCcw, SlidersHorizontal } from "lucide-react";
+import DeckGL, { type DeckGLRef } from "@deck.gl/react";
+import { Lasso, Rotate3d, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { animate, cubicBezier } from "motion";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -21,15 +21,19 @@ import {
 import { Legend } from "@/components/Legend";
 import { useCellColors } from "@/components/useCellColors";
 import { Gimbal } from "@/components/scatter/Gimbal";
+import { type GroupBy, SelectionBar } from "@/components/scatter/SelectionBar";
 import { trajectoryLayers } from "@/components/scatter/trajectoryLayers";
 import { useStageSize } from "@/components/scatter/useStageSize";
 import { describeRoot } from "@/components/trajectory/RootPicker";
 import { fmt } from "@/components/ui";
 import { type Camera, FLAT, fitZoom as fitZoomFor, lerp, lerpCam, TILTED } from "@/lib/camera";
 import { normalise, type Vec3 } from "@/lib/embedding";
+import { type Point, selectInPolygon } from "@/lib/geometry";
 import { DepthFadeExtension } from "@/lib/gl/depthFade";
+import { combine, projectAll } from "@/lib/selection";
 import { centroid, cursorPoint, type PlacedMilestone, placeMilestones, prefixTo } from "@/lib/trajectory";
 import { useCamera } from "@/state/camera";
+import { useSelection } from "@/state/selection";
 import { useUi } from "@/state/ui";
 
 const LEIDEN = "lumencell_leiden";
@@ -95,7 +99,12 @@ export function Scatter() {
   const picking = dataset?.prep.state === "ready" && !runId;
   const shownColumn = colorBy?.kind === "obs" ? dataset?.obs.find((c) => c.name === colorBy.column) : undefined;
   const clusterColumn = shownColumn && shownColumn.kind !== "continuous" ? shownColumn.name : LEIDEN;
-  const clusters = useObs(picking ? clusterColumn : null).data;
+  // The lasso tool: a left drag draws, other buttons and keys still move the view.
+  const [lasso, setLasso] = useState(false);
+  const [drawing, setDrawing] = useState<Point[] | null>(null);
+  const { mask, op, setMask } = useSelection();
+  const deckRef = useRef<DeckGLRef>(null);
+  const clusters = useObs(picking || lasso || mask ? clusterColumn : null).data;
 
   const flat = useMemo(() => (flatRaw && flatRaw.length === n * 2 ? normalise(flatRaw, 2) : null), [flatRaw, n]);
   const deep = useMemo(() => (deepRaw && deepRaw.length === n * 3 ? normalise(deepRaw, 3) : null), [deepRaw, n]);
@@ -277,6 +286,7 @@ export function Scatter() {
   }, [focus]);
 
   const haloData = useMemo(() => ({ length: n, attributes: { getPosition: positions! } }), [n, positions]);
+  const selected = useMemo(() => (mask ? Float32Array.from(mask) : null), [mask]);
   const cellData = useMemo(
     () => ({
       length: n,
@@ -284,9 +294,10 @@ export function Scatter() {
         getPosition: positions!,
         getFillColor: { value: colors!, size: 4, normalized: true },
         getFilterValue: { value: ptValues, size: 1 },
+        ...(selected ? { getSelected: { value: selected, size: 1 } } : {}),
       },
     }),
-    [n, positions, colors, ptValues],
+    [n, positions, colors, ptValues, selected],
   );
   const ink: [number, number, number, number] = theme === "dark" ? [243, 245, 242, 190] : [20, 23, 22, 170];
   const layers = [];
@@ -301,9 +312,11 @@ export function Scatter() {
     const transitions = reduce ? undefined : { getPosition: MORPH };
     layers.push(
       // A faint ghost of every cell, so cells past the cursor still show where they are. Drawn first,
-      // without depth, so cells always cover it.
+      // without depth, so cells always cover it. Off while a selection shrinks the unselected cells,
+      // where it would ring each of them.
       new ScatterplotLayer({
         id: "halo",
+        visible: mask === null,
         data: haloData,
         getFillColor: theme === "dark" ? [255, 255, 255, 10] : [0, 0, 0, 14],
         radiusUnits: "pixels",
@@ -330,8 +343,9 @@ export function Scatter() {
         depthFadeStage: STAGE[theme],
         depthFadeStrength: fog ? FOG * t : 0,
         depthFadeBounds: [box(0), box(1)],
+        depthFadeDim: mask !== null,
         transitions,
-        updateTriggers: { getRadius: radius },
+        updateTriggers: { getRadius: radius, getSelected: mask },
       }),
     );
   }
@@ -352,6 +366,40 @@ export function Scatter() {
     return m.kind === "tip" && end
       ? `End of ${end.name} · pseudotime ${m.pseudotime.toFixed(2)}`
       : `Fork · pseudotime ${m.pseudotime.toFixed(2)}`;
+  };
+
+  // What a selection is broken down by, and what Alt-click selects: the shown grouping.
+  const leiden = clusterColumn === LEIDEN;
+  const groupBy: GroupBy | null =
+    colorBy?.kind === "lineage" && cells && run
+      ? { title: "lineage", codes: cells.primaryLineage, labels: run.lineages.map((l) => l.name) }
+      : clusters?.codes
+        ? {
+            title: leiden ? "Leiden cluster" : clusterColumn,
+            codes: clusters.codes,
+            labels: clusters.categories.map((c) => (leiden ? `Cluster ${c}` : c)),
+          }
+        : null;
+
+  // A lasso takes every drawn cell inside it on screen, at any depth; cells past the cursor are not drawn.
+  const finishLasso = (poly: Point[]) => {
+    if (!viewport || !flat) return;
+    const xyz = t === 1 && deep ? deep.xyz : flat.xyz;
+    const next = selectInPolygon(projectAll(xyz, viewport.pixelProjectionMatrix as unknown as number[]), poly);
+    if (limit < 2) for (let i = 0; i < n; i++) if (ptValues[i]! > limit) next[i] = 0;
+    setMask(combine(mask, next, op));
+  };
+  const selectGroupAt = (x: number, y: number) => {
+    const i = deckRef.current?.pickObject({ x, y, radius: 4, layerIds: ["cells"] })?.index ?? -1;
+    const code = groupBy && i >= 0 ? groupBy.codes[i]! : -1;
+    if (!groupBy || code < 0) return;
+    const next = new Uint8Array(n);
+    for (let k = 0; k < n; k++) if (groupBy.codes[k] === code) next[k] = 1;
+    setMask(combine(mask, next, op));
+  };
+  const local = (e: React.PointerEvent<HTMLDivElement>): Point => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
   };
 
   // The root pin follows the root cell through pans, zooms and the morph.
@@ -379,13 +427,39 @@ export function Scatter() {
       className="absolute inset-0 overflow-hidden bg-stage"
       data-testid="scatter"
       onKeyDown={(e) => {
-        // R resets the view, from the plot or its controls (never while typing in a field).
+        // R resets the view, from the plot or its controls (never while typing in a field). Esc clears the selection.
         const field = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
         if (e.key.toLowerCase() === "r" && !field && !e.metaKey && !e.ctrlKey && !e.altKey && viewState) reset();
+        if (e.key === "Escape") {
+          setDrawing(null);
+          setMask(null);
+        }
+      }}
+      // In lasso mode a left drag on the plot draws, and never reaches deck.gl (capture phase).
+      onPointerDownCapture={(e) => {
+        if (!lasso || e.button !== 0 || !(e.target instanceof HTMLCanvasElement) || (t !== 0 && t !== 1)) return;
+        e.stopPropagation();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setDrawing([local(e)]);
+      }}
+      onPointerMoveCapture={(e) => {
+        if (!drawing) return;
+        e.stopPropagation();
+        const p = local(e);
+        const last = drawing[drawing.length - 1]!;
+        if (Math.hypot(p[0] - last[0], p[1] - last[1]) >= 3) setDrawing([...drawing, p]);
+      }}
+      onPointerUpCapture={(e) => {
+        if (!drawing) return;
+        e.stopPropagation();
+        if (drawing.length >= 3) finishLasso(drawing);
+        else if (e.altKey) selectGroupAt(...drawing[0]!);
+        setDrawing(null);
       }}
     >
       {viewState && (
         <DeckGL
+          ref={deckRef}
           views={stageView}
           viewState={viewState}
           onLoad={labelPlot}
@@ -394,12 +468,13 @@ export function Scatter() {
             setSpinning(false);
             setViewState(vs as OrbitViewState);
           }}
-          // Arrows pan, -/= zoom; with Shift they orbit, in 3-D only.
+          // Arrows pan, -/= zoom; with Shift they orbit, in 3-D only. With the lasso on in 3-D, the
+          // left drag draws, so the right drag (deck's alternate mode) orbits.
           controller={
             t === 0
               ? { dragMode: "pan", dragRotate: false, keyboard: { rotateSpeedX: 0, rotateSpeedY: 0 } }
               : t === 1
-                ? { dragMode: "rotate" }
+                ? { dragMode: lasso ? "pan" : "rotate" }
                 : false
           }
           layers={layers}
@@ -430,7 +505,7 @@ export function Scatter() {
               : null;
           }}
           getCursor={({ isDragging, isHovering }) =>
-            isDragging ? "grabbing" : isHovering && picking ? "crosshair" : t === 1 ? "grab" : "default"
+            lasso ? "crosshair" : isDragging ? "grabbing" : isHovering && picking ? "crosshair" : t === 1 ? "grab" : "default"
           }
         />
       )}
@@ -457,6 +532,23 @@ export function Scatter() {
       )}
 
       <p className="pointer-events-none absolute top-[22px] left-[308px] text-xs text-ink-muted">{caption}</p>
+
+      {drawing && drawing.length > 1 && (
+        <svg aria-hidden className="pointer-events-none absolute inset-0 size-full">
+          <polygon
+            points={drawing.map((p) => p.join(",")).join(" ")}
+            fill="var(--color-ink)"
+            fillOpacity={0.08}
+            stroke="var(--color-ink)"
+            strokeWidth={1.25}
+            strokeDasharray="4 3"
+          />
+        </svg>
+      )}
+
+      <div className="absolute top-[48px] left-[304px] z-10">
+        <SelectionBar lasso={lasso} groupBy={groupBy} total={n} />
+      </div>
 
       <div
         role="group"
@@ -521,6 +613,19 @@ export function Scatter() {
                 </label>
               </div>
             )}
+            <button
+              type="button"
+              aria-label="Lasso select"
+              aria-pressed={lasso}
+              title="Lasso select: drag to draw around cells"
+              onClick={() => {
+                setLasso((on) => !on);
+                setDrawing(null);
+              }}
+              className={`press grid size-8 place-items-center rounded-md text-ink ${lasso ? "bg-panel-raised" : "bg-panel"}`}
+            >
+              <Lasso size={16} />
+            </button>
             <button
               type="button"
               aria-label="Display options"

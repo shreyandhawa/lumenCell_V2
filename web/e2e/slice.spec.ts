@@ -101,6 +101,19 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   await page.keyboard.press("r");
   await expect.poll(gimbal).toBe(tilted);
   await expect(page.getByRole("button", { name: "Auto-rotate" })).toBeDisabled();
+  // Lasso: a drag around the middle of the plot selects cells; Esc clears them.
+  await page.getByRole("button", { name: "Lasso select" }).click();
+  const selection = page.getByRole("group", { name: "Selection" });
+  await expect(selection).toContainText("No cells selected");
+  const [cx, cy] = [680, 440];
+  await page.mouse.move(cx + 260, cy);
+  await page.mouse.down();
+  for (let a = 0; a <= 2 * Math.PI + 0.01; a += Math.PI / 12) await page.mouse.move(cx + 260 * Math.cos(a), cy + 220 * Math.sin(a));
+  await page.mouse.up();
+  await expect(selection).toContainText(/[\d,]+ cells selected/);
+  await page.keyboard.press("Escape");
+  await expect(selection).toContainText("No cells selected");
+  await page.getByRole("button", { name: "Lasso select" }).click();
   await page.getByRole("button", { name: "2-D", exact: true }).click();
   await expect(page.getByRole("img", { name: "Orientation of DC1, DC2 and DC3" })).toHaveCount(0);
 
