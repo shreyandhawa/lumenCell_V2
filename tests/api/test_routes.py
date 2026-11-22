@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
+from scipy import sparse
 
 from lumencell.api import binary
 from lumencell.api.app import create_app
@@ -59,6 +60,14 @@ def test_root_routes_wait_for_prep(client: TestClient) -> None:
     assert res.status_code == 409 and res.json()["error"]["code"] == "prep_not_ready"
 
 
+def test_graph_routes_wait_for_prep(client: TestClient) -> None:
+    for res in (
+        client.get("/api/v1/graph/paga", params={"embedding": "umap"}),
+        client.get("/api/v1/graph/knn"),
+    ):
+        assert res.status_code == 409 and res.json()["error"]["code"] == "prep_not_ready"
+
+
 def test_prepare_job_runs_and_reports_ready(client: TestClient, session: Session) -> None:
     job = client.post("/api/v1/prepare").json()
     assert job["kind"] == "prepare"
@@ -73,8 +82,8 @@ def test_prepare_job_runs_and_reports_ready(client: TestClient, session: Session
 
 def test_dataset_after_prep(client: TestClient) -> None:
     info = client.get("/api/v1/dataset").json()
-    names = {e["name"]: e["source"] for e in info["embeddings"]}
-    assert names == {"umap": "computed", "dc12": "diffusion"}
+    names = {e["name"]: (e["source"], e["dims"]) for e in info["embeddings"]}
+    assert names == {"umap": ("computed", 2), "dc12": ("diffusion", 2), "dc123": ("diffusion", 3)}
     assert info["default_embedding"] == "umap"
     cols = {c["name"]: c for c in info["obs"]}
     assert cols["true_label"]["kind"] == "categorical"
@@ -88,6 +97,60 @@ def test_embedding_payload(client: TestClient) -> None:
     assert coords.shape == (800, 2) and coords.dtype == np.float32
     missing = client.get("/api/v1/embeddings/tsne")
     assert missing.status_code == 404 and missing.json()["error"]["code"] == "not_found"
+
+
+def test_diffusion_views(client: TestClient, session: Session) -> None:
+    diffmap = session.view.prep().artifacts["diffmap"]
+    n = diffmap.shape[1] - 1
+    listed = {e["name"]: e["components"] for e in client.get("/api/v1/dataset").json()["embeddings"]}
+    assert listed == {"umap": None, "dc12": n, "dc123": n}
+
+    def coords(name: str) -> np.ndarray:
+        return _lcb(client.get(f"/api/v1/embeddings/{name}")).arrays["coords"]
+
+    np.testing.assert_array_equal(coords("dc:1,2,4"), diffmap[:, [1, 2, 4]])
+    np.testing.assert_array_equal(coords(f"dc:{n},1"), diffmap[:, [n, 1]])
+    np.testing.assert_array_equal(coords("dc123"), coords("dc:1,2,3"))
+    for bad in ("dc:1,1", "dc:1,2,1", f"dc:1,{n + 1}", "dc:0,1", "dc:1", "dc:1,2,3,4", "dc:1, 2", "dc:01,2"):
+        res = client.get(f"/api/v1/embeddings/{bad}")
+        assert res.status_code == 404 and res.json()["error"]["code"] == "not_found", bad
+
+
+def test_paga_graph(client: TestClient, session: Session) -> None:
+    art = session.view.prep().artifacts
+    labels, k = art["leiden"], int(art["leiden"].max()) + 1
+    graph = client.get("/api/v1/graph/paga", params={"embedding": "umap"}).json()
+    assert graph["cluster_key"] == "lumencell_leiden" and graph["notices"] == []
+    assert [n["id"] for n in graph["nodes"]] == list(range(k))
+    assert sum(n["n_cells"] for n in graph["nodes"]) == 800
+    np.testing.assert_allclose(
+        [graph["nodes"][0]["x"], graph["nodes"][0]["y"]], art["umap"][labels == 0].mean(axis=0), rtol=1e-5
+    )
+    assert graph["edges"] and all(
+        0 <= e["source"] < e["target"] < k and e["weight"] > 0 for e in graph["edges"]
+    )
+    assert len(graph["edges"]) == sparse.triu(art["paga_connectivities"], k=1).nnz
+    deep = client.get("/api/v1/graph/paga", params={"embedding": "dc:1,2,4"}).json()
+    assert all(n["z"] is not None for n in deep["nodes"]) and deep["edges"] == graph["edges"]
+    assert client.get("/api/v1/graph/paga", params={"embedding": "tsne"}).status_code == 404
+
+
+def test_knn_graph(client: TestClient, session: Session) -> None:
+    every = _lcb(client.get("/api/v1/graph/knn"))
+    total = every.meta["total_edges"]
+    src, dst, w = (every.arrays[k] for k in ("src", "dst", "w"))
+    assert len(src) == total > 800 and not every.meta["sampled"]
+    assert [a.dtype.name for a in (src, dst, w)] == ["uint32", "uint32", "float32"]
+    assert np.all(src < dst) and np.all(dst < 800) and np.all(w > 0)
+    conn = session.view.prep().artifacts["connectivities"]
+    np.testing.assert_array_equal(w, np.asarray(conn[src, dst]).ravel())
+
+    few = _lcb(client.get("/api/v1/graph/knn", params={"max_edges": 100}))
+    assert len(few.arrays["src"]) == 100 and few.meta["sampled"] and few.meta["total_edges"] == total
+    again = _lcb(client.get("/api/v1/graph/knn", params={"max_edges": 100}))
+    np.testing.assert_array_equal(few.arrays["src"], again.arrays["src"])
+    for bad in (0, 500_001):
+        assert client.get("/api/v1/graph/knn", params={"max_edges": bad}).status_code == 422
 
 
 def test_obs_payloads(client: TestClient) -> None:
@@ -225,6 +288,24 @@ def test_curves(client: TestClient, run: dict[str, object]) -> None:
     curves = client.get(f"/api/v1/trajectories/{run['run_id']}/curves", params={"embedding": "umap"}).json()
     assert curves["curve_source"] == "binned"
     assert all(len(c["points"]) > 10 for c in curves["curves"])
+
+
+def test_curves_on_any_diffusion_view_are_worked_out_once(
+    client: TestClient, session: Session, run: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rid = str(run["run_id"])
+    deep = client.get(f"/api/v1/trajectories/{rid}/curves", params={"embedding": "dc:1,2,4"}).json()
+    assert deep["embedding"] == "dc:1,2,4"
+    assert all(len(p) == 3 for c in deep["curves"] for p in c["points"])
+    assert deep["milestones"] and all(m["z"] is not None for m in deep["milestones"])
+
+    def no_more(*_: object) -> None:
+        raise AssertionError("the curves were projected again")
+
+    monkeypatch.setattr("lumencell.api.runs.project", no_more)
+    assert client.get(f"/api/v1/trajectories/{rid}/curves", params={"embedding": "dc:1,2,4"}).json() == deep
+    bad = client.get(f"/api/v1/trajectories/{rid}/curves", params={"embedding": "dc:1,1"})
+    assert bad.status_code == 404
 
 
 def test_rename_lineage(client: TestClient, run: dict[str, object]) -> None:

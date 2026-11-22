@@ -39,8 +39,26 @@ _RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 # disk. A run never changes once saved, so the last few are kept in memory.
 MAX_RUNS_IN_MEMORY = 4
 MAX_HEATMAPS_IN_MEMORY = 32
+MAX_CURVES_IN_MEMORY = 16  # a few runs, each on its 2-D embedding and a 3-D view or two
 PENDING_NOTE = "being scored in the background"
 LEGACY_NOTE = "made before inference isolation; run it again"
+
+
+def _remember[K, V](
+    lock: threading.Lock, cache: OrderedDict[K, V], key: K, limit: int, make: Callable[[], V]
+) -> V:
+    """``cache[key]``, made once and kept among the ``limit`` most recently used."""
+    with lock:
+        hit = cache.get(key)
+        if hit is not None:
+            cache.move_to_end(key)
+            return hit
+    value = make()  # outside the lock: two requests may both make it, and either answer is right
+    with lock:
+        cache[key] = value
+        while len(cache) > limit:
+            cache.popitem(last=False)
+    return value
 
 
 @dataclass(frozen=True)
@@ -72,6 +90,7 @@ class Runs:
         self._lock = threading.Lock()
         self._loaded: OrderedDict[str, TrajectoryResult] = OrderedDict()
         self._heatmaps: OrderedDict[tuple[object, ...], bytes] = OrderedDict()
+        self._curves: OrderedDict[tuple[str, str], models.Curves] = OrderedDict()
 
     def _load(self, rid: str) -> TrajectoryResult:
         """The whole run. Callers must not change it: it is shared between requests."""
@@ -432,6 +451,15 @@ class Runs:
 
     def run_curves(self, rid: str, embedding: str) -> models.Curves:
         self._require_run(rid)
+        return _remember(
+            self._lock,
+            self._curves,
+            (rid, embedding),
+            MAX_CURVES_IN_MEMORY,
+            lambda: self._project(rid, embedding),
+        )
+
+    def _project(self, rid: str, embedding: str) -> models.Curves:
         result = self._load(rid)
         proj = project(result, self.view.embedding(embedding), embedding)
         return models.Curves(
@@ -505,17 +533,20 @@ class Runs:
     def heatmap_payload(self, rid: str, req: models.HeatmapRequest) -> bytes:
         result, members = self._lineage(rid, req.lineage)
         key = (rid, req.lineage, req.top_n, tuple(req.genes or ()))
-        with self._lock:
-            cached = self._heatmaps.get(key)
-            if cached is not None:
-                self._heatmaps.move_to_end(key)
-        if cached is not None:
-            return cached
+        return _remember(
+            self._lock,
+            self._heatmaps,
+            key,
+            MAX_HEATMAPS_IN_MEMORY,
+            lambda: self._heatmap(result, members, req),
+        )
+
+    def _heatmap(self, result: TrajectoryResult, members: np.ndarray, req: models.HeatmapRequest) -> bytes:
         idx = self.view.gene_indices(req.genes) if req.genes else None
         h = temporal_heatmap(
             self.view.expression_matrix(), result.pseudotime, members, top_n=req.top_n, genes=idx
         )
-        body = binary.encode(
+        return binary.encode(
             {"heatmap": ("f32", h.values)},
             {
                 "genes": [str(self.view.ds.gene_symbols[j]) for j in h.genes],
@@ -523,11 +554,6 @@ class Runs:
                 "bins": [round(float(c), 4) for c in h.centers],
             },
         )
-        with self._lock:
-            self._heatmaps[key] = body
-            while len(self._heatmaps) > MAX_HEATMAPS_IN_MEMORY:
-                self._heatmaps.popitem(last=False)
-        return body
 
     def _comparison(self, a: str, b: str) -> RunComparison:
         self._require_run(a)

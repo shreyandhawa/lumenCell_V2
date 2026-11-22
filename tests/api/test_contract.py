@@ -21,6 +21,8 @@ M1_ROUTES = {
     ("get", "/api/v1/obs/{column}"),
     ("get", "/api/v1/genes"),
     ("get", "/api/v1/expression"),
+    ("get", "/api/v1/graph/paga"),
+    ("get", "/api/v1/graph/knn"),
     ("get", "/api/v1/prepare"),
     ("post", "/api/v1/prepare"),
     ("get", "/api/v1/methods"),
@@ -62,6 +64,7 @@ def test_lcb1_routes_advertise_the_lcb1_media_type() -> None:
         ("get", "/api/v1/embeddings/{name}"),
         ("get", "/api/v1/obs/{column}"),
         ("get", "/api/v1/expression"),
+        ("get", "/api/v1/graph/knn"),
         ("get", "/api/v1/trajectories/{run_id}/cells"),
         ("post", "/api/v1/trajectories/{run_id}/heatmap"),
     ]:

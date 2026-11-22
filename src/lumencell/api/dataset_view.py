@@ -23,10 +23,11 @@ from lumencell.api.errors import ApiError
 from lumencell.clonal.isolation import column_names
 from lumencell.data.loader import Dataset
 from lumencell.engine.context import LEIDEN_KEY, InferenceContext, detect_label_key, inference_obs
+from lumencell.engine.projection import diffusion_axes
 from lumencell.engine.tree_support import tree_likeness
 from lumencell.prep.cache import CacheMiss, PrepCache, prep_key
 from lumencell.prep.pipeline import PrepResult
-from lumencell.prep.stages import PrepParams
+from lumencell.prep.stages import Artifacts, PrepParams
 from lumencell.trust.cell_cycle import cell_cycle_info
 
 MAX_CATEGORIES_LISTED = 1000
@@ -50,6 +51,62 @@ def column_kind(s: pd.Series, categories: list[str]) -> models.ObsKind:
     if _is_boolean(s):
         return "boolean"
     return "categorical" if len(categories) <= MAX_CATEGORIES_LISTED else "string"
+
+
+def _components(art: Artifacts) -> int:
+    """How many diffusion components there are to draw: DC1..DCn (column 0 is the constant one)."""
+    return int(np.asarray(art["diffmap"]).shape[1]) - 1
+
+
+def paga_layout(
+    coords: npt.NDArray[np.float32], labels: npt.NDArray[np.integer], paga: sparse.spmatrix
+) -> tuple[list[models.GraphNode], list[models.GraphEdge]]:
+    """Each cluster at the mean position of its cells, and PAGA's weighted edges between clusters.
+
+    Cells without a finite position are left out of the means; a cluster with none is not drawn,
+    and neither are its edges.
+    """
+    finite = np.isfinite(coords).all(axis=1)
+    k = int(paga.shape[0])
+    sizes = np.bincount(labels, minlength=k)
+    drawn = np.bincount(labels[finite], minlength=k)
+    sums = np.stack([np.bincount(labels[finite], weights=c, minlength=k) for c in coords[finite].T], axis=1)
+    nodes = [
+        models.GraphNode(
+            id=c,
+            x=float(sums[c, 0] / drawn[c]),
+            y=float(sums[c, 1] / drawn[c]),
+            z=float(sums[c, 2] / drawn[c]) if coords.shape[1] > 2 else None,
+            n_cells=int(sizes[c]),
+        )
+        for c in range(k)
+        if drawn[c] > 0
+    ]
+    upper = sparse.triu(paga, k=1).tocoo()
+    edges = [
+        models.GraphEdge(source=int(a), target=int(b), weight=float(v))
+        for a, b, v in zip(upper.row, upper.col, upper.data, strict=True)
+        if v > 0 and drawn[a] > 0 and drawn[b] > 0
+    ]
+    return nodes, edges
+
+
+def knn_edges(
+    connectivities: sparse.spmatrix, max_edges: int, seed: int
+) -> tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32], npt.NDArray[np.float32], int]:
+    """Each neighbour edge once (src < dst) with its weight, and how many there are in all.
+
+    Above ``max_edges`` a seeded uniform sample is kept, in the graph's own order, so the same
+    request draws the same edges.
+    """
+    upper = sparse.triu(connectivities.maximum(connectivities.T), k=1).tocoo()
+    keep = upper.data > 0
+    src, dst, w = upper.row[keep], upper.col[keep], upper.data[keep]
+    total = len(src)
+    if total > max_edges:
+        pick = np.sort(np.random.default_rng(seed).choice(total, size=max_edges, replace=False))
+        src, dst, w = src[pick], dst[pick], w[pick]
+    return src.astype(np.uint32), dst.astype(np.uint32), w.astype(np.float32), total
 
 
 class DatasetView:
@@ -269,7 +326,10 @@ class DatasetView:
             art = prep.artifacts
             if "umap" in art and "umap" not in self.ds.embeddings:
                 out.append(models.Embedding(name="umap", dims=2, source="computed"))
-            out.append(models.Embedding(name="dc12", dims=2, source="diffusion"))
+            n = _components(art)
+            out.append(models.Embedding(name="dc12", dims=2, source="diffusion", components=n))
+            if n >= 3:
+                out.append(models.Embedding(name="dc123", dims=3, source="diffusion", components=n))
         return out
 
     def embedding(self, name: str) -> npt.NDArray[np.float32]:
@@ -280,12 +340,44 @@ class DatasetView:
             art = prep.artifacts
             if name == "umap" and "umap" in art:
                 return np.asarray(art["umap"], dtype=np.float32)
-            if name == "dc12":
-                return np.ascontiguousarray(np.asarray(art["diffmap"])[:, 1:3], dtype=np.float32)
-            # The 3-D stage: DC1-DC3, not listed in embeddings() because it is not a 2-D display embedding.
-            if name == "dc123":
-                return np.ascontiguousarray(np.asarray(art["diffmap"])[:, 1:4], dtype=np.float32)
+            axes = diffusion_axes(name)
+            if axes is not None:
+                n = _components(art)
+                if len(set(axes)) < len(axes) or max(axes) > n:
+                    raise ApiError(
+                        HTTPStatus.NOT_FOUND,
+                        "not_found",
+                        f"no embedding named {name!r}: name two or three different diffusion components "
+                        f"from 1 to {n}",
+                    )
+                return np.ascontiguousarray(np.asarray(art["diffmap"])[:, list(axes)], dtype=np.float32)
         raise ApiError(HTTPStatus.NOT_FOUND, "not_found", f"no embedding named {name!r}")
+
+    # ---- graphs drawn over an embedding -------------------------------------------------
+
+    def paga_graph(self, embedding: str) -> models.PagaGraph:
+        art = self.prep().artifacts  # before the name, so "not prepared yet" is not read as "no such view"
+        coords = self.embedding(embedding)
+        nodes, edges = paga_layout(coords, np.asarray(art["leiden"]), art["paga_connectivities"])
+        notices = []
+        if not edges:
+            notices.append(
+                models.Notice(
+                    code="clusters_do_not_touch",
+                    severity="info",
+                    message="No neighbour edge joins two Leiden clusters, so PAGA has no edges to draw.",
+                )
+            )
+        return models.PagaGraph(
+            embedding=embedding, cluster_key=LEIDEN_KEY, nodes=nodes, edges=edges, notices=notices
+        )
+
+    def knn_payload(self, max_edges: int) -> bytes:
+        src, dst, w, total = knn_edges(self.prep().artifacts["connectivities"], max_edges, self.params.seed)
+        return binary.encode(
+            {"src": ("u32", src), "dst": ("u32", dst), "w": ("f32", w)},
+            {"total_edges": total, "sampled": len(src) < total, "seed": self.params.seed},
+        )
 
     def default_embedding(self) -> str | None:
         names = [e.name for e in self.embeddings()]

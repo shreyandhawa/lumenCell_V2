@@ -478,17 +478,27 @@ export type Divergence = {
  */
 export type Embedding = {
     /**
+     * Components
+     *
+     * Diffusion views: how many components there are (DC1 to DCn); null otherwise.
+     */
+    components: number | null;
+    /**
      * Dims
+     *
+     * 2, or 3 for dc123.
      */
     dims: number;
     /**
      * Name
+     *
+     * Diffusion views are dc12 (DC1, DC2) and dc123 (DC1-DC3); /embeddings also serves any two or three different components as dc:i,j or dc:i,j,k.
      */
     name: string;
     /**
      * Source
      *
-     * file: read from obsm; computed: made by lumenCell's prep; diffusion: DC1 vs DC2.
+     * file: read from obsm; computed: made by lumenCell's prep; diffusion: DC components.
      */
     source: 'file' | 'computed' | 'diffusion';
 };
@@ -574,6 +584,58 @@ export type GeneTrend = {
      * Smoothed mean per bin; null where the bin has no cells.
      */
     y: Array<number | null>;
+};
+
+/**
+ * GraphEdge
+ */
+export type GraphEdge = {
+    /**
+     * Source
+     *
+     * Cluster id; always below target.
+     */
+    source: number;
+    /**
+     * Target
+     */
+    target: number;
+    /**
+     * Weight
+     *
+     * PAGA connectivity, 0-1.
+     */
+    weight: number;
+};
+
+/**
+ * GraphNode
+ */
+export type GraphNode = {
+    /**
+     * Id
+     *
+     * Leiden cluster code (the categories of lumencell_leiden).
+     */
+    id: number;
+    /**
+     * N Cells
+     */
+    n_cells: number;
+    /**
+     * X
+     */
+    x: number;
+    /**
+     * Y
+     */
+    y: number;
+    /**
+     * Z
+     *
+     * Set on 3-D views.
+     */
+    z: number | null;
 };
 
 /**
@@ -739,7 +801,7 @@ export type LineageCurve = {
     /**
      * Points
      *
-     * Two coordinates per point; three on the 3-D diffusion view (embedding dc123).
+     * Two coordinates per point; three on 3-D views (dc123, dc:i,j,k).
      */
     points: Array<Array<number>>;
 };
@@ -909,7 +971,7 @@ export type MilestonePosition = {
     /**
      * Z
      *
-     * Set on the 3-D diffusion view (embedding dc123).
+     * Set on 3-D views (dc123, dc:i,j,k).
      */
     z: number | null;
 };
@@ -990,6 +1052,36 @@ export type ObsColumn = {
      * Name
      */
     name: string;
+};
+
+/**
+ * PagaGraph
+ *
+ * PAGA over the Leiden clusters of prep, drawn on an embedding: a picture of the cluster graph.
+ */
+export type PagaGraph = {
+    /**
+     * Cluster Key
+     */
+    cluster_key: string;
+    /**
+     * Edges
+     */
+    edges: Array<GraphEdge>;
+    /**
+     * Embedding
+     */
+    embedding: string;
+    /**
+     * Nodes
+     *
+     * Each cluster at the mean position of its cells; a cluster with no finite position is left out, with its edges.
+     */
+    nodes: Array<GraphNode>;
+    /**
+     * Notices
+     */
+    notices: Array<Notice>;
 };
 
 /**
@@ -1795,7 +1887,7 @@ export type GetEmbeddingApiV1EmbeddingsNameGetError = GetEmbeddingApiV1Embedding
 
 export type GetEmbeddingApiV1EmbeddingsNameGetResponses = {
     /**
-     * LCB1 buffer. Array `coords` f32[n_obs, 2]; f32[n_obs, 3] for `dc123`, diffusion components 1-3.
+     * LCB1 buffer. Array `coords` f32[n_obs, 2], or f32[n_obs, 3] for a 3-D view. Diffusion views: `dc12`, `dc123`, or `dc:i,j` / `dc:i,j,k` for any two or three different components from 1 to n.
      */
     200: Blob | File;
 };
@@ -1875,6 +1967,74 @@ export type SearchGenesApiV1GenesGetResponses = {
 };
 
 export type SearchGenesApiV1GenesGetResponse = SearchGenesApiV1GenesGetResponses[keyof SearchGenesApiV1GenesGetResponses];
+
+export type GetKnnGraphApiV1GraphKnnGetData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Max Edges
+         */
+        max_edges?: number;
+    };
+    url: '/api/v1/graph/knn';
+};
+
+export type GetKnnGraphApiV1GraphKnnGetErrors = {
+    /**
+     * Unknown dataset column, gene, run or job.
+     */
+    404: ErrorBody;
+    /**
+     * The request is not valid.
+     */
+    422: ErrorBody;
+};
+
+export type GetKnnGraphApiV1GraphKnnGetError = GetKnnGraphApiV1GraphKnnGetErrors[keyof GetKnnGraphApiV1GraphKnnGetErrors];
+
+export type GetKnnGraphApiV1GraphKnnGetResponses = {
+    /**
+     * LCB1 buffer. Arrays `src` u32[m], `dst` u32[m] (src < dst, cell indices) and `w` f32[m], the neighbour graph's connectivities, each edge once. Above `max_edges` a seeded uniform sample; meta has `total_edges`, `sampled` and `seed`.
+     */
+    200: Blob | File;
+};
+
+export type GetKnnGraphApiV1GraphKnnGetResponse = GetKnnGraphApiV1GraphKnnGetResponses[keyof GetKnnGraphApiV1GraphKnnGetResponses];
+
+export type GetPagaGraphApiV1GraphPagaGetData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Embedding
+         */
+        embedding: string;
+    };
+    url: '/api/v1/graph/paga';
+};
+
+export type GetPagaGraphApiV1GraphPagaGetErrors = {
+    /**
+     * Unknown dataset column, gene, run or job.
+     */
+    404: ErrorBody;
+    /**
+     * The request is not valid.
+     */
+    422: ErrorBody;
+};
+
+export type GetPagaGraphApiV1GraphPagaGetError = GetPagaGraphApiV1GraphPagaGetErrors[keyof GetPagaGraphApiV1GraphPagaGetErrors];
+
+export type GetPagaGraphApiV1GraphPagaGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: PagaGraph;
+};
+
+export type GetPagaGraphApiV1GraphPagaGetResponse = GetPagaGraphApiV1GraphPagaGetResponses[keyof GetPagaGraphApiV1GraphPagaGetResponses];
 
 export type HealthzApiV1HealthzGetData = {
     body?: never;
