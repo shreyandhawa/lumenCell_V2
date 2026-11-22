@@ -11,7 +11,9 @@ import {
   useDataset,
   useDoneRunId,
   useEmbedding,
+  useKnnGraph,
   useObs,
+  usePagaGraph,
   useRoot,
   useRun,
   useRunCells,
@@ -21,15 +23,18 @@ import {
 import { Legend } from "@/components/Legend";
 import { useCellColors } from "@/components/useCellColors";
 import { Gimbal } from "@/components/scatter/Gimbal";
+import { type Ends, knnLayer, pagaLayers, type PlacedNode } from "@/components/scatter/graphLayers";
 import { type GroupBy, SelectionBar } from "@/components/scatter/SelectionBar";
 import { trajectoryLayers } from "@/components/scatter/trajectoryLayers";
 import { useStageSize } from "@/components/scatter/useStageSize";
 import { describeRoot } from "@/components/trajectory/RootPicker";
-import { fmt } from "@/components/ui";
+import { fmt, Select } from "@/components/ui";
+import { axesLabel, axesName, setAxis } from "@/lib/axes";
 import { type Camera, FLAT, fitZoom as fitZoomFor, lerp, lerpCam, TILTED } from "@/lib/camera";
 import { normalise, type Vec3 } from "@/lib/embedding";
 import { type Point, selectInPolygon } from "@/lib/geometry";
 import { DepthFadeExtension } from "@/lib/gl/depthFade";
+import { edgeEnds } from "@/lib/graph";
 import { combine, projectAll } from "@/lib/selection";
 import { centroid, cursorPoint, type PlacedMilestone, placeMilestones, prefixTo } from "@/lib/trajectory";
 import { useCamera } from "@/state/camera";
@@ -103,6 +108,10 @@ export function Scatter() {
   const setPointSize = useUi((s) => s.setPointSize);
   const fog = useUi((s) => s.fog);
   const setFog = useUi((s) => s.setFog);
+  const axes = useUi((s) => s.axes);
+  const setAxes = useUi((s) => s.setAxes);
+  const overlays = useUi((s) => s.overlays);
+  const setOverlay = useUi((s) => s.setOverlay);
   const [optionsOpen, setOptionsOpen] = useState(false);
 
   const dataset = useDataset().data;
@@ -112,9 +121,18 @@ export function Scatter() {
   const runState = useRuns().data?.runs.find((r) => r.run_id === uiRunId)?.state;
   const flatRaw = useEmbedding(embedding).data;
   // DC1-DC3 come from preparation, so 3-D (and picking a root in it) opens before any run.
-  const deepRaw = useEmbedding(dataset?.prep.state === "ready" ? "dc123" : null).data;
+  // The 3-D view shows the chosen three diffusion components; while new ones load, the old stay up.
+  const deepName = axesName(axes);
+  const deepQuery = useEmbedding(dataset?.prep.state === "ready" ? deepName : null);
+  const deepRaw = deepQuery.data;
+  const deepStale = deepQuery.isPlaceholderData; // drawn, but not the components asked for yet
+  const components = dataset?.embeddings.find((e) => e.name === "dc123")?.components ?? null;
   const curves2 = useCurves(runId, embedding).data;
-  const curves3 = useCurves(runId, runId ? "dc123" : null).data;
+  const curves3 = useCurves(runId, runId ? deepName : null).data;
+  const pagaFlat = usePagaGraph(overlays.paga ? embedding : null).data;
+  const pagaDeep = usePagaGraph(overlays.paga && deepRaw ? deepName : null).data;
+  const knnData = useKnnGraph(overlays.knn).data;
+  const knn = overlays.knn ? knnData : undefined; // a disabled query keeps its cached edges
   const cells = useRunCells(runId).data;
   const { colors, legend, describe } = useCellColors();
   const setRoot = useSetRoot();
@@ -333,12 +351,12 @@ export function Scatter() {
   const shapes = useMemo(() => {
     const shape = (cs: typeof curves2, norm: typeof flat) =>
       cs && norm ? cs.curves.filter((c) => c.points.length > 1).map((c) => ({ lineage: c.lineage, path: c.points.map(norm.map) })) : null;
-    return { a: shape(curves2, flat), b: shape(curves3, deep) };
-  }, [curves2, curves3, flat, deep]);
+    return { a: shape(curves2, flat), b: deepStale ? null : shape(curves3, deep) };
+  }, [curves2, curves3, flat, deep, deepStale]);
   /** The curves at tt: 0 on the 2-D embedding, 1 on DC1-DC3, in between while morphing. */
   const pathsAt = (tt: number) => {
     const { a, b } = shapes;
-    if (tt === 0 || !b) return a ?? [];
+    if (tt === 0 || !b) return tt === 1 ? [] : (a ?? []); // never the 2-D curves on the 3-D view
     if (tt === 1 || !a) return b;
     return a.map((c, i) => {
       const d = b[i];
@@ -349,10 +367,26 @@ export function Scatter() {
   const paths = pathsAt(t);
 
   const mixAt = (tt: number) => (a: Vec3, b: Vec3) => a.map((v, k) => lerp(v, b[k]!, tt)) as Vec3;
-  const where = (cs: typeof curves2, norm: typeof flat) =>
-    cs && norm ? new Map(cs.milestones.map((m) => [m.id, norm.map([m.x, m.y, m.z ?? 0])] as const)) : null;
+  /** Where each item (a milestone, a PAGA cluster) is in one view. */
+  const where = (items: readonly { id: number; x: number; y: number; z?: number | null }[] | undefined, norm: typeof flat) =>
+    items && norm ? new Map(items.map((m) => [m.id, norm.map([m.x, m.y, m.z ?? 0])] as const)) : null;
   const milestonesAt = (tt: number) =>
-    run ? placeMilestones(run.milestones, tt < 1 ? where(curves2, flat) : null, tt > 0 ? where(curves3, deep) : null, mixAt(tt)) : [];
+    run
+      ? placeMilestones(
+          run.milestones,
+          tt < 1 ? where(curves2?.milestones, flat) : null,
+          tt > 0 && !deepStale ? where(curves3?.milestones, deep) : null,
+          mixAt(tt),
+        )
+      : [];
+  /** PAGA's clusters and edges at tt, like the milestones. */
+  const pagaAt = (tt: number) => {
+    const g = pagaFlat ?? pagaDeep;
+    if (!g) return null;
+    const a = tt < 1 ? where(pagaFlat?.nodes, flat) : null;
+    const b = tt > 0 && !deepStale ? where(pagaDeep?.nodes, deep) : null;
+    return { nodes: placeMilestones(g.nodes, a, b, mixAt(tt)), edges: g.edges };
+  };
 
   // The playhead: where the focused lineage's cells are at the cursor, in each view.
   const heads = useMemo(() => {
@@ -396,6 +430,18 @@ export function Scatter() {
       })),
     [n, colors, ptValues, selected],
   );
+  // The neighbour graph's line ends, per view, from the same positions as the cells.
+  const endsOf = useMemo(
+    () =>
+      perPositions((pos): Ends => {
+        const { source, target } = edgeEnds(knn!.src, knn!.dst, pos.value);
+        return {
+          length: knn!.src.length,
+          attributes: { getSourcePosition: { value: source, size: 3 }, getTargetPosition: { value: target, size: 3 } },
+        };
+      }),
+    [knn],
+  );
   const ink: [number, number, number, number] = theme === "dark" ? [243, 245, 242, 190] : [20, 23, 22, 170];
   // Cells are balls of one size in embedding units (near ones look bigger in 3-D), sized so they
   // are r pixels at the fitted zoom, and never smaller than 0.6 r or larger than 3 r before perspective.
@@ -408,6 +454,7 @@ export function Scatter() {
     const box = (k: 0 | 1) =>
       [0, 1, 2].map((j) => (flat && deep ? lerp(flat.bounds[k][j]!, deep.bounds[k][j]!, tt) : (flat?.bounds[k][j] ?? 0))) as Vec3;
     const transitions = reduce ? undefined : { getPosition: MORPH };
+    const paga = pagaAt(tt);
     const out: Layer[] = [
       // A faint ghost of every cell, so cells past the cursor still show where they are. Drawn first,
       // without depth, so cells always cover it. Off while a selection shrinks the unselected cells,
@@ -424,6 +471,7 @@ export function Scatter() {
         transitions,
         updateTriggers: { getFillColor: theme, getRadius: r },
       }),
+      ...(knn ? [knnLayer(prefix, endsOf(pos), ink, reduce ? undefined : MORPH)] : []),
       new ScatterplotLayer({
         id: `${prefix}cells`,
         data: cellsOf(pos),
@@ -445,6 +493,7 @@ export function Scatter() {
         transitions,
         updateTriggers: { getRadius: radius, getSelected: mask },
       }),
+      ...(paga ? pagaLayers(prefix, paga.nodes, paga.edges, ink, STAGE[theme]) : []),
       ...trajectoryLayers({
         prefix,
         paths: pathsAt(tt),
@@ -549,7 +598,7 @@ export function Scatter() {
 
   const embeddingInfo = dataset?.embeddings.find((e) => e.name === embedding);
   const p = run?.provenance;
-  const dcCaption = `DC1–DC3 · ${p?.inference_rep === "X_diffmap" ? `3 of ${p.inference_dims}` : "the first 3"} diffusion components${fog ? " · far cells fade" : ""}`;
+  const dcCaption = `${axesLabel(axes)} · ${components ? `3 of ${components}` : "3"} diffusion components${fog ? " · far cells fade" : ""}`;
   const flatCaption = `${embedding} · a 2-D display projection`;
   const caption =
     view === "3d"
@@ -634,9 +683,11 @@ export function Scatter() {
             const text =
               kind(layer?.id) === "milestones"
                 ? describeMilestone(object as PlacedMilestone)
-                : kind(layer?.id) === "cells" && index >= 0
-                  ? describeCell(index)
-                  : null;
+                : kind(layer?.id) === "paga-nodes"
+                  ? `Cluster ${(object as PlacedNode).id} · ${fmt((object as PlacedNode).n_cells)} cells · PAGA`
+                  : kind(layer?.id) === "cells" && index >= 0
+                    ? describeCell(index)
+                    : null;
             return text
               ? {
                   text,
@@ -776,7 +827,7 @@ export function Scatter() {
                 id="display-options"
                 role="group"
                 aria-label="Display options"
-                className="absolute right-0 bottom-full mb-2 w-56 rounded-xl bg-panel p-3 text-[13px] text-ink"
+                className="absolute right-0 bottom-full mb-2 w-72 rounded-xl bg-panel p-3 text-[13px] text-ink"
               >
                 <label className="flex flex-col gap-1.5">
                   <span className="flex justify-between">
@@ -796,6 +847,54 @@ export function Scatter() {
                   <input type="checkbox" checked={fog} onChange={(e) => setFog(e.target.checked)} className="accent-ink" />
                   Fade far cells in depth
                 </label>
+                {components && (
+                  <fieldset className="mt-3">
+                    <legend>3-D axes</legend>
+                    <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+                      {(["x", "y", "z"] as const).map((name, k) => (
+                        <label key={name} className="flex flex-col gap-0.5 text-xs text-ink-muted">
+                          {name}
+                          <Select
+                            aria-label={`${name.toUpperCase()} axis`}
+                            value={axes[k]}
+                            onChange={(e) => setAxes(setAxis(axes, k, Number(e.target.value)))}
+                          >
+                            {Array.from({ length: components }, (_, i) => (
+                              <option key={i} value={i + 1}>
+                                DC{i + 1}
+                              </option>
+                            ))}
+                          </Select>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                )}
+                <fieldset className="mt-3">
+                  <legend>Graphs drawn over this view</legend>
+                  <label className="mt-1.5 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={overlays.paga}
+                      onChange={(e) => setOverlay("paga", e.target.checked)}
+                      className="accent-ink"
+                    />
+                    PAGA cluster graph
+                  </label>
+                  <label className="mt-1 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={overlays.knn}
+                      onChange={(e) => setOverlay("knn", e.target.checked)}
+                      className="accent-ink"
+                    />
+                    Neighbour graph
+                  </label>
+                  <p className="mt-1.5 text-xs leading-snug text-ink-muted">
+                    Both are built from neighbours in PCA space. A line joins where its ends sit in this view, so its length means nothing.
+                    {knn?.sampled && ` Showing ${fmt(knn.src.length)} of ${fmt(knn.total)} neighbour edges, a random sample.`}
+                  </p>
+                </fieldset>
               </div>
             )}
             <button
@@ -844,7 +943,7 @@ export function Scatter() {
               <RotateCcw size={16} />
             </button>
           </div>
-          {gimbalAt && <Gimbal m={gimbalAt.viewMatrix as unknown as number[]} />}
+          {gimbalAt && <Gimbal m={gimbalAt.viewMatrix as unknown as number[]} names={[`DC${axes[0]}`, `DC${axes[1]}`, `DC${axes[2]}`]} />}
         </div>
       )}
     </div>

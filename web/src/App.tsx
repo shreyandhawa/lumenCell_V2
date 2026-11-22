@@ -19,7 +19,7 @@ function useDefaults() {
 
   useEffect(() => {
     if (!dataset) return;
-    const names = dataset.embeddings.map((e) => e.name);
+    const names = dataset.embeddings.filter((e) => e.dims === 2).map((e) => e.name); // the 3-D view has its own
     if ((embedding === null || !names.includes(embedding)) && dataset.default_embedding) {
       setEmbedding(dataset.default_embedding);
     }

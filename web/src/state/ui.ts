@@ -1,5 +1,6 @@
 /** UI-only state. Server data lives in TanStack Query, never here. */
 import { create } from "zustand";
+import { type Axes, DEFAULT_AXES } from "@/lib/axes";
 
 export type ColorBy =
   | { kind: "obs"; column: string }
@@ -29,6 +30,10 @@ export interface UiState {
   pointSize: number;
   /** Far cells fade toward the stage in 3-D. */
   fog: boolean;
+  /** The diffusion components on the 3-D view's x, y and z. */
+  axes: Axes;
+  /** Graphs drawn over the plot. */
+  overlays: { paga: boolean; knn: boolean };
 
   setEmbedding: (name: string) => void;
   setColorBy: (c: ColorBy | null) => void;
@@ -42,6 +47,8 @@ export interface UiState {
   setSheetOpen: (open: boolean) => void;
   setPointSize: (k: number) => void;
   setFog: (on: boolean) => void;
+  setAxes: (a: Axes) => void;
+  setOverlay: (name: "paga" | "knn", on: boolean) => void;
 }
 
 export const MAX_TREND_GENES = 4;
@@ -59,6 +66,8 @@ export const useUi = create<UiState>((set) => ({
   sheetOpen: true,
   pointSize: 1,
   fog: true,
+  axes: DEFAULT_AXES,
+  overlays: { paga: false, knn: false },
 
   setEmbedding: (embedding) => set({ embedding }),
   setColorBy: (colorBy) => set({ colorBy }),
@@ -73,4 +82,6 @@ export const useUi = create<UiState>((set) => ({
   setSheetOpen: (sheetOpen) => set({ sheetOpen }),
   setPointSize: (pointSize) => set({ pointSize }),
   setFog: (fog) => set({ fog }),
+  setAxes: (axes) => set({ axes }),
+  setOverlay: (name, on) => set((s) => ({ overlays: { ...s.overlays, [name]: on } })),
 }));

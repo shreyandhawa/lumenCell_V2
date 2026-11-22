@@ -3,7 +3,7 @@
  * 100k-cell embedding or gene column is fetched once and shared by every view
  * that asks for it (in-flight requests are deduplicated too).
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type RootSpec } from "@/api/client";
 import type * as T from "@/api/generated";
 
@@ -22,6 +22,8 @@ export const keys = {
   cells: (id: string) => ["cells", id] as const,
   curves: (id: string, embedding: string) => ["curves", id, embedding] as const,
   genes: (q: string) => ["genes", q] as const,
+  paga: (embedding: string) => ["graph", "paga", embedding] as const,
+  knn: ["graph", "knn"] as const,
 };
 
 export function useDataset() {
@@ -42,6 +44,8 @@ export function useEmbedding(name: string | null) {
     queryKey: keys.embedding(name ?? ""),
     queryFn: async () => (await api.embedding(name!)).get("coords", "f32").data,
     enabled: name !== null,
+    // A new name (other diffusion components) keeps the last coordinates up until its own arrive.
+    placeholderData: keepPreviousData,
     ...forever,
   });
 }
@@ -188,6 +192,34 @@ export function useCurves(id: string | null, embedding: string | null) {
     queryKey: keys.curves(id ?? "", embedding ?? ""),
     queryFn: () => api.curves(id!, embedding!),
     enabled: id !== null && embedding !== null,
+    ...forever,
+  });
+}
+
+/** PAGA's cluster graph placed on an embedding: each Leiden cluster at the mean of its cells. */
+export function usePagaGraph(embedding: string | null) {
+  return useQuery({
+    queryKey: keys.paga(embedding ?? ""),
+    queryFn: () => api.paga(embedding!),
+    enabled: embedding !== null,
+    ...forever,
+  });
+}
+
+/** The neighbour graph, each edge once; a seeded sample of it on large datasets. */
+export function useKnnGraph(enabled: boolean) {
+  return useQuery({
+    queryKey: keys.knn,
+    queryFn: async () => {
+      const c = await api.knn();
+      return {
+        src: c.get("src", "u32").data,
+        dst: c.get("dst", "u32").data,
+        total: Number(c.meta.total_edges),
+        sampled: c.meta.sampled === true,
+      };
+    },
+    enabled,
     ...forever,
   });
 }

@@ -1,6 +1,6 @@
-/** Which way DC1, DC2 and DC3 point on screen. */
-export function Gimbal({ m }: { m: number[] }) {
-  const axes = (["DC1", "DC2", "DC3"] as const).map((name, k) => {
+/** Which way the three shown diffusion components (DC1, DC2 and DC3 by default) point on screen. */
+export function Gimbal({ m, names }: { m: number[]; names: readonly [string, string, string] }) {
+  const axes = names.map((name, k) => {
     const [x, y, z] = [m[k * 4]!, m[k * 4 + 1]!, m[k * 4 + 2]!];
     const len = Math.hypot(x, y, z) || 1;
     return { name, x: (x / len) * 30, y: (-y / len) * 30 };
@@ -8,7 +8,7 @@ export function Gimbal({ m }: { m: number[] }) {
   return (
     <svg
       role="img"
-      aria-label="Orientation of DC1, DC2 and DC3"
+      aria-label={`Orientation of ${names[0]}, ${names[1]} and ${names[2]}`}
       viewBox="-48 -48 96 96"
       className="size-24 rounded-full bg-stage/80 text-ink-muted"
     >
