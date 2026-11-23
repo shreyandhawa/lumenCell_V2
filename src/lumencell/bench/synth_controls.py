@@ -2,7 +2,7 @@
 
 Four datasets with no branching tree in them: a blob (no structure), two unconnected groups, a
 closed loop and a two-dimensional sheet. They are built here, never by the tree generator, and sit
-outside the gated matrix (``[synthetic.controls]`` in ``benchmarks/thresholds.toml``): no gate,
+outside the gated matrix (``[synthetic.controls]`` in ``bench/policy/thresholds.toml``): no gate,
 baseline or experimental flag reads them. Counts use the same noise model as the tree generator.
 
 Like the tree generator they write raw counts only, with no embedding and no ground-truth tree.

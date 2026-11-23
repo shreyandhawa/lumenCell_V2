@@ -509,7 +509,7 @@ def bench_synth(
     ] = None,
     seeds: Annotated[str | None, typer.Option(help="Comma-separated; default from thresholds.toml.")] = None,
     out: Annotated[Path | None, typer.Option(help="Write the results JSON here.")] = None,
-    write_baseline: Annotated[bool, typer.Option(help="Replace benchmarks/baseline.json.")] = False,
+    write_baseline: Annotated[bool, typer.Option(help="Replace bench/policy/baseline.json.")] = False,
 ) -> None:
     """Run methods on the synthetic matrix; report gates and regressions against the baseline."""
     import json

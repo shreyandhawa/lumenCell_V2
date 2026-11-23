@@ -240,7 +240,7 @@ date = "2026-11-17"
 source = "benchmarks/results/verdict-verification-2026-11-17.json"
 
 [regression]
-# CI fails if a synthetic metric falls further than this below benchmarks/baseline.json.
+# CI fails if a synthetic metric falls further than this below src/lumencell/bench/policy/baseline.json.
 max_drop = 0.03
 
 # ---- changelog ---------------------------------------------------------------------

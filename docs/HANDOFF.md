@@ -1,6 +1,6 @@
 # Handoff: lumenCell V2, Milestone 1
 
-Status as of 2026-11-22, commit `f7dee86` on `main`, version 0.4.0 (tagged and on PyPI; tagged releases v0.1.0 to v0.4.0). Milestone 1 is closed: see "Milestone 1 close-out" below.
+Status as of 2026-11-23, version 0.5.0 (0.4.0 is tagged and on PyPI; tagged releases v0.1.0 to v0.4.0, v0.5.0 pending). Milestone 1 is closed: see "Milestone 1 close-out" below.
 Read this first if you are picking the project up; the README covers usage.
 
 ## What exists
@@ -60,7 +60,7 @@ the link.
 make install        # uv sync --all-extras, npm ci (Python 3.13 via uv; Node 22+)
 make ci             # ruff, mypy --strict, pytest (~65 s), contract check, web lint/types/tests/build, Playwright
 make py-test-all    # also the slow tests (full synthetic matrix, calibration)
-make bench-synth    # synthetic matrix vs benchmarks/baseline.json (fails on regressions)
+make bench-synth    # synthetic matrix vs src/lumencell/bench/policy/baseline.json (fails on regressions)
 make bench-baseline # re-measure and rewrite the baseline (commit it deliberately)
 # Real-data benchmarks, calibration and case studies moved to clonal-trajectory-research
 # (uv run ctr fetch all / ctr real / ctr report there).
@@ -82,7 +82,7 @@ component tests and 1 end-to-end test.
   "Generated with" notes. Commits are authored as `shreyandhawa`.
 - **Benchmark thresholds are never lowered to fit results.** Every change to a
   threshold or a metric definition is logged, with its reason, in
-  `benchmarks/thresholds.toml`. Defaults may be tuned on synthetic data and
+  `src/lumencell/bench/policy/thresholds.toml`. Defaults may be tuned on synthetic data and
   **pancreas** only; bone marrow and gastrulation are held out.
 - **A method's `experimental` flag must match whether it misses any synthetic
   gate.** A slow golden test enforces this; update the method's
@@ -219,6 +219,19 @@ Not scheduled: the C1 to C4 verdict redesign and column subsetting in the Daniel
 matrix reader, both from the T-cell pivot (`docs/superpowers/HANDOFF.md` in clonal-trajectory-research).
 
 > **Research moved.** The real-data benchmarks, calibration studies, case studies and the T-cell pivot record are in [clonal-trajectory-research](https://github.com/shreyandhawa/clonal-trajectory-research); this repo keeps the tool and its synthetic CI benchmarks.
+
+## 0.5.0 (2026-11-23)
+
+- **Research split** (PR 80). The real-data research moved to
+  [clonal-trajectory-research](https://github.com/shreyandhawa/clonal-trajectory-research),
+  which depends on this package. `bench fetch`, `bench real` and `bench report` are now
+  the `ctr` CLI there (`ctr fetch all`, `ctr real`, `ctr report`).
+- **Policy files ship in the package.** `thresholds.toml` and `baseline.json` moved from
+  `benchmarks/` to `src/lumencell/bench/policy/`, so `lumencell.bench.gates` works from an
+  installed wheel and the research repo no longer keeps its own copies.
+  `lumencell bench synth --write-baseline` writes to the new location. `benchmarks/results/`
+  and `benchmarks/perf/` stay where they were. `tests/test_wheel.py` loads both files from
+  an installed wheel.
 
 ## Gotchas met along the way
 

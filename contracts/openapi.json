@@ -2179,7 +2179,7 @@
             "title": "Detail"
           },
           "gate": {
-            "description": "The gate's key in benchmarks/thresholds.toml.",
+            "description": "The gate's key in bench/policy/thresholds.toml.",
             "title": "Gate",
             "type": "string"
           },
@@ -2218,7 +2218,7 @@
             "type": "string"
           },
           "threshold": {
-            "description": "The gate's bound, as declared in benchmarks/thresholds.toml.",
+            "description": "The gate's bound, as declared in bench/policy/thresholds.toml.",
             "title": "Threshold",
             "type": "string"
           }

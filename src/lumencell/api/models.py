@@ -407,12 +407,12 @@ class GeneSearchResult(Model):
 class ReferenceRow(Model):
     dataset: str = Field(description="The benchmark dataset. Never the user's own data.")
     metric: str = Field(description="What the gate measures, in plain words.")
-    gate: str = Field(description="The gate's key in benchmarks/thresholds.toml.")
+    gate: str = Field(description="The gate's key in bench/policy/thresholds.toml.")
     score: float | None = Field(
         None,
         description="The worst case's value (synthetic) or the measured value (real). Null if not measured.",
     )
-    threshold: str = Field(description="The gate's bound, as declared in benchmarks/thresholds.toml.")
+    threshold: str = Field(description="The gate's bound, as declared in bench/policy/thresholds.toml.")
     passed: bool | None = Field(None, description="Whether the gate passed. Null when not measured.")
     detail: str | None = Field(None, description="How many cases failed, or why the gate was not measured.")
     source: str = Field(description="The committed result file and commit the row was read from.")

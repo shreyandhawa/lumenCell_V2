@@ -1,4 +1,4 @@
-"""Evaluate benchmark results against benchmarks/thresholds.toml and the baseline."""
+"""Evaluate benchmark results against policy/thresholds.toml and the baseline."""
 
 import json
 import math
@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-REPO = Path(__file__).resolve().parents[3]
-THRESHOLDS = REPO / "benchmarks" / "thresholds.toml"
-BASELINE = REPO / "benchmarks" / "baseline.json"
+# Shipped in the wheel, so an installed lumencell finds them.
+POLICY = Path(__file__).resolve().parent / "policy"
+THRESHOLDS = POLICY / "thresholds.toml"
+BASELINE = POLICY / "baseline.json"
 
 # Metrics where higher is better; the regression guard checks drops on these.
 HIGHER_IS_BETTER = (

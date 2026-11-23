@@ -1,6 +1,6 @@
 """Runtime values of the clonal and robustness definitions.
 
-benchmarks/thresholds.toml is not in the wheel, so the worker reads its values from here.
+bench/policy/thresholds.toml is not in the wheel, so the worker reads its values from here.
 tests/unit/test_trust_constants.py keeps the two equal: change the TOML first, with a dated
 changelog entry, then this file.
 """
