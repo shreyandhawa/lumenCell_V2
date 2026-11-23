@@ -86,7 +86,6 @@ testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 markers = [
     "golden: synthetic accuracy benchmark with thresholds (runs in CI)",
-    "real_data: needs a downloaded real dataset; skipped when it is not cached",
     "slow: takes more than a few seconds",
 ]
 filterwarnings = [

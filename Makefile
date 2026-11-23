@@ -1,4 +1,4 @@
-.PHONY: install py-install web-install py-lint py-typecheck py-test py-ci web-lint web-typecheck web-test web-build web-ci web-e2e ci fmt dev-web web-dist dev-server contract contract-check py-test-all bench-synth bench-baseline bench-real
+.PHONY: install py-install web-install py-lint py-typecheck py-test py-ci web-lint web-typecheck web-test web-build web-ci web-e2e ci fmt dev-web web-dist dev-server contract contract-check py-test-all bench-synth bench-baseline
 
 install: py-install web-install
 
@@ -18,11 +18,11 @@ py-typecheck:
 	uv run mypy
 
 py-test:
-	uv run pytest -m "not real_data and not slow"
+	uv run pytest -m "not slow"
 
 # Everything that runs offline, including slow calibration and benchmark tests.
 py-test-all:
-	uv run pytest -m "not real_data"
+	uv run pytest
 
 py-ci: py-lint py-typecheck py-test
 
@@ -74,11 +74,6 @@ bench-synth:
 # Re-measure and replace benchmarks/baseline.json (commit the result deliberately).
 bench-baseline:
 	uv run lumencell bench synth --methods $(BENCH_METHODS) --write-baseline
-
-# Real datasets (download first: uv run lumencell bench fetch all). A release gate, not CI.
-bench-real:
-	uv run pytest -m real_data -q
-	uv run lumencell bench real
 
 # ---- Everything -----------------------------------------------------------
 

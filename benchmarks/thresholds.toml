@@ -34,44 +34,7 @@ loop_programme_share = 0.20  # loop: genes following the cycle
 lfc_scale = 1.0              # median |log fold change| of a programme gene (as the preset's de_scale)
 group_lfc_scale = 2.0        # two_groups: far enough apart to be unconnected in the kNN graph
 
-# Real datasets: a release gate (make bench-real), never run in CI. Set from the
-# approved M1 plan and written down before the first real run (2026-11-10).
-[real.pancreas.gates]
-pt_spearman_lineage = { min = 0.70 }  # Alpha and Beta, against stage order
-branch_accuracy = { min = 0.80 }      # Alpha and Beta cells on their own lineage
-lineage_recall = { min = 1.0 }
-
-[real.bonemarrow.gates]
-pt_spearman_lineage = { min = 0.70 }  # Ery and Mono
-branch_accuracy = { min = 0.75 }
-lineage_recall = { min = 1.0 }
-
-[real.gastrulation_erythroid.gates]
-pt_spearman_global = { min = 0.60 }   # against real embryo time (E7.0-E8.5)
-terminal_share = { min = 0.80 }       # Erythroid3 cells on one inferred lineage
-
-# ---- Daniel 2022 (spec §6.1). Declared 2026-11-20 from the GEO sample records and metadata alone,
-# before any clone was counted and before any method ran on it. See the changelog entry of that date.
-# Declared not assessable (fewer than two gated lineages), so the two clonal gate lines are left out:
-# a result declared not assessable is not gated, and it is shown with its reason, never hidden.
-# With no gated lineage these gates score NaN and are skipped; Task 7 renders such a row as
-# "lineage gates: not measured (no gated lineage, declared 2026-11-20)", never PASS.
-[real.daniel2022.gates]
-pt_spearman_lineage = { min = 0.70 }   # existing real-data value; against state order along each gated lineage
-branch_accuracy = { min = 0.80 }       # the stricter existing value (pancreas 0.80, bone marrow 0.75)
-lineage_recall = { min = 1.0 }
-
-[real.daniel2022.clonal]
-mode = "oracle_cells"    # scored cells come from the truth lineages, weighted by each method's masks (spec §3)
-oracle_eta_min = 0.05    # below either floor the case is not_assessable, which fails both clonal gates
-oracle_p_max = 0.01
-
-[real.daniel2022.reported]   # reported, never gated
-day_spearman = "Spearman of the method's pseudotime against day post infection, over cells finite in both"
-clone_recurrence = "share of distinct clone_id strings found in two or more captures, namespace ignored on purpose: an estimate of convergent receptors if captures hold different mice"
-raw_clonotype_ari = "adjusted Rand index between clone_id and 10x raw_clonotype_id, both keyed by capture, over cells labelled by both"
-labelled_share_of_raw = "cells with a clone_id divided by cells with a raw_clonotype_id"
-trb_only = "the clonal block again with clone_id_trb (1 or 2 qualifying TRB, sorted TRB CDR3 nt set): same mode, nulls and floor"
+# Real-data gates and the case-study declaration live in clonal-trajectory-research.
 
 # ---- clonal agreement (spec docs/superpowers/specs/2026-11-12-tcell-clonotypes-design.md §4.3-4.5)
 # Defined before any clonal score was computed. src/lumencell/trust/constants.py mirrors what the
@@ -275,32 +238,6 @@ non_discriminating = ["C2", "C3", "C4"]
 passed = false
 date = "2026-11-17"
 source = "benchmarks/results/verdict-verification-2026-11-17.json"
-
-# ---- case study (spec docs/superpowers/specs/2026-11-12-tcell-clonotypes-design.md §6.2)
-# Declared before any analysis, from the paper and the file headers only (Task 9's note,
-# docs/superpowers/research/2026-11-19-sheih-verification.md). Nothing was computed from clonotype,
-# CDR3 or gene values. Reasons for each value: the changelog entry of the same date.
-
-[case_study.sheih2020]   # declared before any analysis; see the changelog entry of the same date
-declared = "2026-11-19"
-accession = "GSE125881"
-paper = "Sheih et al. 2020, Nat Commun 11:219, doi:10.1038/s41467-019-13880-1"
-methods = ["paga_dpt", "palantir", "scfates_ppt"]
-root = "cluster:timepoint=IP"   # the infusion product, which the post-infusion repertoire comes from: Results, "Contribution of infused CAR-T clusters to in vivo repertoire", Fig. 7
-clone_key = "clone_id"
-donor_key = "patient"          # namespace: each patient
-single_donor = false
-strata_keys = ["timepoint"]    # N3: clones that expand at one time point are not read as lineage agreement
-chains = "paired"              # both chains' rows carry per-cell barcodes, so TRA and TRB group by cell
-cdr3 = "nt"                    # the tables carry cdr3_nts
-filters = []                   # the tables carry no productive, high_confidence or full_length flag
-max_per_chain = 2
-unit_key = "patient"           # primary analysis: each method runs once per patient (4 x 3 runs, stability on each)
-pooled_diagnostic = true       # one pooled run per method, reported only as a labelled diagnostic, never the headline
-# Clonal parameters are the [clonal] defaults: m = 2 primary, m = 3 sensitivity, B = 1000, seed 0.
-# lumenCell has no batch correction. Pooled patients would let patient structure dominate, and C1/C2
-# would then call a batch artefact "no tree". Cost: 12 runs with stability instead of 3, and about a
-# quarter of the cells in each run.
 
 [regression]
 # CI fails if a synthetic metric falls further than this below benchmarks/baseline.json.
