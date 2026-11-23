@@ -99,7 +99,7 @@ elpigraph); lumenCell itself is MIT and only imports them.
 
 Synthetic data (Splatter-style counts from a known tree, no embedding given) runs
 in CI (`make bench-synth`); its gates are in
-[`benchmarks/thresholds.toml`](benchmarks/thresholds.toml). The real-data benchmarks,
+[`src/lumencell/bench/policy/thresholds.toml`](src/lumencell/bench/policy/thresholds.toml). The real-data benchmarks,
 calibration and case studies live in [clonal-trajectory-research](https://github.com/shreyandhawa/clonal-trajectory-research), with their own gates
 and full tables (`docs/benchmarks.md` there).
 

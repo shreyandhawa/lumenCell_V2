@@ -1,6 +1,6 @@
 """Stability replicates of a finished run, and how far each agrees with it.
 
-A run is re-run R times (``[stability]`` in benchmarks/thresholds.toml):
+A run is re-run R times (``[stability]`` in bench/policy/thresholds.toml):
 
 * **reseeds** rerun Leiden, PAGA and the method on all cells with new seeds, so the PAGA tree
   is never stale; every other prep artifact is reused;

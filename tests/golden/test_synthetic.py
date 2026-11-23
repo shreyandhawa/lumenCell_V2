@@ -2,7 +2,7 @@
 
 Fast (runs in make ci): the bifurcation case, which has the short-trunk,
 long-branch shape that fooled V1's automatic root, must stay within
-``regression.max_drop`` of benchmarks/baseline.json.
+``regression.max_drop`` of src/lumencell/bench/policy/baseline.json.
 
 Slow (make py-test-all / make bench-synth): the full matrix against the
 baseline, and a check that each method's ``experimental`` flag matches whether

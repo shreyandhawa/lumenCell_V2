@@ -4,7 +4,7 @@ from typing import Any
 from lumencell.bench.gates import load_thresholds
 from lumencell.trust import constants
 
-# constant name -> key path in benchmarks/thresholds.toml. Phase 2 appends entries.
+# constant name -> key path in src/lumencell/bench/policy/thresholds.toml. Phase 2 appends entries.
 MIRRORED: dict[str, tuple[str, ...]] = {
     "CLONAL_METRIC_VERSION": ("clonal", "metric_version"),
     "MIN_CLONE_SIZE": ("clonal", "min_clone_size"),

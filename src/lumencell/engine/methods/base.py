@@ -33,7 +33,7 @@ class TrajectoryMethod(Protocol):
     family: ClassVar[str]
     description: ClassVar[str]
     Params: ClassVar[type[MethodParams]]
-    # True while the method misses any gate in benchmarks/thresholds.toml.
+    # True while the method misses any gate in bench/policy/thresholds.toml.
     # tests/golden checks that this matches the measured results.
     experimental: ClassVar[bool]
     # One sentence on which gates it misses, shown in the UI when experimental.

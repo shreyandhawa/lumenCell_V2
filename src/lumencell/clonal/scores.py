@@ -1,7 +1,7 @@
 """Clonal scores of a run's lineages: entropy and purity, η against three nulls, a lineage-free
 k-means baseline, and lineage-pair coupling.
 
-The definitions are the ones declared in ``benchmarks/thresholds.toml`` (``[clonal]``) before any
+The definitions are the ones declared in ``bench/policy/thresholds.toml`` (``[clonal]``) before any
 score was computed; spec §4.3 explains them. In short, over the scored cells (``score_clonal``):
 
 - Each clone k has a distribution p_k over the L lineages, from its cells' (possibly fractional)
@@ -49,7 +49,7 @@ Mode = Literal["own_cells", "oracle_cells"]
 N2Split = Literal["none", "lineage_onset"]
 N2_SPLITS: tuple[N2Split, ...] = ("none", "lineage_onset")
 # The runtime N2: "lineage_onset" since CLONAL_METRIC_VERSION 2, adopted by the rule declared under
-# [clonal] in benchmarks/thresholds.toml after its fresh-seed calibration passed
+# [clonal] in bench/policy/thresholds.toml after its fresh-seed calibration passed
 # (benchmarks/results/clonal-calibration-n2-amended-2026-11-17.json). "none" stays for phase 1's
 # recorded calibration.
 RUNTIME_N2_SPLIT: N2Split = "lineage_onset"

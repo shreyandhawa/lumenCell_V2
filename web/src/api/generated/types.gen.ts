@@ -1200,7 +1200,7 @@ export type ReferenceRow = {
     /**
      * Gate
      *
-     * The gate's key in benchmarks/thresholds.toml.
+     * The gate's key in bench/policy/thresholds.toml.
      */
     gate: string;
     /**
@@ -1230,7 +1230,7 @@ export type ReferenceRow = {
     /**
      * Threshold
      *
-     * The gate's bound, as declared in benchmarks/thresholds.toml.
+     * The gate's bound, as declared in bench/policy/thresholds.toml.
      */
     threshold: string;
 };

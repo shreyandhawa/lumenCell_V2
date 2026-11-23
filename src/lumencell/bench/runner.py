@@ -63,7 +63,7 @@ class StabilityRow:
 
 @dataclass(frozen=True)
 class ClonalRow:
-    """Clonal agreement of one case; see [clonal] in benchmarks/thresholds.toml."""
+    """Clonal agreement of one case; see [clonal] in bench/policy/thresholds.toml."""
 
     status: ClonalRowStatus
     excess_ratio: float = _NAN

@@ -12,7 +12,7 @@ anndata, so the benchmark (oracle-cells mode) and the worker (own-cells mode) ru
 - ``scores``: normalised entropy and purity, the effect η against three nulls, a k-means
   baseline that uses no lineages, and lineage-pair coupling.
 
-Every definition was declared in ``benchmarks/thresholds.toml`` (``[clonal]``) before any score
+Every definition was declared in ``bench/policy/thresholds.toml`` (``[clonal]``) before any score
 was computed, and spec §4.3 states them in full.
 
 Sources:
