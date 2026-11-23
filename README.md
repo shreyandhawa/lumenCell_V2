@@ -6,7 +6,7 @@ Interactive explorer for pseudotime and lineage trajectories in single-cell RNA-
 trajectory starts, runs a trajectory method, and lets you inspect lineages, gene
 trends along pseudotime and how far to trust the result, in the browser.
 
-![CAR T cells from patient NHL-6 (Sheih 2020) on diffusion components 1 to 3, with the Evidence sheet](https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-3d-evidence.png)
+![CAR T cells from patient NHL-6 (Sheih 2020) on diffusion components 1 to 3, with the Evidence sheet](https://raw.githubusercontent.com/shreyandhawa/lumencell-app/main/docs/images/explorer-3d-evidence.png)
 
 CAR T cells from patient NHL-6 (Sheih 2020) on diffusion components 1 to 3, with the
 trajectory's lineages drawn through them. The Evidence sheet on the right rates the run
@@ -14,9 +14,9 @@ weak: clones do not back these lineages any better than plain expression cluster
 
 <table>
   <tr>
-    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-pick-a-root.png" alt="Choosing where the trajectory starts"></td>
-    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-playback.png" alt="Playing pseudotime with gene trends on the same axis"></td>
-    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-light.png" alt="The light theme"></td>
+    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumencell-app/main/docs/images/explorer-pick-a-root.png" alt="Choosing where the trajectory starts"></td>
+    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumencell-app/main/docs/images/explorer-playback.png" alt="Playing pseudotime with gene trends on the same axis"></td>
+    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumencell-app/main/docs/images/explorer-light.png" alt="The light theme"></td>
   </tr>
   <tr>
     <td>You choose where the trajectory starts; it is never guessed.</td>
@@ -27,9 +27,9 @@ weak: clones do not back these lineages any better than plain expression cluster
 
 <table>
   <tr>
-    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-split.png" alt="UMAP and diffusion components 1 to 3 side by side, the hovered cell ringed in both"></td>
-    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-lasso.png" alt="A lasso selection in 3-D with its breakdown by Leiden cluster"></td>
-    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-paga.png" alt="The PAGA cluster graph drawn over diffusion components 1 to 3"></td>
+    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumencell-app/main/docs/images/explorer-split.png" alt="UMAP and diffusion components 1 to 3 side by side, the hovered cell ringed in both"></td>
+    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumencell-app/main/docs/images/explorer-lasso.png" alt="A lasso selection in 3-D with its breakdown by Leiden cluster"></td>
+    <td><img src="https://raw.githubusercontent.com/shreyandhawa/lumencell-app/main/docs/images/explorer-paga.png" alt="The PAGA cluster graph drawn over diffusion components 1 to 3"></td>
   </tr>
   <tr>
     <td>Split view: the 2-D embedding and DC1–DC3 side by side, with one hover, selection and cursor.</td>
