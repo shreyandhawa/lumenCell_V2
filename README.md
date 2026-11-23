@@ -41,7 +41,7 @@ weak: clones do not back these lineages any better than plain expression cluster
 The address bar always names the view on screen (run, colouring, cameras, cursor, axes), so a
 link reopens it; Export PNG saves the plot with its legend and where it came from.
 
-Results so far: [docs/results.md](docs/results.md)
+Results so far: [clonal-trajectory-research](https://github.com/shreyandhawa/clonal-trajectory-research) (`docs/results.md`)
 
 > **Known limits.** Every method is labelled experimental: each misses at least one
 > benchmark gate. The misses are about branch structure (where lineages split), not
@@ -98,11 +98,10 @@ elpigraph); lumenCell itself is MIT and only imports them.
 ## Benchmark
 
 Synthetic data (Splatter-style counts from a known tree, no embedding given) runs
-in CI; real datasets are a release gate (`lumencell bench fetch all`, then
-`make bench-real`). Gates and every change to them are in
-[`benchmarks/thresholds.toml`](benchmarks/thresholds.toml).
-
-Full tables: [docs/benchmarks.md](docs/benchmarks.md).
+in CI (`make bench-synth`); its gates are in
+[`benchmarks/thresholds.toml`](benchmarks/thresholds.toml). The real-data benchmarks,
+calibration and case studies live in [clonal-trajectory-research](https://github.com/shreyandhawa/clonal-trajectory-research), with their own gates
+and full tables (`docs/benchmarks.md` there).
 
 ## Development
 

@@ -62,9 +62,8 @@ make ci             # ruff, mypy --strict, pytest (~65 s), contract check, web l
 make py-test-all    # also the slow tests (full synthetic matrix, calibration)
 make bench-synth    # synthetic matrix vs benchmarks/baseline.json (fails on regressions)
 make bench-baseline # re-measure and rewrite the baseline (commit it deliberately)
-uv run lumencell bench fetch all   # real datasets, ~708 MB, into ~/Library/Caches/lumencell/datasets
-make bench-real     # real-data release gate, writes benchmarks/results/real-<date>.json
-uv run lumencell bench report --readme   # regenerate the README benchmark tables
+# Real-data benchmarks, calibration and case studies moved to clonal-trajectory-research
+# (uv run ctr fetch all / ctr real / ctr report there).
 make dev-server     # API on :8765 with a synthetic dataset; make dev-web for the app on :5173
 make contract       # after changing api/models.py: regenerate OpenAPI and TS types
 ```
@@ -217,7 +216,9 @@ Declined:
   `minbranchlength`, and spurious tips on single-lineage data.
 
 Not scheduled: the C1 to C4 verdict redesign and column subsetting in the Daniel
-matrix reader, both from the T-cell pivot (`docs/superpowers/HANDOFF.md`).
+matrix reader, both from the T-cell pivot (`docs/superpowers/HANDOFF.md` in clonal-trajectory-research).
+
+> **Research moved.** The real-data benchmarks, calibration studies, case studies and the T-cell pivot record are in [clonal-trajectory-research](https://github.com/shreyandhawa/clonal-trajectory-research); this repo keeps the tool and its synthetic CI benchmarks.
 
 ## Gotchas met along the way
 

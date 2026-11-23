@@ -8,8 +8,7 @@ import numpy as np
 import pytest
 
 from lumencell.bench.gates import check_gates, load_thresholds
-from lumencell.bench.report import render
-from lumencell.bench.runner import ClonalRow, ClonalRowStatus, clonal_row, run_real_case, run_synthetic_case
+from lumencell.bench.runner import ClonalRow, ClonalRowStatus, clonal_row, run_synthetic_case
 from lumencell.bench.synth import generate, truth_from_adata
 from lumencell.bench.synth_clones import DEFAULT_LAYER, ClonalLayer, add_clones, clone_truth
 from lumencell.bench.truth import Truth
@@ -144,10 +143,6 @@ def test_a_failure_reason_is_one_escaped_line_of_bounded_length(monkeypatch: pyt
     assert row.reason is not None and row.reason.startswith("ValueError: ")
     assert row.reason.isprintable() and "\n" not in row.reason and "\x1b" not in row.reason
     assert len(row.reason) <= 300
-
-
-def test_the_report_says_the_clonal_gate_is_not_a_branch_gate() -> None:
-    assert "not a branch gate" in render()
 
 
 # ---- fix round 1: the row's fields, thresholds, helper wiring and run wiring, with a scripted scorer
@@ -365,45 +360,3 @@ def test_inference_is_told_the_clone_columns_only_when_the_layer_was_applied(
     with pytest.raises(_Stop):
         run_synthetic_case(tmp_path, topology, n_cells=400, n_genes=200, clonal_layer=layer)
     assert seen == [expected]
-
-
-def test_a_real_case_row_is_not_applicable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    truth = _clone_truth()
-    spec = SimpleNamespace(root_spec="r", label_key=None, clonal=None, report_time_key=None)
-    monkeypatch.setattr("lumencell.bench.datasets.DATASETS", {"d": spec})
-    monkeypatch.setattr("lumencell.bench.datasets.is_cached", lambda ds: True)
-    monkeypatch.setattr("lumencell.bench.datasets.local_path", lambda ds: tmp_path)
-    monkeypatch.setattr("lumencell.bench.datasets.truth_for", lambda ds, obs: truth)
-    monkeypatch.setattr("lumencell.engine.roots.parse_root", lambda s: s)
-    monkeypatch.setattr("lumencell.bench.runner.load", lambda p: SimpleNamespace(obs=None))
-    monkeypatch.setattr(
-        "lumencell.prep.cache.PrepCache",
-        lambda data: SimpleNamespace(run=lambda pp: SimpleNamespace(artifacts={})),
-    )
-    monkeypatch.setattr(
-        "lumencell.bench.runner.InferenceContext.from_prep",
-        lambda *a, **k: SimpleNamespace(leiden=np.array([0, 1])),
-    )
-    monkeypatch.setattr(
-        "lumencell.bench.runner.run_method",
-        lambda *a, **k: SimpleNamespace(
-            pseudotime=truth.order.astype(np.float32), membership=truth.membership(), warnings=[]
-        ),
-    )
-    res = run_real_case("d")
-    assert repr(res.clonal) == repr(ClonalRow("not_applicable"))
-
-
-def test_the_report_counts_failures_per_gate() -> None:
-    text = render()
-    line = next(x for x in text.splitlines() if x.startswith("Cases failing each gate"))
-    assert "`clonal_excess_ratio`" in line
-    assert "PAGA + DPT" in line
-
-
-def test_the_clonal_column_never_rounds_up_across_the_gate() -> None:
-    from lumencell.bench.report import _range
-
-    rows = [{"clonal_excess_ratio": 0.4996}, {"clonal_excess_ratio": 0.5004}]
-    assert _range(rows, "clonal_excess_ratio", floor=True) == "0.499–0.500"
-    assert _range([{"clonal_excess_ratio": 0.4996}], "clonal_excess_ratio", floor=True) == "0.499–0.499"
