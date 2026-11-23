@@ -18,11 +18,11 @@ py-typecheck:
 	uv run mypy
 
 py-test:
-	uv run pytest -m "not real_data and not slow"
+	uv run pytest -m "not slow"
 
 # Everything that runs offline, including slow calibration and benchmark tests.
 py-test-all:
-	uv run pytest -m "not real_data"
+	uv run pytest
 
 py-ci: py-lint py-typecheck py-test
 
