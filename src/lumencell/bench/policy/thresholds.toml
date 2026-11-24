@@ -36,7 +36,7 @@ group_lfc_scale = 2.0        # two_groups: far enough apart to be unconnected in
 
 # Real-data gates and the case-study declaration live in clonal-trajectory-research.
 
-# ---- clonal agreement (spec docs/superpowers/specs/2026-11-12-tcell-clonotypes-design.md §4.3-4.5)
+# ---- clonal agreement (spec docs/notes/specs/2026-11-12-tcell-clonotypes-design.md §4.3-4.5)
 # Defined before any clonal score was computed. src/lumencell/trust/constants.py mirrors what the
 # worker needs at run time; tests/unit/test_trust_constants.py keeps the two equal.
 # Clone: the pair (donor, label). A missing, empty, "nan" or "None" label means no receptor.
@@ -153,7 +153,7 @@ monotonic_fate_bias = [0.0, 0.35, 0.7, 1.0]
 monotonic_seeds = [0, 1, 2]
 monotonic_topologies = ["bifurcation", "trifurcation", "binary2"]
 
-# ---- T-cell robustness (spec docs/superpowers/specs/2026-11-12-tcell-clonotypes-design.md §5)
+# ---- T-cell robustness (spec docs/notes/specs/2026-11-12-tcell-clonotypes-design.md §5)
 # Defined before any cell-cycle score, stability replicate or verdict value was computed.
 # src/lumencell/trust/constants.py mirrors what the worker and server need at run time.
 
@@ -414,7 +414,7 @@ max_drop = 0.03
 #             derived file was built, before any clone was counted and before any method ran on it.
 #             Written from Task 3's note (with Task 5a's sections), the GSM records and the
 #             literature; evidence for every item in
-#             docs/superpowers/research/2026-11-20-daniel2022-declaration.md. Nothing existing changed.
+#             docs/notes/research/2026-11-20-daniel2022-declaration.md. Nothing existing changed.
 #   * Captures, days, tissues: GSM5687827-GSM5687834 (8 TCR GSMs; chronic Clone 13, spleen, D8 and
 #     D21; PD-1+, gp33 mid, gp33- x2, gp33+ x2 at D21, gp33- and gp33+ at D8). Chronic only, because
 #     the Tpex root holds there (spec §6.1). D5 excluded: its matrix is a separate Seurat object with

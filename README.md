@@ -105,8 +105,6 @@ and full tables (`docs/benchmarks.md` there).
 
 ## Development
 
-Picking the project up? Start with [`docs/HANDOFF.md`](docs/HANDOFF.md): state, decisions, open work.
-
 From a clone, with Python 3.13, [uv](https://docs.astral.sh/uv/) and Node 22+:
 
 ```bash
