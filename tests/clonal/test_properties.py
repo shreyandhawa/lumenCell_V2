@@ -2,7 +2,7 @@
 
 Relabelling clones or lineages and adding single-cell clones leave every field unchanged, exactly.
 Reordering cells changes which cell each random key lands on, so it leaves the deterministic
-fields unchanged and the null-based fields within Monte Carlo error (see HANDOFF, open questions).
+fields unchanged and the null-based fields within Monte Carlo error.
 """
 
 import math
