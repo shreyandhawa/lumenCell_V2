@@ -1,6 +1,7 @@
 import os
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -51,6 +52,35 @@ def test_cells_file_is_the_wire_format(tmp_path: Path, result: TrajectoryResult)
     assert decoded.arrays["membership"].shape == (len(result.lineages), result.n_obs)
     np.testing.assert_array_equal(decoded.arrays["primary_lineage"], result.primary_lineage)
     assert decoded.meta == {"n_obs": result.n_obs, "n_lineages": len(result.lineages)}
+
+
+GOLDEN_RUN_IDS = [
+    # (method, params, root, terminals, prep key, clone columns) -> id, with the version pinned.
+    (
+        (
+            "paga_dpt",
+            {"n_dcs": 10, "cluster_key": "lumencell_leiden"},
+            "cluster:true_label=trunk_early",
+            None,
+            "k1",
+            (),
+        ),
+        "91edfcf42bfc8eb0",
+    ),
+    (("paga_dpt", {}, "cell:AAAC-1", None, "k1", ()), "03b5644124bd5567"),
+    (("palantir", {"seed": 0}, "cluster:a=b", ["Y", "X"], "k2", ()), "d7a34f6b09a2de26"),
+    (("paga_dpt", {}, "cluster:a=b", None, "k1", ("donor", "clone_id")), "e5204c3a3fc7403e"),
+]
+
+
+@pytest.mark.parametrize(("fields", "expected"), GOLDEN_RUN_IDS)
+def test_run_ids_are_unchanged(
+    monkeypatch: pytest.MonkeyPatch, fields: tuple[Any, ...], expected: str
+) -> None:
+    # Every stored run is found by its id: a change to the hash orphans all of them.
+    monkeypatch.setattr("lumencell.engine.store.__version__", "golden")
+    method, params, root, terminals, key, columns = fields
+    assert run_id(method, params, root, terminals, key, columns) == expected
 
 
 def test_run_id_is_deterministic_and_input_sensitive() -> None:
