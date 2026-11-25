@@ -19,6 +19,7 @@ from lumencell.prep.cache import PrepCache, dataset_dir, prep_key
 from lumencell.prep.stages import STAGES, PrepParams
 from lumencell.trust.clonal import trust_name
 from lumencell.trust.stability import stability_name
+from tests.conftest import infer_job
 
 
 @pytest.fixture
@@ -127,24 +128,15 @@ def test_prepare_then_infer_through_the_worker(jobs: JobManager, tmp_path: Path)
     ds = load(path)
     assert set(PrepCache(ds, cache_root).status(params).values()) == {"done"}
 
-    infer = jobs.submit(
-        "infer",
-        "run",
-        {
-            **base,
-            "method": "paga_dpt",
-            "root": "cluster:true_label=trunk_early",
-            "run_id": "r1",
-            "clonal_columns": [],
-        },
-    )
+    payload, rid = infer_job(base)
+    infer = jobs.submit("infer", "run", payload)
     done = jobs.wait(infer.job_id, timeout=120)
     assert done.state == "done", done.error
-    assert done.result_id == "r1"
+    assert done.result_id == rid
     store = RunStore(dataset_dir(ds.fingerprint, cache_root))
-    assert store.exists("r1")
-    store.load("r1").validate()
-    assert store.graph("r1")["prep_key"] == prep_key(ds, params)
+    assert store.exists(rid)
+    store.load(rid).validate()
+    assert store.graph(rid)["prep_key"] == prep_key(ds, params)
 
 
 def test_an_infer_job_must_say_which_columns_are_scoring_only(jobs: JobManager, tmp_path: Path) -> None:
@@ -152,8 +144,12 @@ def test_an_infer_job_must_say_which_columns_are_scoring_only(jobs: JobManager, 
     payload = {
         "path": str(tmp_path / "never-read.h5ad"),
         "prep_params": PrepParams(),
-        "method": "paga_dpt",
-        "root": "cluster:true_label=trunk_early",
+        "spec": {
+            "method": "paga_dpt",
+            "params": {},
+            "root": "cluster:true_label=trunk_early",
+            "terminals": None,
+        },
         "run_id": "r2",
     }
     done = jobs.wait(jobs.submit("infer", "no-columns", payload).job_id, timeout=120)
@@ -164,7 +160,14 @@ def test_an_infer_job_must_say_which_columns_are_scoring_only(jobs: JobManager, 
 
 def test_clonal_columns_must_be_a_list_of_names() -> None:
     # A bare string would be read as one column per character, leaving the real column visible.
-    payload = {"path": "never-read.h5ad", "prep_params": PrepParams(), "clonal_columns": "donor"}
+    spec = {
+        "method": "paga_dpt",
+        "params": {},
+        "root": "cluster:a=b",
+        "terminals": None,
+        "clonal_columns": "donor",
+    }
+    payload = {"path": "never-read.h5ad", "prep_params": PrepParams(), "spec": spec, "run_id": "r"}
     with pytest.raises(ValueError, match="must be a list of column names"):
         HANDLERS["infer"](payload, lambda *_: None)
 
@@ -256,17 +259,21 @@ def test_the_named_clonal_columns_reach_the_run(tmp_path: Path) -> None:
     # In-process: a named column is scoring-only in the job, so it cannot be the root.
     path = tmp_path / "d.h5ad"
     generate("bifurcation", "realistic", n_cells=400, n_genes=200, seed=0).write_h5ad(path)
-    payload = {
-        "path": str(path),
-        "prep_params": PrepParams(),
-        "cache_root": str(tmp_path / "cache"),
-        "method": "paga_dpt",
-        "root": "cluster:true_label=trunk_early",
-        "run_id": "r3",
-        "clonal_columns": ["true_label"],
-    }
+    base = {"path": str(path), "prep_params": PrepParams(), "cache_root": str(tmp_path / "cache")}
+    payload, _ = infer_job(base, ["true_label"])
     with pytest.raises(RootError, match="'true_label' is set as a clone or donor column"):
         HANDLERS["infer"](payload, lambda *_: None)
+
+
+def test_an_infer_job_whose_spec_gives_another_run_id_fails(tmp_path: Path) -> None:
+    # The API promised this id to the browser; saving under another would lose the run.
+    path = tmp_path / "d.h5ad"
+    generate("bifurcation", "realistic", n_cells=400, n_genes=200, seed=0).write_h5ad(path)
+    base = {"path": str(path), "prep_params": PrepParams(), "cache_root": str(tmp_path / "cache")}
+    payload, rid = infer_job(base)
+    with pytest.raises(ValueError, match=f"gives run id {rid}, not 0000000000000000; nothing was run"):
+        HANDLERS["infer"]({**payload, "run_id": "0" * 16}, lambda *_: None)
+    assert not RunStore(dataset_dir(load(path).fingerprint, tmp_path / "cache")).exists(rid)
 
 
 def test_foreground_jobs_overtake_queued_background_jobs(jobs: JobManager) -> None:
@@ -458,20 +465,14 @@ def test_score_clonal_job_writes_the_trust_file(jobs: JobManager, tmp_path: Path
     cache_root = tmp_path / "cache"
     base = {"path": str(path), "prep_params": PrepParams(), "cache_root": str(cache_root)}
     assert jobs.wait(jobs.submit("prepare", "prep", base).job_id, timeout=120).state == "done"
-    infer = {
-        **base,
-        "method": "paga_dpt",
-        "root": "cluster:true_label=trunk_early",
-        "run_id": "r1",
-        "clonal_columns": ["clone_id", "donor"],
-    }
+    infer, rid = infer_job(base, ["clone_id", "donor"])
     done = jobs.wait(jobs.submit("infer", "run", infer).job_id, timeout=120)
     assert done.state == "done", done.error
 
-    scored = jobs.wait(jobs.submit("score_clonal", "r1", _score_payload(base, "r1")).job_id, timeout=300)
+    scored = jobs.wait(jobs.submit("score_clonal", rid, _score_payload(base, rid)).job_id, timeout=300)
     assert scored.state == "done", scored.error
-    assert scored.result_id == "r1"
-    trust = RunStore(dataset_dir(load(path).fingerprint, cache_root)).read_trust("r1", trust_name(CLONAL))
+    assert scored.result_id == rid
+    trust = RunStore(dataset_dir(load(path).fingerprint, cache_root)).read_trust(rid, trust_name(CLONAL))
     assert trust is not None
     assert trust["status"] in ("ok", "too_few_clones")
     assert trust["settings"] == CLONAL.model_dump(mode="json")
@@ -489,131 +490,129 @@ def test_an_empty_score_clonal_payload_names_every_missing_key() -> None:
 
 
 @pytest.fixture
-def prepared_run(tmp_path: Path) -> tuple[dict[str, object], RunStore]:
+def prepared_run(tmp_path: Path) -> tuple[dict[str, object], RunStore, str]:
     """A run computed in-process, with clone and donor columns, ready to score."""
     path = _clonal_file(tmp_path, n_cells=400, n_genes=200)
     base = {"path": str(path), "prep_params": PrepParams(), "cache_root": str(tmp_path / "cache")}
-    infer = {
-        **base,
-        "method": "paga_dpt",
-        "root": "cluster:true_label=trunk_early",
-        "run_id": "r4",
-        "clonal_columns": ["clone_id", "donor"],
-    }
+    infer, rid = infer_job(base, ["clone_id", "donor"])
     HANDLERS["infer"](infer, lambda *_: None)
-    return base, RunStore(dataset_dir(load(path).fingerprint, tmp_path / "cache"))
+    return base, RunStore(dataset_dir(load(path).fingerprint, tmp_path / "cache")), rid
 
 
 def test_a_run_replaced_before_the_write_is_not_scored(
-    prepared_run: tuple[dict[str, object], RunStore], monkeypatch: pytest.MonkeyPatch
+    prepared_run: tuple[dict[str, object], RunStore, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    base, store = prepared_run
+    base, store, rid = prepared_run
 
     def replaced(*_: object) -> None:
         raise FileNotFoundError("no complete run 'r4'")
 
     monkeypatch.setattr(RunStore, "write_trust", replaced)
-    with pytest.raises(RuntimeError, match=r"^run r4 was replaced or is incomplete; not scored$"):
-        HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None)
-    assert not (store.path("r4") / "trust").exists()
+    with pytest.raises(RuntimeError, match=rf"^run {rid} was replaced or is incomplete; not scored$"):
+        HANDLERS["score_clonal"](_score_payload(base, rid), lambda *_: None)
+    assert not (store.path(rid) / "trust").exists()
 
 
-def test_a_missing_or_incomplete_run_is_not_scored(prepared_run: tuple[dict[str, object], RunStore]) -> None:
-    base, store = prepared_run
+def test_a_missing_or_incomplete_run_is_not_scored(
+    prepared_run: tuple[dict[str, object], RunStore, str],
+) -> None:
+    base, store, rid = prepared_run
     with pytest.raises(RuntimeError, match=r"^run nope was replaced or is incomplete; not scored$"):
         HANDLERS["score_clonal"](_score_payload(base, "nope"), lambda *_: None)
-    (store.path("r4") / ".complete").unlink()
-    with pytest.raises(RuntimeError, match=r"^run r4 was replaced or is incomplete; not scored$"):
-        HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None)
-    assert not (store.path("r4") / "trust").exists()
+    (store.path(rid) / ".complete").unlink()
+    with pytest.raises(RuntimeError, match=rf"^run {rid} was replaced or is incomplete; not scored$"):
+        HANDLERS["score_clonal"](_score_payload(base, rid), lambda *_: None)
+    assert not (store.path(rid) / "trust").exists()
 
 
-def test_a_run_from_before_isolation_is_refused(prepared_run: tuple[dict[str, object], RunStore]) -> None:
-    base, store = prepared_run
-    graph = store.graph("r4")
-    store.update_graph("r4", {**graph, "store_version": 1})
-    assert HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None) == "r4"
-    trust = store.read_trust("r4", trust_name(CLONAL))
+def test_a_run_from_before_isolation_is_refused(
+    prepared_run: tuple[dict[str, object], RunStore, str],
+) -> None:
+    base, store, rid = prepared_run
+    graph = store.graph(rid)
+    store.update_graph(rid, {**graph, "store_version": 1})
+    assert HANDLERS["score_clonal"](_score_payload(base, rid), lambda *_: None) == rid
+    trust = store.read_trust(rid, trust_name(CLONAL))
     assert trust is not None and trust["status"] == "refused"
     assert trust["notes"] == ["made before inference isolation; run it again"]
 
 
 def test_a_run_on_another_prep_fails_the_job_and_writes_nothing(
-    prepared_run: tuple[dict[str, object], RunStore],
+    prepared_run: tuple[dict[str, object], RunStore, str],
 ) -> None:
-    base, store = prepared_run
-    store.update_graph("r4", {**store.graph("r4"), "prep_key": "0" * 16})
+    base, store, rid = prepared_run
+    store.update_graph(rid, {**store.graph(rid), "prep_key": "0" * 16})
     with pytest.raises(RuntimeError, match="prepared with other settings"):
-        HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None)
-    assert store.read_trust("r4", trust_name(CLONAL)) is None
+        HANDLERS["score_clonal"](_score_payload(base, rid), lambda *_: None)
+    assert store.read_trust(rid, trust_name(CLONAL)) is None
 
 
 def test_a_trust_name_that_does_not_match_the_settings_is_refused(
-    prepared_run: tuple[dict[str, object], RunStore],
+    prepared_run: tuple[dict[str, object], RunStore, str],
 ) -> None:
-    base, store = prepared_run
+    base, store, rid = prepared_run
     other = ClonalSettings(clone_key="clone_id", single_donor=True)
-    payload = {**_score_payload(base, "r4"), "trust_name": trust_name(other)}
+    payload = {**_score_payload(base, rid), "trust_name": trust_name(other)}
     with pytest.raises(ValueError, match="is not the one for its settings"):
         HANDLERS["score_clonal"](payload, lambda *_: None)
-    assert not (store.path("r4") / "trust").exists()
+    assert not (store.path(rid) / "trust").exists()
 
 
 def test_the_handler_scores_with_the_runs_own_inputs(
-    prepared_run: tuple[dict[str, object], RunStore],
+    prepared_run: tuple[dict[str, object], RunStore, str],
 ) -> None:
     from lumencell.trust.clonal import agreement_for_run
 
-    base, store = prepared_run
+    base, store, rid = prepared_run
     settings = ClonalSettings(clone_key="clone_id", donor_key="donor", strata_keys=["true_segment"])
     calls: list[tuple[str, int, int]] = []
-    assert HANDLERS["score_clonal"](_score_payload(base, "r4", settings), lambda *a: calls.append(a)) == "r4"
+    assert HANDLERS["score_clonal"](_score_payload(base, rid, settings), lambda *a: calls.append(a)) == rid
     assert calls == [("load", 0, 2), ("score", 1, 2)]
     ds = load(Path(str(base["path"])))
     pp = PrepParams()
     pca = PrepCache(ds, Path(str(base["cache_root"]))).run(pp).artifacts["pca"]
     expected = agreement_for_run(
-        store.load("r4"), ds.obs, settings, pca, pp.neighbors_pcs, store.graph("r4")["obs_keys"]
+        store.load(rid), ds.obs, settings, pca, pp.neighbors_pcs, store.graph(rid)["obs_keys"]
     )
-    trust = store.read_trust("r4", trust_name(settings))
+    trust = store.read_trust(rid, trust_name(settings))
     assert trust == expected.model_dump(mode="json")
     assert trust["settings"]["strata_keys"] == ["true_segment"]
     assert [n["null"] for n in trust["primary"]["nulls"]] == ["N1", "N2", "N3"]
 
 
-def test_the_handler_checks_the_runs_obs_keys(prepared_run: tuple[dict[str, object], RunStore]) -> None:
-    base, store = prepared_run
-    store.update_graph("r4", {**store.graph("r4"), "obs_keys": ["clone_id"]})
-    HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None)
-    trust = store.read_trust("r4", trust_name(CLONAL))
+def test_the_handler_checks_the_runs_obs_keys(prepared_run: tuple[dict[str, object], RunStore, str]) -> None:
+    base, store, rid = prepared_run
+    store.update_graph(rid, {**store.graph(rid), "obs_keys": ["clone_id"]})
+    HANDLERS["score_clonal"](_score_payload(base, rid), lambda *_: None)
+    trust = store.read_trust(rid, trust_name(CLONAL))
     assert trust is not None and trust["status"] == "refused"
     assert "'clone_id'" in trust["notes"][0]
 
 
-def test_a_stale_run_emits_only_the_load_step(prepared_run: tuple[dict[str, object], RunStore]) -> None:
-    base, store = prepared_run
-    store.update_graph("r4", {**store.graph("r4"), "store_version": 1})
+def test_a_stale_run_emits_only_the_load_step(prepared_run: tuple[dict[str, object], RunStore, str]) -> None:
+    base, store, rid = prepared_run
+    store.update_graph(rid, {**store.graph(rid), "store_version": 1})
     calls: list[tuple[str, int, int]] = []
-    HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *a: calls.append(a))
+    HANDLERS["score_clonal"](_score_payload(base, rid), lambda *a: calls.append(a))
     assert calls == [("load", 0, 2)]
 
 
-def test_an_incomplete_stale_run_is_not_scored(prepared_run: tuple[dict[str, object], RunStore]) -> None:
-    base, store = prepared_run
-    store.update_graph("r4", {**store.graph("r4"), "store_version": 1})
-    (store.path("r4") / ".complete").unlink()
-    with pytest.raises(RuntimeError, match=r"^run r4 was replaced or is incomplete; not scored$"):
-        HANDLERS["score_clonal"](_score_payload(base, "r4"), lambda *_: None)
-    assert not (store.path("r4") / "trust").exists()
+def test_an_incomplete_stale_run_is_not_scored(prepared_run: tuple[dict[str, object], RunStore, str]) -> None:
+    base, store, rid = prepared_run
+    store.update_graph(rid, {**store.graph(rid), "store_version": 1})
+    (store.path(rid) / ".complete").unlink()
+    with pytest.raises(RuntimeError, match=rf"^run {rid} was replaced or is incomplete; not scored$"):
+        HANDLERS["score_clonal"](_score_payload(base, rid), lambda *_: None)
+    assert not (store.path(rid) / "trust").exists()
 
 
 def test_settings_that_do_not_fit_the_file_write_a_failed_agreement(
-    prepared_run: tuple[dict[str, object], RunStore],
+    prepared_run: tuple[dict[str, object], RunStore, str],
 ) -> None:
-    base, store = prepared_run
+    base, store, rid = prepared_run
     settings = ClonalSettings(clone_key="no_such_column", donor_key="donor")
-    assert HANDLERS["score_clonal"](_score_payload(base, "r4", settings), lambda *_: None) == "r4"
-    trust = store.read_trust("r4", trust_name(settings))
+    assert HANDLERS["score_clonal"](_score_payload(base, rid, settings), lambda *_: None) == rid
+    trust = store.read_trust(rid, trust_name(settings))
     assert trust is not None and trust["status"] == "failed" and trust["primary"] is None
     assert "there is no obs column named 'no_such_column'" in trust["notes"][0]
 
@@ -627,22 +626,16 @@ def _stability_payload(base: dict[str, object], rid: str) -> dict[str, object]:
 
 def _prepared_job_run(
     jobs: JobManager, tmp_path: Path, n_cells: int, clonal: list[str] | None = None
-) -> tuple[dict[str, object], RunStore]:
+) -> tuple[dict[str, object], RunStore, str]:
     path = tmp_path / "d.h5ad"
     generate("bifurcation", "realistic", n_cells=n_cells, n_genes=300, seed=0).write_h5ad(path)
     cache_root = tmp_path / "cache"
     base = {"path": str(path), "prep_params": PrepParams(), "cache_root": str(cache_root)}
     assert jobs.wait(jobs.submit("prepare", "prep", base).job_id, timeout=300).state == "done"
-    infer = {
-        **base,
-        "method": "paga_dpt",
-        "root": "cluster:true_label=trunk_early",
-        "run_id": "r1",
-        "clonal_columns": clonal or [],
-    }
+    infer, rid = infer_job(base, clonal or [])
     done = jobs.wait(jobs.submit("infer", "run", infer).job_id, timeout=300)
     assert done.state == "done", done.error
-    return base, RunStore(dataset_dir(load(path).fingerprint, cache_root))
+    return base, RunStore(dataset_dir(load(path).fingerprint, cache_root)), rid
 
 
 def _stage_listing(root: Path) -> list[str]:
@@ -650,13 +643,13 @@ def _stage_listing(root: Path) -> list[str]:
 
 
 def test_stability_job_writes_its_trust_file(jobs: JobManager, tmp_path: Path) -> None:
-    base, store = _prepared_job_run(jobs, tmp_path, 400)
+    base, store, rid = _prepared_job_run(jobs, tmp_path, 400)
     before = _stage_listing(tmp_path / "cache")
     assert before
-    done = jobs.wait(jobs.submit("stability", "r1", _stability_payload(base, "r1")).job_id, timeout=900)
+    done = jobs.wait(jobs.submit("stability", rid, _stability_payload(base, rid)).job_id, timeout=900)
     assert done.state == "done", done.error
-    assert done.result_id == "r1"
-    trust = store.read_trust("r1", stability_name())
+    assert done.result_id == rid
+    trust = store.read_trust(rid, stability_name())
     assert trust is not None and trust["status"] == "ok"
     assert trust["reseeds"]["r"] == 2 and trust["subsamples"]["r"] == 3
     assert trust["n_failed"] == 0
@@ -664,8 +657,8 @@ def test_stability_job_writes_its_trust_file(jobs: JobManager, tmp_path: Path) -
 
 
 def test_a_cancelled_stability_job_leaves_nothing(jobs: JobManager, tmp_path: Path) -> None:
-    base, store = _prepared_job_run(jobs, tmp_path, 3000)
-    q_job = jobs.submit("stability", "r1", _stability_payload(base, "r1"))
+    base, store, rid = _prepared_job_run(jobs, tmp_path, 3000)
+    q_job = jobs.submit("stability", rid, _stability_payload(base, rid))
     events = jobs.subscribe(q_job.job_id)
     while True:  # the first progress event of a running job
         event = events.get(timeout=300)
@@ -674,7 +667,7 @@ def test_a_cancelled_stability_job_leaves_nothing(jobs: JobManager, tmp_path: Pa
             break
     jobs.cancel(q_job.job_id)
     assert jobs.wait(q_job.job_id, timeout=60).state == "cancelled"
-    trust = store.path("r1") / "trust"
+    trust = store.path(rid) / "trust"
     assert not list(trust.glob("stability-*.json")) and not list(trust.glob(".stability-*.tmp"))
 
 
@@ -683,15 +676,17 @@ def test_stability_has_its_own_time_limit(monkeypatch: pytest.MonkeyPatch) -> No
     assert JobManager().time_limit("stability") == 21600
 
 
-def test_a_stale_prep_raises_and_writes_nothing(prepared_run: tuple[dict[str, object], RunStore]) -> None:
-    base, store = prepared_run
-    graph = store.graph("r4")
-    store.update_graph("r4", {**graph, "prep_key": "0" * 16})
+def test_a_stale_prep_raises_and_writes_nothing(
+    prepared_run: tuple[dict[str, object], RunStore, str],
+) -> None:
+    base, store, rid = prepared_run
+    graph = store.graph(rid)
+    store.update_graph(rid, {**graph, "prep_key": "0" * 16})
     with pytest.raises(
         RuntimeError, match=r"^the run was prepared with other settings; stability not measured$"
     ):
-        HANDLERS["stability"](_stability_payload(base, "r4"), lambda *_: None)
-    assert not (store.path("r4") / "trust").exists()
+        HANDLERS["stability"](_stability_payload(base, rid), lambda *_: None)
+    assert not (store.path(rid) / "trust").exists()
 
 
 @pytest.mark.parametrize(
@@ -704,25 +699,25 @@ def test_a_stale_prep_raises_and_writes_nothing(prepared_run: tuple[dict[str, ob
     ],
 )
 def test_a_run_missing_what_stability_needs_is_not_available(
-    prepared_run: tuple[dict[str, object], RunStore], edit: dict[str, object], reason: str
+    prepared_run: tuple[dict[str, object], RunStore, str], edit: dict[str, object], reason: str
 ) -> None:
-    base, store = prepared_run
-    graph = store.graph("r4")
+    base, store, rid = prepared_run
+    graph = store.graph(rid)
     graph.pop("terminals", None)
     graph = {k: v for k, v in {**graph, **edit}.items() if v is not None}
-    store.update_graph("r4", graph)
-    HANDLERS["stability"](_stability_payload(base, "r4"), lambda *_: None)
-    trust = store.read_trust("r4", stability_name())
+    store.update_graph(rid, graph)
+    HANDLERS["stability"](_stability_payload(base, rid), lambda *_: None)
+    trust = store.read_trust(rid, stability_name())
     assert trust is not None and trust["status"] == "not_available"
     assert reason in trust["notes"][0]
 
 
 def test_stability_replays_the_runs_own_clone_columns(
-    prepared_run: tuple[dict[str, object], RunStore], monkeypatch: pytest.MonkeyPatch
+    prepared_run: tuple[dict[str, object], RunStore, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from lumencell.engine import stability as engine_stability
 
-    base, _ = prepared_run
+    base, _, rid = prepared_run
     seen: list[object] = []
     real = engine_stability.run_stability
 
@@ -731,7 +726,7 @@ def test_stability_replays_the_runs_own_clone_columns(
         return real(*args, **kw)  # type: ignore[arg-type]
 
     monkeypatch.setattr(engine_stability, "run_stability", spy)
-    HANDLERS["stability"](_stability_payload(base, "r4"), lambda *_: None)
+    HANDLERS["stability"](_stability_payload(base, rid), lambda *_: None)
     assert seen and seen[0].clonal_columns == ("clone_id", "donor")  # type: ignore[attr-defined]
     assert seen[0].terminals is None  # type: ignore[attr-defined]
 
@@ -744,53 +739,53 @@ def test_an_incomplete_stability_payload_names_every_missing_key() -> None:
 
 
 def test_stability_replays_the_runs_own_label_key(
-    prepared_run: tuple[dict[str, object], RunStore], monkeypatch: pytest.MonkeyPatch
+    prepared_run: tuple[dict[str, object], RunStore, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from lumencell.engine import stability as engine_stability
 
-    base, store = prepared_run
-    store.update_graph("r4", {**store.graph("r4"), "label_key": "cell_type"})
+    base, store, rid = prepared_run
+    store.update_graph(rid, {**store.graph(rid), "label_key": "cell_type"})
     seen: list[object] = []
-    real = engine_stability.run_stability
+    real = engine_stability.run_method
 
     def spy(*args: object, **kw: object) -> object:
-        seen.append(args[4])
+        seen.append(kw.get("label_key"))
         return real(*args, **kw)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(engine_stability, "run_stability", spy)
-    HANDLERS["stability"](_stability_payload(base, "r4"), lambda *_: None)
-    assert seen and seen[0].label_key == "cell_type"  # type: ignore[attr-defined]
+    monkeypatch.setattr(engine_stability, "run_method", spy)
+    HANDLERS["stability"](_stability_payload(base, rid), lambda *_: None)
+    assert seen and set(seen) == {"cell_type"}  # every replicate, from the record
 
 
 def test_a_wrong_trust_name_raises_and_writes_nothing(
-    prepared_run: tuple[dict[str, object], RunStore],
+    prepared_run: tuple[dict[str, object], RunStore, str],
 ) -> None:
-    base, store = prepared_run
-    payload = {**_stability_payload(base, "r4"), "trust_name": "stability-0000000000000000"}
+    base, store, rid = prepared_run
+    payload = {**_stability_payload(base, rid), "trust_name": "stability-0000000000000000"}
     with pytest.raises(ValueError, match="nothing was written"):
         HANDLERS["stability"](payload, lambda *_: None)
-    assert not (store.path("r4") / "trust").exists()
+    assert not (store.path(rid) / "trust").exists()
 
 
-def test_an_incomplete_run_is_not_measured(prepared_run: tuple[dict[str, object], RunStore]) -> None:
-    base, store = prepared_run
-    (store.path("r4") / ".complete").unlink()
+def test_an_incomplete_run_is_not_measured(prepared_run: tuple[dict[str, object], RunStore, str]) -> None:
+    base, store, rid = prepared_run
+    (store.path(rid) / ".complete").unlink()
     with pytest.raises(RuntimeError, match="replaced or is incomplete"):
-        HANDLERS["stability"](_stability_payload(base, "r4"), lambda *_: None)
-    assert not (store.path("r4") / "trust").exists()
+        HANDLERS["stability"](_stability_payload(base, rid), lambda *_: None)
+    assert not (store.path(rid) / "trust").exists()
 
 
 def test_user_terminals_are_replayed_in_order(
-    prepared_run: tuple[dict[str, object], RunStore], monkeypatch: pytest.MonkeyPatch
+    prepared_run: tuple[dict[str, object], RunStore, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from lumencell.engine import stability as engine_stability
 
-    base, store = prepared_run
-    store.update_graph("r4", {**store.graph("r4"), "terminals": ["5", "3"], "terminals_source": "user"})
+    base, store, rid = prepared_run
+    store.update_graph(rid, {**store.graph(rid), "terminals": ["5", "3"], "terminals_source": "user"})
     seen: list[object] = []
     monkeypatch.setattr(engine_stability, "run_stability", lambda *a, **k: seen.append(a[4]) or 1 / 0)
     with pytest.raises(ZeroDivisionError):
-        HANDLERS["stability"](_stability_payload(base, "r4"), lambda *_: None)
+        HANDLERS["stability"](_stability_payload(base, rid), lambda *_: None)
     assert seen[0].terminals == ["5", "3"]  # type: ignore[attr-defined]
 
 
@@ -799,15 +794,17 @@ def test_user_terminals_are_replayed_in_order(
     [{"store_version": 1}, {"terminals_source": "user"}, {"clonal_columns": None}, {"label_key": None}],
 )
 def test_run_stability_is_not_called_for_a_run_that_is_not_available(
-    prepared_run: tuple[dict[str, object], RunStore], monkeypatch: pytest.MonkeyPatch, edit: dict[str, object]
+    prepared_run: tuple[dict[str, object], RunStore, str],
+    monkeypatch: pytest.MonkeyPatch,
+    edit: dict[str, object],
 ) -> None:
     from lumencell.engine import stability as engine_stability
 
-    base, store = prepared_run
-    graph = store.graph("r4")
+    base, store, rid = prepared_run
+    graph = store.graph(rid)
     graph.pop("terminals", None)
-    store.update_graph("r4", {k: v for k, v in {**graph, **edit}.items() if v is not None})
+    store.update_graph(rid, {k: v for k, v in {**graph, **edit}.items() if v is not None})
     calls: list[object] = []
     monkeypatch.setattr(engine_stability, "run_stability", lambda *a, **k: calls.append(a))
-    HANDLERS["stability"](_stability_payload(base, "r4"), lambda *_: None)
+    HANDLERS["stability"](_stability_payload(base, rid), lambda *_: None)
     assert not calls

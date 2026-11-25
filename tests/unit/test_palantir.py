@@ -10,7 +10,7 @@ from lumencell.engine.methods.palantir_adapter import INSTALL_HINT, Palantir
 from lumencell.engine.registry import run_method
 from lumencell.engine.roots import ClusterRoot
 from lumencell.engine.schema import TrajectoryResult
-from lumencell.engine.store import RunStore
+from lumencell.engine.store import RunSpec, RunStore
 from tests.conftest import Prepared, prepare
 
 pytest.importorskip("palantir")
@@ -75,7 +75,7 @@ def test_linear_trajectory_falls_back_to_one_terminal(tmp_path: Path) -> None:
 
 def test_fates_and_extras_are_stored(tmp_path: Path, result: TrajectoryResult) -> None:
     store = RunStore(tmp_path)
-    store.save("p", result)
+    store.save("p", result, RunSpec("palantir", {}, "cluster:true_label=trunk_early", None, ()), "k")
     arrays = binary.decode(store.cells_bytes("p")).arrays
     assert arrays["fate"].shape == (len(result.lineages), result.n_obs)
     assert "extras.entropy" in arrays

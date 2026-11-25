@@ -24,7 +24,7 @@ from lumencell.engine.projection import project
 from lumencell.engine.registry import get_method
 from lumencell.engine.roots import ClusterRoot, RootError, RootSpec, format_root, parse_root
 from lumencell.engine.schema import ResolvedRoot, TrajectoryResult
-from lumencell.engine.store import STORE_VERSION, RunStore, run_id
+from lumencell.engine.store import STORE_VERSION, RunSpec, RunStore, run_id
 from lumencell.engine.trends import gene_trends, temporal_heatmap
 from lumencell.jobs.manager import ACTIVE, Job, JobManager
 from lumencell.trust.cell_cycle import cell_cycle_check
@@ -146,20 +146,11 @@ class Runs:
             raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "invalid_root", str(exc)) from exc
         self._refuse_scoring_only(spec, params)
         self._resolve(spec)  # fail fast on a bad root
-        columns, label_key = self.view.clonal_snapshot()  # one read for the run id and the payload
-        rid = run_id(req.method, params, spec_text, req.terminals, self.view.prep_key, columns)
+        run = RunSpec(req.method, params, spec_text, req.terminals, tuple(self.view.clonal_columns))
+        rid = run_id(run, self.view.prep_key)
         if self.store.exists(rid):
             return models.RunCreated(run_id=rid, job_id=None, state="done"), False
-        payload = {
-            **self._job_payload(),
-            "method": req.method,
-            "root": spec_text,
-            "terminals": req.terminals,
-            "params": params,
-            "run_id": rid,
-            "label_key": label_key,
-            "clonal_columns": list(columns),
-        }
+        payload = {**self._job_payload(), "spec": run.to_dict(), "run_id": rid}
         job = self.jobs.submit("infer", f"infer:{rid}", payload)
         state = "running" if job.state == "running" else "queued"
         return models.RunCreated(run_id=rid, job_id=job.job_id, state=state), True
@@ -209,7 +200,7 @@ class Runs:
             runs.append(
                 models.RunSummary(
                     run_id=rid,
-                    method=job.payload["method"],
+                    method=job.payload["spec"]["method"],
                     state=job.state,
                     created_at=datetime.fromtimestamp(job.created).astimezone(),
                     error=job.error,

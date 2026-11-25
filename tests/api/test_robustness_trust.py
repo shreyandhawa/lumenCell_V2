@@ -34,6 +34,7 @@ from lumencell.jobs.worker import HANDLERS
 from lumencell.prep.cache import PrepCache
 from lumencell.prep.stages import PrepParams
 from lumencell.trust.stability import not_measured, stability_hash, stability_name
+from tests.conftest import infer_job
 
 ROOT = {"kind": "cluster", "key": "true_label", "value": "trunk_early"}
 CLONES = {"clone_key": "clone_id", "donor_key": "donor"}
@@ -90,18 +91,11 @@ def _client(session: Session) -> TestClient:
     return TestClient(create_app(session), raise_server_exceptions=False)
 
 
-def _save_run(session: Session, rid: str) -> None:
+def _save_run(session: Session) -> str:
     """Compute and save a run in this process, as `lumencell run` does; no job is involved."""
-    payload = {
-        **session._job_payload(),
-        "method": "paga_dpt",
-        "root": "cluster:true_label=trunk_early",
-        "params": {},
-        "run_id": rid,
-        "label_key": session.view.label_key,
-        "clonal_columns": list(session.view.clonal_columns),
-    }
+    payload, rid = infer_job(session._job_payload(), session.view.clonal_columns)
     assert HANDLERS["infer"](payload, lambda *_: None) == rid
+    return rid
 
 
 def _measure(session: Session, rid: str) -> None:
@@ -171,9 +165,9 @@ def test_the_served_verdict_is_capped_while_the_verification_has_failed(
 ) -> None:
     """Unpatched: the recorded verification failed, so nothing is served as supported."""
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
-    _measure(session, "r1")
-    trust = _trust(_client(session), "r1")
+    r1 = _save_run(session)
+    _measure(session, r1)
+    trust = _trust(_client(session), r1)
     assert trust["stability"]["status"] == "ok"
     support = trust["tree_support"]
     assert support["level"] in ("provisional", "not_supported")
@@ -186,8 +180,8 @@ def test_foreground_jobs_overtake_a_queued_stability_job(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
-    (stability,) = session.runs.submit_trust_jobs("r1")
+    r1 = _save_run(session)
+    (stability,) = session.runs.submit_trust_jobs(r1)
     assert stability.kind == "stability"
     prepare = session.start_prep()
     with jobs._lock:
@@ -199,20 +193,20 @@ def test_a_restart_heals_a_missing_stability_job(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:
     first = _session(prepared, cache_root, JobManager(), tmp_path)  # never started; its jobs are lost
-    _save_run(first, "r1")
+    r1 = _save_run(first)
     session = _session(prepared, cache_root, jobs, tmp_path)
     client = _client(session)
-    trust = _trust(client, "r1")
+    trust = _trust(client, r1)
     assert trust["stability"]["status"] == "pending"
     assert trust["tree_support"]["level"] != "supported"
     (job,) = _stability_jobs(session)
-    assert job.payload == {**session._job_payload(), "run_id": "r1", "trust_name": stability_name()}
-    assert _trust(client, "r1")["stability"]["status"] == "pending"
+    assert job.payload == {**session._job_payload(), "run_id": r1, "trust_name": stability_name()}
+    assert _trust(client, r1)["stability"]["status"] == "pending"
     assert len(_stability_jobs(session)) == 1
     jobs.start()
     assert jobs.wait(job.job_id, timeout=WAIT).state == "done", job.error
-    assert _trust(client, "r1")["stability"]["status"] == "ok"
-    assert _trust(client, "r1")["stability"]["status"] == "ok"
+    assert _trust(client, r1)["stability"]["status"] == "ok"
+    assert _trust(client, r1)["stability"]["status"] == "ok"
     assert len(_stability_jobs(session)) == 1
 
 
@@ -227,15 +221,15 @@ def test_a_cancelled_stability_keeps_the_verdict_provisional_and_is_not_resubmit
     """Review Focus 4. With the cap lifted and C3/C4 given taus, so stability decides the level."""
     _thresholds(monkeypatch, tau_lin=0.5, tau_pt=0.5)
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     client = _client(session)
-    assert _trust(client, "r1")["stability"]["status"] == "pending"
+    assert _trust(client, r1)["stability"]["status"] == "pending"
     (job,) = _stability_jobs(session)
     r = client.delete(f"/api/v1/jobs/{job.job_id}")
     assert r.status_code == 200, r.text
     assert r.json()["kind"] == "stability" and r.json()["state"] == "cancelled"
     for _ in range(2):
-        trust = _trust(client, "r1")
+        trust = _trust(client, r1)
         assert trust["stability"]["status"] == "failed"
         assert trust["stability"]["notes"] == ["cancelled"]
         support = trust["tree_support"]
@@ -250,12 +244,12 @@ def test_a_cancelled_stability_is_never_served_as_supported(
 ) -> None:
     """Review Focus 4 on the served defaults: no tau and the cap still in place."""
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     client = _client(session)
-    _trust(client, "r1")
+    _trust(client, r1)
     (job,) = _stability_jobs(session)
     jobs.cancel(job.job_id)
-    trust = _trust(client, "r1")
+    trust = _trust(client, r1)
     assert trust["stability"]["status"] == "failed"
     assert trust["tree_support"]["level"] in ("provisional", "not_supported")
     assert len(_stability_jobs(session)) == 1
@@ -265,19 +259,19 @@ def test_a_failed_stability_job_is_reported_with_its_error_and_not_resubmitted(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     client = _client(session)
-    _trust(client, "r1")
+    _trust(client, r1)
     (job,) = _stability_jobs(session)
-    (session.runs.store.path("r1") / ".complete").unlink()  # the handler then refuses the run
+    (session.runs.store.path(r1) / ".complete").unlink()  # the handler then refuses the run
     jobs.start()
     assert jobs.wait(job.job_id, timeout=WAIT).state == "failed"
-    session.runs.store.path("r1").joinpath(".complete").touch()
+    session.runs.store.path(r1).joinpath(".complete").touch()
     for _ in range(2):
-        stability = _trust(client, "r1")["stability"]
+        stability = _trust(client, r1)["stability"]
         assert stability["status"] == "failed"
         assert stability["notes"] == [job.error]
-        assert "run r1 was replaced or is incomplete" in stability["notes"][0]
+        assert f"run {r1} was replaced or is incomplete" in stability["notes"][0]
     assert len(_stability_jobs(session)) == 1
 
 
@@ -289,12 +283,12 @@ def test_a_stability_file_that_does_not_validate_counts_as_missing(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     store = session.runs.store
-    path = str(store.trust_path("r1", stability_name()))
-    store.write_trust("r1", stability_name(), {"status": "excellent"})
+    path = str(store.trust_path(r1, stability_name()))
+    store.write_trust(r1, stability_name(), {"status": "excellent"})
     capsys.readouterr()
-    assert _trust(_client(session), "r1")["stability"]["status"] == "pending"
+    assert _trust(_client(session), r1)["stability"]["status"] == "pending"
     err = capsys.readouterr().err.strip().splitlines()
     assert len(err) == 1 and path in err[0]
     assert len(_stability_jobs(session)) == 1
@@ -304,11 +298,11 @@ def test_legacy_runs_get_no_stability_job(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     store = session.runs.store
-    store.update_graph("r1", {**store.graph("r1"), "store_version": 1})
+    store.update_graph(r1, {**store.graph(r1), "store_version": 1})
     # The store does not serve such a run at all; the lookup itself still refuses it.
-    stability = session.runs.stability("r1", store.graph("r1"))
+    stability = session.runs.stability(r1, store.graph(r1))
     assert stability.status == "not_available"
     assert stability.notes == ["made before inference isolation; run it again"]
     assert _stability_jobs(session) == []
@@ -339,13 +333,13 @@ def test_a_cycling_lineage_is_warned_on_the_run(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     client = _client(session)
-    trust = _trust(client, "r1")
+    trust = _trust(client, r1)
     assert trust["cell_cycle"]["status"] == "not_scored" and trust["cell_cycle"]["warnings"] == []
     prep = session.view.loaded_prep()
     assert prep is not None
-    primary = session.runs._load("r1").primary_lineage
+    primary = session.runs._load(r1).primary_lineage
     phase = np.full(len(primary), "G1", dtype="<U8")
     phase[primary == 0] = "S"
     prep.artifacts["cc_phase"] = phase
@@ -356,7 +350,7 @@ def test_a_cycling_lineage_is_warned_on_the_run(
         "species": "human",
         "source": "test",
     }
-    run = client.get("/api/v1/trajectories/r1").json()
+    run = client.get(f"/api/v1/trajectories/{r1}").json()
     cycling = run["trust"]["cell_cycle"]
     assert cycling["status"] == "scored"
     (name,) = [lin["name"] for lin in cycling["lineages"] if lin["flagged"]]
@@ -365,8 +359,8 @@ def test_a_cycling_lineage_is_warned_on_the_run(
     assert codes == ["lineage_mostly_cycling"]
     assert [w for w in run["warnings"] if w["code"] == "lineage_mostly_cycling"] == cycling["warnings"]
     # a rename is what the warning says
-    client.patch("/api/v1/trajectories/r1/lineages/0", json={"name": "Renamed"})
-    run = client.get("/api/v1/trajectories/r1").json()
+    client.patch(f"/api/v1/trajectories/{r1}/lineages/0", json={"name": "Renamed"})
+    run = client.get(f"/api/v1/trajectories/{r1}").json()
     assert "Lineage Renamed is mostly cycling" in run["trust"]["cell_cycle"]["warnings"][0]["message"]
 
 
@@ -376,10 +370,10 @@ def test_clonal_support_enters_the_verdict(
     session = _session(prepared, cache_root, jobs, tmp_path)
     settings = ClonalSettings(**CLONES)
     session.set_clonal(settings)
-    _save_run(session, "r1")
-    _measure(session, "r1")
-    assert HANDLERS["score_clonal"](session.runs._clonal_payload("r1", settings), lambda *_: None) == "r1"
-    trust = _trust(_client(session), "r1")
+    r1 = _save_run(session)
+    _measure(session, r1)
+    assert HANDLERS["score_clonal"](session.runs._clonal_payload(r1, settings), lambda *_: None) == r1
+    trust = _trust(_client(session), r1)
     assert trust["stability"]["status"] == "ok"
     assert trust["clonal"]["status"] not in ("pending", "not_configured")
     assert _check(trust, "C5")["state"] not in ("not_applicable", "pending")
@@ -394,16 +388,16 @@ def test_a_dataset_without_paga_edges_is_not_supported(
 ) -> None:
     """Review Focus 5. C2 is excluded under the calibrated (None) tau, so it is given one here."""
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     prep = session.view.loaded_prep()
     assert prep is not None
     prep.artifacts["paga_connectivities"] = sparse.csr_matrix((1, 1))
     prep.artifacts["paga_tree"] = sparse.csr_matrix((1, 1))
     client = _client(session)
-    c2 = _check(_trust(client, "r1"), "C2")
+    c2 = _check(_trust(client, r1), "C2")
     assert c2["state"] == "excluded" and c2["value"] is None  # the served defaults
     _thresholds(monkeypatch, tau_tree=0.5)
-    trust = _trust(client, "r1")
+    trust = _trust(client, r1)
     assert trust["tree_support"]["level"] == "not_supported"
     c2 = _check(trust, "C2")
     assert c2["state"] == "fail" and c2["value"] is None and c2["reason"]
@@ -417,12 +411,12 @@ def test_a_cancelled_stability_is_named_in_the_reasons_under_the_served_threshol
 ) -> None:
     """R10, unpatched: C3 and C4 are left out, and their reasons still say stability was cancelled."""
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     client = _client(session)
-    _trust(client, "r1")
+    _trust(client, r1)
     (job,) = _stability_jobs(session)
     jobs.cancel(job.job_id)
-    trust = _trust(client, "r1")
+    trust = _trust(client, r1)
     support = trust["tree_support"]
     assert support["level"] == "provisional"
     assert _check(trust, "C3")["state"] == "excluded"
@@ -433,11 +427,11 @@ def test_submit_stability_skips_when_the_file_exists(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     stored = not_measured("failed", "x").model_dump(mode="json")
     stored["status"] = "ok"
-    session.runs.store.write_trust("r1", stability_name(), stored)
-    assert [j for j in session.runs.submit_trust_jobs("r1") if j.kind == "stability"] == []
+    session.runs.store.write_trust(r1, stability_name(), stored)
+    assert [j for j in session.runs.submit_trust_jobs(r1) if j.kind == "stability"] == []
     assert _stability_jobs(session) == []
 
 
@@ -454,10 +448,10 @@ def test_tree_likeness_is_computed_once_per_prep(
     real = dv.tree_likeness
     monkeypatch.setattr(dv, "tree_likeness", lambda *a: calls.append(1) or real(*a))
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     client = _client(session)
-    _trust(client, "r1")
-    _trust(client, "r1")
+    _trust(client, r1)
+    _trust(client, r1)
     assert len(calls) == 1
     view = session.view
     prep = view.loaded_prep()
@@ -478,21 +472,21 @@ def test_an_unreadable_cell_file_is_reported_not_hidden(
     """Review of #46 (ruling R20): a missing cell file gives not_scored with a note, never the
     'prep is not loaded' null; any other error still propagates."""
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     assert session.view.loaded_prep() is not None
 
     def gone(_rid: str) -> None:
         raise FileNotFoundError("cells.lcb")
 
     monkeypatch.setattr(session.runs, "_load", gone)
-    check = session.runs.cell_cycle("r1", ["A", "B"])
+    check = session.runs.cell_cycle(r1, ["A", "B"])
     assert check is not None and check.status == "not_scored"
     assert check.note == "the run's cell file could not be read (FileNotFoundError)"
-    assert "cell-cycle check skipped for run r1: FileNotFoundError" in capsys.readouterr().err
+    assert f"cell-cycle check skipped for run {r1}: FileNotFoundError" in capsys.readouterr().err
 
     def bad(_rid: str) -> None:
         raise ValueError("corrupt")
 
     monkeypatch.setattr(session.runs, "_load", bad)
     with pytest.raises(ValueError, match="corrupt"):
-        session.runs.cell_cycle("r1", ["A", "B"])
+        session.runs.cell_cycle(r1, ["A", "B"])

@@ -401,7 +401,6 @@ def _runs_without_a_server(
         label_key=label_key,
         ds=SimpleNamespace(obs=pd.DataFrame(columns=columns)),
         clonal_columns=clonal_columns,
-        clonal_snapshot=lambda: (clonal_columns, label_key),
         ctx=lambda: SimpleNamespace(scoring_only=scoring_only_columns(columns, clonal_columns)),
     )
     runs = Runs(
@@ -424,12 +423,13 @@ def test_a_root_the_plain_text_cannot_carry_reaches_the_worker_unchanged() -> No
     root = models.ClusterRoot(kind="cluster", key="batch=1", value="A ")
     runs.create_run(models.TrajectoryRequest(method="paga_dpt", root=root))  # type: ignore[attr-defined]
     assert resolved == [ClusterRoot("batch=1", "A ")]
-    assert parse_root(str(submitted[0]["root"])) == ClusterRoot("batch=1", "A ")
-    assert submitted[0]["clonal_columns"] == []
+    spec = submitted[0]["spec"]
+    assert parse_root(spec["root"]) == ClusterRoot("batch=1", "A ")  # type: ignore[index]
+    assert spec["clonal_columns"] == []  # type: ignore[index]
 
     named, sent, _ = _runs_without_a_server(["batch=1", "donor"], ("donor",))
     named.create_run(models.TrajectoryRequest(method="paga_dpt", root=root))  # type: ignore[attr-defined]
-    assert sent[0]["clonal_columns"] == ["donor"], "the view's clonal columns reach the worker"
+    assert sent[0]["spec"]["clonal_columns"] == ["donor"], "the view's clonal columns reach the worker"  # type: ignore[index]
 
 
 # ---- clone columns are scoring-only ------------------------------------------------------

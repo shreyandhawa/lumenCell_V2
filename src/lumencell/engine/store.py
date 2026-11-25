@@ -20,8 +20,7 @@ import re
 import shutil
 import sys
 import tempfile
-from collections.abc import Sequence
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -57,27 +56,82 @@ def _refuse_constant(name: str) -> None:
     raise ValueError(f"{name} is not JSON")
 
 
-def run_id(
-    method: str,
-    params: dict[str, Any],
-    root_spec: str,
-    terminals: list[str] | None,
-    prep_key: str,
-    clonal_columns: Sequence[str] = (),
-) -> str:
+SPEC_KEYS = ("method", "params", "root", "terminals", "clonal_columns")
+
+
+@dataclass(frozen=True)
+class RunSpec:
+    """What a run was asked for. With the prep key, it is everything the run id hashes.
+
+    The id, the job payload, the run record and a stability replay all come from one spec, so
+    the clone columns a run is hashed with are the ones kept out of inference and recorded.
+    No field has a default: a spec that forgot the clone columns would let methods see them.
+    """
+
+    method: str
+    params: dict[str, Any]  # as the method's Params model dumps them, defaults filled in
+    root: str  # the root as text, e.g. "cluster:clusters=Ductal"
+    terminals: list[str] | None
+    clonal_columns: tuple[str, ...]  # scoring-only: kept out of inference
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**asdict(self), "clonal_columns": list(self.clonal_columns)}
+
+    @classmethod
+    def from_dict(cls, data: object) -> "RunSpec":
+        """A spec from a job payload, every field checked before any work."""
+        if not isinstance(data, dict):
+            raise ValueError(f"the run spec must be an object, not {data!r}")
+        missing = [k for k in SPEC_KEYS if k not in data]
+        if missing:
+            raise ValueError(
+                f"the run spec has no {', '.join(map(repr, missing))}; it must name the columns that "
+                "are only for scoring (an empty list when there are none)"
+            )
+        columns, terminals = data["clonal_columns"], data["terminals"]
+        if not isinstance(columns, list | tuple) or not all(isinstance(c, str) for c in columns):
+            # A bare string would otherwise be read as one column per character.
+            raise ValueError(
+                f"the run spec's 'clonal_columns' must be a list of column names, not {columns!r}"
+            )
+        if terminals is not None and (
+            not isinstance(terminals, list) or not all(isinstance(t, str) for t in terminals)
+        ):
+            raise ValueError(
+                f"the run spec's 'terminals' must be a list of labels or null, not {terminals!r}"
+            )
+        if not isinstance(data["method"], str) or not isinstance(data["root"], str):
+            raise ValueError("the run spec's 'method' and 'root' must be text")
+        if not isinstance(data["params"], dict):
+            raise ValueError(f"the run spec's 'params' must be an object, not {data['params']!r}")
+        return cls(data["method"], data["params"], data["root"], terminals, tuple(columns))
+
+    @classmethod
+    def from_record(cls, graph: dict[str, Any]) -> "RunSpec":
+        """The spec a stored run was made from, read back from its ``result.json``."""
+        return cls(
+            graph["method"],
+            graph["params"],
+            graph["root"]["spec"],
+            graph.get("terminals"),
+            tuple(graph["clonal_columns"]),
+        )
+
+
+def run_id(spec: RunSpec, prep_key: str) -> str:
     payload: dict[str, Any] = {
         "store": STORE_VERSION,
         "lumencell": __version__,
-        "method": method,
-        "params": params,
-        "root": root_spec,
-        "terminals": sorted(terminals) if terminals else None,
+        "method": spec.method,
+        "params": spec.params,
+        "root": spec.root,
+        "terminals": sorted(spec.terminals) if spec.terminals else None,
         "prep": prep_key,
     }
     # Naming clone or donor columns can change the detected label key, and with it the lineage
     # names, so the run depends on them. Left out when empty: every earlier run id is unchanged.
-    if clonal_columns:
-        payload["clonal_columns"] = sorted(clonal_columns)
+    if spec.clonal_columns:
+        payload["clonal_columns"] = sorted(spec.clonal_columns)
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
 
 
@@ -101,9 +155,8 @@ def _graph_json(
     result: TrajectoryResult,
     rid: str,
     created_at: str,
-    terminals: list[str] | None,
-    prep_key: str | None,
-    clonal_columns: Sequence[str],
+    spec: RunSpec,
+    prep_key: str,
 ) -> dict[str, Any]:
     root = asdict(result.root)
     return {
@@ -111,12 +164,12 @@ def _graph_json(
         "run_id": rid,
         "created_at": created_at,
         # Provenance: whether the terminals were named by the user or found by the method.
-        "terminals_source": "user" if terminals else "auto",
+        "terminals_source": "user" if spec.terminals else "auto",
         # Provenance: the terminals exactly as the run was asked for them (None when not asked),
         # and the scoring-only columns it ran with. Stability replays both from here.
-        "terminals": terminals or None,
+        "terminals": spec.terminals or None,
         "label_key": result.label_key,
-        "clonal_columns": sorted(clonal_columns),
+        "clonal_columns": sorted(spec.clonal_columns),
         # Provenance: the prep the run was computed on, how clone columns were kept out of
         # inference, and which obs columns steered it.
         "prep_key": prep_key,
@@ -160,24 +213,15 @@ class RunStore:
         except (OSError, ValueError, AttributeError):
             return False
 
-    def save(
-        self,
-        rid: str,
-        result: TrajectoryResult,
-        terminals: list[str] | None = None,
-        prep_key: str | None = None,
-        clonal_columns: Sequence[str] = (),
-    ) -> None:
-        """Save a run. ``terminals`` are the terminal labels the run was asked for, if any;
-        ``prep_key`` is the prep cache key the run was computed on;
-        ``clonal_columns`` are the scoring-only columns it ran with."""
+    def save(self, rid: str, result: TrajectoryResult, spec: RunSpec, prep_key: str) -> None:
+        """Save a run made from ``spec`` on the prep ``prep_key``, recording both."""
         self.dir.mkdir(parents=True, exist_ok=True)
         final = self.path(rid)
         tmp = Path(tempfile.mkdtemp(prefix=f".{rid}-", dir=self.dir))
         try:
             created = datetime.now(UTC).isoformat(timespec="seconds")
             (tmp / "result.json").write_text(
-                json.dumps(_graph_json(result, rid, created, terminals, prep_key, clonal_columns), indent=2),
+                json.dumps(_graph_json(result, rid, created, spec, prep_key), indent=2),
                 encoding="utf-8",
             )
             (tmp / "cells.lcb").write_bytes(cells_payload(result))

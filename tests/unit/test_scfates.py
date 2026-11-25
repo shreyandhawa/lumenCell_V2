@@ -11,7 +11,7 @@ from lumencell.engine.projection import project
 from lumencell.engine.registry import run_method
 from lumencell.engine.roots import ClusterRoot
 from lumencell.engine.schema import TrajectoryResult
-from lumencell.engine.store import RunStore
+from lumencell.engine.store import RunSpec, RunStore
 from tests.conftest import Prepared
 
 pytest.importorskip("scFates")
@@ -52,7 +52,7 @@ def test_drawn_curve_is_the_fitted_tree(result: TrajectoryResult, bifurcation: P
 
 def test_fitted_tree_survives_the_store(tmp_path: Path, result: TrajectoryResult) -> None:
     store = RunStore(tmp_path)
-    store.save("s", result)
+    store.save("s", result, RunSpec("scfates_ppt", {}, "cluster:true_label=trunk_early", None, ()), "k")
     back = store.load("s")
     back.validate()
     assert back.curve_paths == result.curve_paths

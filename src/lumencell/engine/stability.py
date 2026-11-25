@@ -38,6 +38,7 @@ from lumencell.engine.methods.base import ProgressFn, no_progress
 from lumencell.engine.registry import get_method, run_method
 from lumencell.engine.roots import CellRoot
 from lumencell.engine.schema import TrajectoryResult
+from lumencell.engine.store import RunSpec
 from lumencell.prep.pipeline import PrepResult
 from lumencell.prep.stages import STAGE_BY_NAME, PrepParams, StageRecord, run_stage
 from lumencell.trust.constants import (
@@ -68,17 +69,6 @@ class StabilityConfig:
     fraction: float = SUBSAMPLE_FRACTION
     seed: int = STABILITY_SEED
     match_jaccard: float = MATCH_JACCARD
-
-
-@dataclass(frozen=True)
-class RunSpec:
-    """How the reference run was made: method, its params, terminals as sent, label column."""
-
-    method: str
-    params: dict[str, Any]
-    terminals: list[str] | None
-    label_key: str | None
-    clonal_columns: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -381,7 +371,7 @@ def _replicate(
             CellRoot(reference.root.obs_name),
             terminals,
             method_params,
-            label_key=spec.label_key,
+            label_key=reference.label_key,  # the column the run was named in, not one re-detected
         )
         if plan.kind == "subsample":
             result = pad_result(result, cells, n)

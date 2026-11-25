@@ -19,7 +19,7 @@ from lumencell.api.session import Session
 from lumencell.bench.synth import generate
 from lumencell.bench.synth_clones import DEFAULT_LAYER, add_clones
 from lumencell.data.loader import load
-from lumencell.engine.store import run_id
+from lumencell.engine.store import RunSpec, run_id
 from lumencell.jobs.manager import JobManager
 from lumencell.prep.cache import PrepCache
 from lumencell.prep.stages import PrepParams
@@ -234,11 +234,22 @@ def test_run_id_depends_on_saved_settings(client: TestClient, session: Session) 
     assert created() == before, "clearing the settings gives the old id back"
 
 
+def _id(
+    method: str,
+    params: dict[str, Any],
+    root: str,
+    terminals: None,
+    key: str,
+    clonal_columns: tuple[str, ...] = (),
+) -> str:
+    return run_id(RunSpec(method, params, root, terminals, clonal_columns), key)
+
+
 def test_run_id_unchanged_without_columns() -> None:
     args = ("paga_dpt", {"a": 1}, "cluster:k=v", None, "prepkey")
-    assert run_id(*args) == run_id(*args, clonal_columns=())
-    assert run_id(*args, clonal_columns=("b", "a")) == run_id(*args, clonal_columns=("a", "b"))
-    assert run_id(*args, clonal_columns=("a",)) != run_id(*args)
+    assert _id(*args) == _id(*args, clonal_columns=())
+    assert _id(*args, clonal_columns=("b", "a")) == _id(*args, clonal_columns=("a", "b"))
+    assert _id(*args, clonal_columns=("a",)) != _id(*args)
 
 
 # ---- fix round 1 -----------------------------------------------------------------------
@@ -400,9 +411,9 @@ def test_saved_settings_that_fail_the_check_are_ignored(
 
 def test_run_id_hashes_every_column_in_sorted_order() -> None:
     args = ("paga_dpt", {"a": 1}, "cluster:k=v", None, "prepkey")
-    assert run_id(*args, ("a", "b")) != run_id(*args, ("a", "c"))
-    assert run_id(*args, ("a", "b")) != run_id(*args, ("a",))
-    assert run_id(*args, ("b", "a")) == run_id(*args, ("a", "b"))
+    assert _id(*args, ("a", "b")) != _id(*args, ("a", "c"))
+    assert _id(*args, ("a", "b")) != _id(*args, ("a",))
+    assert _id(*args, ("b", "a")) == _id(*args, ("a", "b"))
 
 
 def test_run_id_without_columns_is_the_id_from_before_this_task(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -411,8 +422,8 @@ def test_run_id_without_columns_is_the_id_from_before_this_task(monkeypatch: pyt
     monkeypatch.setattr("lumencell.engine.store.__version__", "0.1.0.dev0")
     monkeypatch.setattr("lumencell.engine.store.STORE_VERSION", 2)
     args = ("paga_dpt", {"a": 1}, "cluster:k=v", None, "prepkey")
-    assert run_id(*args) == "443cbd44c784478d"
-    assert run_id(*args, ()) == "443cbd44c784478d"
+    assert _id(*args) == "443cbd44c784478d"
+    assert _id(*args, ()) == "443cbd44c784478d"
 
 
 @pytest.mark.parametrize(

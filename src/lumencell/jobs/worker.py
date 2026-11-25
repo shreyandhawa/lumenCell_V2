@@ -65,46 +65,19 @@ def handle_prepare(payload: dict[str, Any], emit: Emit) -> str | None:
 
 
 def handle_infer(payload: dict[str, Any], emit: Emit) -> str | None:
-    from lumencell.engine.context import InferenceContext
-    from lumencell.engine.registry import run_method
-    from lumencell.engine.roots import parse_root
-    from lumencell.engine.store import RunStore
-    from lumencell.prep.cache import PrepCache, dataset_dir, prep_key
+    from lumencell.engine.registry import infer_and_save
+    from lumencell.engine.store import RunSpec, RunStore
+    from lumencell.prep.cache import PrepCache, dataset_dir
 
-    # Required, with no default: a job that forgot it would let methods see clone columns.
-    if "clonal_columns" not in payload:
-        raise ValueError(
-            "the infer job's payload has no 'clonal_columns'; every infer job must name the columns "
-            "that are only for scoring (an empty list when there are none)"
-        )
-    clonal_columns = payload["clonal_columns"]
-    if not isinstance(clonal_columns, list | tuple) or not all(isinstance(c, str) for c in clonal_columns):
-        # A bare string would otherwise be read as one column per character.
-        raise ValueError(
-            f"the infer job's 'clonal_columns' must be a list of column names, not {clonal_columns!r}"
-        )
+    if "spec" not in payload or "run_id" not in payload:
+        raise ValueError("the infer job's payload must hold its run 'spec' and the 'run_id' it promised")
+    spec = RunSpec.from_dict(payload["spec"])  # checked before the file is read
     ds = _dataset(payload["path"], payload.get("x_is"))
     params = payload["prep_params"]
     emit("load", 0, 1)
     prep = PrepCache(ds, _cache_root(payload)).run(params)
-    ctx = InferenceContext.from_prep(ds, prep, params, clonal_columns=clonal_columns)
-    result = run_method(
-        ctx,
-        payload["method"],
-        parse_root(payload["root"]),
-        terminals=payload.get("terminals"),
-        params=payload.get("params") or {},
-        progress=emit,
-        label_key=payload.get("label_key"),
-    )
-    rid: str = payload["run_id"]
-    RunStore(dataset_dir(ds.fingerprint, _cache_root(payload))).save(
-        rid,
-        result,
-        terminals=payload.get("terminals"),
-        prep_key=prep_key(ds, params),
-        clonal_columns=clonal_columns,
-    )
+    store = RunStore(dataset_dir(ds.fingerprint, _cache_root(payload)))
+    rid, _ = infer_and_save(ds, prep, params, spec, store, progress=emit, expect_id=payload["run_id"])
     return rid
 
 
@@ -186,8 +159,8 @@ def handle_stability(payload: dict[str, Any], emit: Emit) -> str | None:
     (``result.json``), never from the session's current settings. A run made before they were
     recorded is reported ``not_available`` rather than replayed with a guess. Replicate prep stays in memory.
     """
-    from lumencell.engine.stability import RunSpec, StabilityError, run_stability
-    from lumencell.engine.store import STORE_VERSION, RunStore
+    from lumencell.engine.stability import StabilityError, run_stability
+    from lumencell.engine.store import STORE_VERSION, RunSpec, RunStore
     from lumencell.prep.cache import PrepCache, dataset_dir, prep_key
     from lumencell.trust.stability import not_measured, stability_name, to_api_stability
 
@@ -236,15 +209,10 @@ def handle_stability(payload: dict[str, Any], emit: Emit) -> str | None:
         except FileNotFoundError:
             raise RuntimeError(gone) from None
         prep = PrepCache(ds, _cache_root(payload)).run(params)
-        spec = RunSpec(
-            graph["method"],
-            graph["params"],
-            graph.get("terminals"),
-            graph["label_key"],
-            tuple(graph["clonal_columns"]),
-        )
         try:
-            stability = to_api_stability(run_stability(ds, prep, params, result, spec, progress=emit))
+            stability = to_api_stability(
+                run_stability(ds, prep, params, result, RunSpec.from_record(graph), progress=emit)
+            )
         except StabilityError as e:
             stability = not_measured("failed", str(e))
     try:

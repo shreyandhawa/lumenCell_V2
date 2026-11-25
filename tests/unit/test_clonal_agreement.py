@@ -20,7 +20,7 @@ from lumencell.engine.context import InferenceContext
 from lumencell.engine.registry import run_method
 from lumencell.engine.roots import ClusterRoot
 from lumencell.engine.schema import TrajectoryResult
-from lumencell.engine.store import TRUST_NAME, RunStore
+from lumencell.engine.store import TRUST_NAME, RunSpec, RunStore
 from lumencell.prep.pipeline import run_pipeline
 from lumencell.prep.stages import PrepParams
 from lumencell.trust import clonal
@@ -260,7 +260,7 @@ def test_undefined_values_are_null_and_the_file_is_strict_json(
         assert got.coupling == [] and COUPLING_NOTE not in got.notes
 
     store = RunStore(tmp_path)
-    store.save("r", case.result)
+    store.save("r", case.result, RunSpec("paga_dpt", {}, "cluster:true_label=trunk_early", None, ()), "k")
     name = trust_name(S)
     target = store.write_trust("r", name, got.model_dump(mode="json"))
     parsed = json.loads(target.read_text(encoding="utf-8"), parse_constant=_raise)
