@@ -145,7 +145,7 @@ def run(
     """
     from lumencell.engine.context import InferenceContext
     from lumencell.engine.registry import UnknownMethodError, run_method
-    from lumencell.engine.roots import ClusterRoot, RootError, format_root, parse_root
+    from lumencell.engine.roots import RootError, format_root, parse_root
     from lumencell.engine.store import RunStore, run_id
     from lumencell.prep.cache import dataset_dir, prep_key
 
@@ -163,17 +163,13 @@ def run(
     terms = [t.strip() for t in terminals.split(",")] if terminals else None
     try:
         spec = parse_root(root)
-        if isinstance(spec, ClusterRoot) and spec.key in ctx.scoring_only:
-            from lumencell.clonal.isolation import scoring_only_message
-
-            raise ValueError(scoring_only_message(spec.key, "root column"))
         result = run_method(ctx, method, spec, terminals=terms)
     except (RootError, UnknownMethodError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     key = prep_key(ds, params)
     rid = run_id(method, result.params, format_root(spec), terms, key, columns)
     store = RunStore(dataset_dir(ds.fingerprint))
-    store.save(rid, result, terminals=terms, prep_key=key)
+    store.save(rid, result, terminals=terms, prep_key=key, clonal_columns=columns)
     typer.echo(f"run {rid}: {len(result.lineages)} lineages, {result.n_unassigned} cells unassigned")
     for lin in result.lineages:
         typer.echo(f"  {lin.name}: {lin.n_cells:,} cells")

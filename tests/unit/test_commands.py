@@ -212,6 +212,15 @@ def test_run_prints_clonal_agreement(clonal_data: Path) -> None:
     assert store.trust_path(rid, name).exists()
 
 
+def test_run_records_the_clone_columns_it_hashed(clonal_data: Path) -> None:
+    # Stability replays a run from its record; an empty list would let clone labels reach inference.
+    result = runner.invoke(app, ["run", str(clonal_data), *ROOT, *CLONAL])
+    assert result.exit_code == 0, result.output
+    rid = result.output.split("run ")[1].split(":")[0]
+    graph = RunStore(dataset_dir(load(clonal_data).fingerprint)).graph(rid)
+    assert graph["clonal_columns"] == ["clone_id", "donor"]
+
+
 @pytest.mark.parametrize(
     ("extra", "message"),
     [

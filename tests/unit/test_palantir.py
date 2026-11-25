@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from lumencell.api import binary
+from lumencell.engine.lineages import name_lineages
 from lumencell.engine.methods.palantir_adapter import INSTALL_HINT, Palantir
 from lumencell.engine.registry import run_method
 from lumencell.engine.roots import ClusterRoot
@@ -53,6 +54,7 @@ def test_named_terminals(bifurcation: Prepared) -> None:
         params={"cluster_key": "true_label"},
     )
     assert len(r.lineages) == 2
+    name_lineages(bifurcation.ctx, r, "true_label")  # the run names them in the detected column
     assert {lin.terminal_label for lin in r.lineages} == {"A_late", "B_late"}
     assert "you named" in next(w.message for w in r.warnings if w.code == "terminals_source")
 
