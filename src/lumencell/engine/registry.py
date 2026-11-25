@@ -1,16 +1,22 @@
 """The method registry and the single entry point for running inference."""
 
 import time
+from dataclasses import replace
 from typing import Any
 
+from lumencell.data.loader import Dataset
 from lumencell.engine.context import InferenceContext, check_inference_column
 from lumencell.engine.lineages import divergence, name_lineages
 from lumencell.engine.methods.base import ProgressFn, TrajectoryMethod, no_progress
 from lumencell.engine.methods.paga_dpt import PagaDpt
 from lumencell.engine.methods.palantir_adapter import Palantir
 from lumencell.engine.methods.scfates_adapter import ScFates
-from lumencell.engine.roots import RootSpec, interior_root_warning, resolve_root
+from lumencell.engine.roots import RootSpec, interior_root_warning, parse_root, resolve_root
 from lumencell.engine.schema import TrajectoryResult
+from lumencell.engine.store import RunSpec, RunStore, run_id
+from lumencell.prep.cache import prep_key
+from lumencell.prep.pipeline import PrepResult
+from lumencell.prep.stages import PrepParams
 
 METHODS: dict[str, TrajectoryMethod] = {m.name: m for m in (PagaDpt(), Palantir(), ScFates())}
 
@@ -69,3 +75,28 @@ def run_method(
     result.obs_keys = sorted({k for k in (resolved.cluster_key, cluster_key, used_label_key) if k})
     result.validate()
     return result
+
+
+def infer_and_save(
+    ds: Dataset,
+    prep: PrepResult,
+    prep_params: PrepParams,
+    spec: RunSpec,
+    store: RunStore,
+    progress: ProgressFn = no_progress,
+    expect_id: str | None = None,
+) -> tuple[str, TrajectoryResult]:
+    """Run ``spec`` on a prepared dataset and save it under the id that the spec and the prep give.
+
+    The id, the inference context and the run record all come from the one spec. ``expect_id``
+    is an id a caller already promised (the API's infer job): a different one fails before any work.
+    """
+    spec = replace(spec, params=get_method(spec.method).Params.model_validate(spec.params).model_dump())
+    key = prep_key(ds, prep_params)
+    rid = run_id(spec, key)
+    if expect_id is not None and rid != expect_id:
+        raise ValueError(f"the run spec gives run id {rid}, not {expect_id}; nothing was run")
+    ctx = InferenceContext.from_prep(ds, prep, prep_params, clonal_columns=spec.clonal_columns)
+    result = run_method(ctx, spec.method, parse_root(spec.root), spec.terminals, spec.params, progress)
+    store.save(rid, result, spec, key)
+    return rid, result

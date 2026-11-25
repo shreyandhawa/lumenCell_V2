@@ -18,7 +18,6 @@ from lumencell.engine.schema import TrajectoryResult
 from lumencell.engine.stability import (
     ReplicateRow,
     ReplicateScores,
-    RunSpec,
     StabilityConfig,
     StabilityError,
     map_leiden_terminals,
@@ -32,6 +31,7 @@ from lumencell.engine.stability import (
     subsample_prep,
     summarise,
 )
+from lumencell.engine.store import RunSpec
 from lumencell.prep.pipeline import PrepResult, run_pipeline
 from lumencell.prep.stages import STAGE_BY_NAME, PrepParams, run_stage
 
@@ -184,7 +184,8 @@ def test_undefined_scores_are_nan(bif: Bif) -> None:
 
 
 def _spec(**kw: Any) -> RunSpec:
-    return RunSpec(**{"method": "paga_dpt", "params": {}, "terminals": None, "label_key": None, **kw})
+    fields = {"method": "paga_dpt", "params": {}, "root": "cluster:true_label=trunk_early", "terminals": None}
+    return RunSpec(**{**fields, "clonal_columns": (), **kw})
 
 
 def test_every_replicate_is_rooted_at_the_reference_root_cell(

@@ -29,6 +29,7 @@ from lumencell.prep.cache import PrepCache
 from lumencell.prep.stages import PrepParams
 from lumencell.trust.clonal import settings_columns, settings_from_state, trust_hash, trust_name
 from lumencell.trust.constants import N_PERMUTATIONS
+from tests.conftest import infer_job
 
 ROOT = {"kind": "cluster", "key": "true_label", "value": "trunk_early"}
 A = {"clone_key": "clone_id", "donor_key": "donor"}
@@ -74,18 +75,11 @@ def _client(session: Session) -> TestClient:
     return TestClient(create_app(session), raise_server_exceptions=False)
 
 
-def _save_run(session: Session, rid: str, params: dict[str, Any] | None = None) -> None:
+def _save_run(session: Session, params: dict[str, Any] | None = None) -> str:
     """Compute and save a run in this process, as `lumencell run` does; no job is involved."""
-    payload = {
-        **session._job_payload(),
-        "method": "paga_dpt",
-        "root": "cluster:true_label=trunk_early",
-        "params": params or {},
-        "run_id": rid,
-        "label_key": session.view.label_key,
-        "clonal_columns": list(session.view.clonal_columns),
-    }
+    payload, rid = infer_job(session._job_payload(), session.view.clonal_columns, params=params)
     assert HANDLERS["infer"](payload, lambda *_: None) == rid
+    return rid
 
 
 def _scoring(session: Session) -> list[Job]:
@@ -149,17 +143,17 @@ def test_without_settings_the_status_is_not_configured(
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
     client = _client(session)
-    _save_run(session, "r1")
-    clonal = _clonal(client, "r1")
+    r1 = _save_run(session)
+    clonal = _clonal(client, r1)
     assert clonal["status"] == "not_configured"
     assert clonal["settings"] is None and clonal["primary"] is None
     assert _scoring(session) == []
     _put(client, A)
-    assert _clonal(client, "r1")["status"] == "pending"
+    assert _clonal(client, r1)["status"] == "pending"
     queued = len(_scoring(session))
     # Clearing the settings submits nothing; the next GET says so.
     assert client.delete("/api/v1/dataset/clonal").status_code == 204
-    assert _clonal(client, "r1")["status"] == "not_configured"
+    assert _clonal(client, r1)["status"] == "not_configured"
     assert len(_scoring(session)) == queued == 1
 
 
@@ -168,13 +162,13 @@ def test_changing_settings_rescores_every_complete_run(
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
     client = _client(session)
-    _save_run(session, "r1")
-    _save_run(session, "r2", {"n_dcs": 8})
+    r1 = _save_run(session)
+    r2 = _save_run(session, {"n_dcs": 8})
     _put(client, A)
     _put(client, B)
     hb = trust_hash(ClonalSettings(**B))
     keys = {j.key for j in _scoring(session) if j.key.endswith(f":{hb}")}
-    assert keys == {f"score_clonal:r1:{hb}", f"score_clonal:r2:{hb}"}
+    assert keys == {f"score_clonal:{r1}:{hb}", f"score_clonal:{r2}:{hb}"}
     assert all(j.state == "queued" for j in _scoring(session))
     # The same settings again queue nothing new: the jobs are already waiting.
     _put(client, B)
@@ -186,24 +180,24 @@ def test_a_restart_while_scoring_is_pending_heals_itself(
 ) -> None:
     first = _session(prepared, cache_root, JobManager(), tmp_path)  # never started; its jobs are lost
     _put(_client(first), A)
-    _save_run(first, "r1")
+    r1 = _save_run(first)
     # The server restarts: a new session on a new manager, with the settings in the state file.
     session = _session(prepared, cache_root, jobs, tmp_path)
     client = _client(session)
     assert session.clonal_settings() == ClonalSettings(**A)
-    pending = _clonal(client, "r1")
+    pending = _clonal(client, r1)
     assert pending["status"] == "pending"
     assert pending["settings"] == ClonalSettings(**A).model_dump(mode="json")
-    assert _clonal(client, "r1")["status"] == "pending"
+    assert _clonal(client, r1)["status"] == "pending"
     (job,) = _scoring(session)
     jobs.start()
     assert jobs.wait(job.job_id, timeout=WAIT).state == "done", job.error
-    assert _clonal(client, "r1")["status"] in SCORED
-    assert _clonal(client, "r1")["status"] in SCORED
+    assert _clonal(client, r1)["status"] in SCORED
+    assert _clonal(client, r1)["status"] in SCORED
     assert len(_scoring(session)) == 1
     # The file goes after its job is done: the next GET queues it again.
-    session.runs.store.trust_path("r1", trust_name(ClonalSettings(**A))).unlink()
-    assert _clonal(client, "r1")["status"] == "pending"
+    session.runs.store.trust_path(r1, trust_name(ClonalSettings(**A))).unlink()
+    assert _clonal(client, r1)["status"] == "pending"
     again = _scoring(session)
     assert len(again) == 2
     _wait_all(jobs, again)
@@ -214,10 +208,10 @@ def test_concurrent_gets_queue_one_job(
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
     session.set_clonal(ClonalSettings(**A))
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     client = _client(session)
     with ThreadPoolExecutor(8) as pool:
-        statuses = list(pool.map(lambda _: _clonal(client, "r1")["status"], range(16)))
+        statuses = list(pool.map(lambda _: _clonal(client, r1)["status"], range(16)))
     assert statuses == ["pending"] * 16
     assert len(_scoring(session)) == 1
 
@@ -227,19 +221,19 @@ def test_a_failed_score_is_reported_and_not_resubmitted_on_every_get(
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
     session.set_clonal(ClonalSettings(**A))
-    _save_run(session, "r1")
-    (session.runs.store.path("r1") / "cells.lcb").unlink()
+    r1 = _save_run(session)
+    (session.runs.store.path(r1) / "cells.lcb").unlink()
     client = _client(session)
-    assert _clonal(client, "r1")["status"] == "pending"
+    assert _clonal(client, r1)["status"] == "pending"
     (job,) = _scoring(session)
     jobs.start()
     assert jobs.wait(job.job_id, timeout=WAIT).state == "failed"
     for _ in range(2):
-        clonal = _clonal(client, "r1")
+        clonal = _clonal(client, r1)
         assert clonal["status"] == "failed"
         assert clonal["primary"] is None
         assert clonal["notes"] == [job.error]
-        assert "run r1 was replaced or is incomplete" in clonal["notes"][0]
+        assert f"run {r1} was replaced or is incomplete" in clonal["notes"][0]
     assert len(_scoring(session)) == 1
 
 
@@ -255,12 +249,12 @@ def test_a_failed_score_note_is_escaped_and_bounded(
 
     session = _session(prepared, cache_root, jobs, tmp_path)
     session.set_clonal(ClonalSettings(**A))
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     failed = Job(
         "j1", "score_clonal", "k", {}, state="failed", error="RuntimeError: bad \x1b[2J\nname" + "y" * 5000
     )
     monkeypatch.setattr(session.runs, "_trust_lookup", lambda *a, **k: TrustLookup(None, failed))
-    (note,) = _clonal(_client(session), "r1")["notes"]
+    (note,) = _clonal(_client(session), r1)["notes"]
     assert note.isprintable() and len(note) == 300
     assert note.startswith("RuntimeError: bad \\x1b[2J\\nname")
 
@@ -270,17 +264,17 @@ def test_a_cancelled_score_is_reported_as_failed(
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
     session.set_clonal(ClonalSettings(**A))
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     client = _client(session)
-    assert _clonal(client, "r1")["status"] == "pending"
+    assert _clonal(client, r1)["status"] == "pending"
     (job,) = _scoring(session)
     jobs.cancel(job.job_id)
-    clonal = _clonal(client, "r1")
+    clonal = _clonal(client, r1)
     assert clonal["status"] == "failed" and clonal["notes"] == ["cancelled"]
     assert len(_scoring(session)) == 1
     # A settings PUT retries it.
     _put(client, A)
-    assert _clonal(client, "r1")["status"] == "pending"
+    assert _clonal(client, r1)["status"] == "pending"
     assert len(_scoring(session)) == 2
 
 
@@ -288,21 +282,21 @@ def test_a_result_for_old_settings_is_never_served(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     client = _client(session)
     _put(client, A)
     _put(client, B)
     want = ClonalSettings(**B).model_dump(mode="json")
-    pending = _clonal(client, "r1")
+    pending = _clonal(client, r1)
     assert pending["status"] == "pending" and pending["settings"] == want
     both = _scoring(session)
     assert len(both) == 2
     jobs.start()
     _wait_all(jobs, both)
     assert all(j.state == "done" for j in both), [j.error for j in both]
-    clonal = _clonal(client, "r1")
+    clonal = _clonal(client, r1)
     assert clonal["status"] in SCORED and clonal["settings"] == want
-    trust = session.runs.store.path("r1") / "trust"
+    trust = session.runs.store.path(r1) / "trust"
     assert (trust / f"clonal-{trust_hash(ClonalSettings(**B))}.json").exists()
     assert (trust / f"clonal-{trust_hash(ClonalSettings(**A))}.json").exists()  # stored, never served
 
@@ -316,18 +310,18 @@ def test_a_trust_file_that_does_not_validate_counts_as_missing(
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
     settings = ClonalSettings(**A)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     store = session.runs.store
-    path = str(store.trust_path("r1", trust_name(settings)))
+    path = str(store.trust_path(r1, trust_name(settings)))
     # An older store version's shape, or a hand edit: valid JSON, not a ClonalAgreement.
-    store.write_trust("r1", trust_name(settings), {"status": "excellent"})
+    store.write_trust(r1, trust_name(settings), {"status": "excellent"})
     capsys.readouterr()
     session.set_clonal(settings)  # the settings PUT counts it as missing
     err = capsys.readouterr().err.strip().splitlines()
     assert len(err) == 1 and path in err[0]
     assert len(_scoring(session)) == 1
     client = _client(session)
-    assert _clonal(client, "r1")["status"] == "pending"  # and so does a GET
+    assert _clonal(client, r1)["status"] == "pending"  # and so does a GET
     err = capsys.readouterr().err.strip().splitlines()
     assert len(err) == 1 and path in err[0]
     assert len(_scoring(session)) == 1  # the queued job is reused
@@ -337,11 +331,11 @@ def test_legacy_runs_are_never_scored(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     store = session.runs.store
-    store.update_graph("r1", {**store.graph("r1"), "store_version": 1})
+    store.update_graph(r1, {**store.graph(r1), "store_version": 1})
     session.set_clonal(ClonalSettings(**A))
-    clonal = session.runs.clonal_agreement("r1", store.graph("r1"))
+    clonal = session.runs.clonal_agreement(r1, store.graph(r1))
     assert clonal.status == "refused"
     assert clonal.notes == ["made before inference isolation; run it again"]
     assert _scoring(session) == []
@@ -363,9 +357,9 @@ def test_an_infer_job_for_another_file_queues_nothing(
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
     session.set_clonal(ClonalSettings(**A))
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     mine = {"path": str(session.path), "cache_root": str(cache_root)}
-    base = Job(job_id="x", kind="infer", key="k", payload=mine, result_id="r1")
+    base = Job(job_id="x", kind="infer", key="k", payload=mine, result_id=r1)
     session._on_job_done(replace(base, payload={**mine, "path": "/elsewhere.h5ad"}))
     session._on_job_done(replace(base, payload={**mine, "cache_root": str(tmp_path / "other")}))
     session._on_job_done(replace(base, payload={"path": str(session.path)}))  # the default cache
@@ -375,23 +369,23 @@ def test_an_infer_job_for_another_file_queues_nothing(
     assert _scoring(session) == []
     session._on_job_done(base)
     (job,) = _scoring(session)
-    assert job.key == f"score_clonal:r1:{trust_hash(ClonalSettings(**A))}"
+    assert job.key == f"score_clonal:{r1}:{trust_hash(ClonalSettings(**A))}"
 
 
 def test_submit_trust_jobs_queues_clonal_only_with_settings_and_stability_always(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
-    (stability,) = session.runs.submit_trust_jobs("r1")  # every run gets stability (F1)
+    r1 = _save_run(session)
+    (stability,) = session.runs.submit_trust_jobs(r1)  # every run gets stability (F1)
     assert stability.kind == "stability"
     assert _scoring(session) == []
     session.set_clonal(ClonalSettings(**A))
     (queued,) = _scoring(session)
     # The queued jobs, not second ones; clonal scoring first.
-    assert session.runs.submit_trust_jobs("r1") == [queued, stability]
+    assert session.runs.submit_trust_jobs(r1) == [queued, stability]
     assert len(jobs.of_kind("stability")) == 1
-    assert queued.key == f"score_clonal:r1:{trust_hash(ClonalSettings(**A))}"
+    assert queued.key == f"score_clonal:{r1}:{trust_hash(ClonalSettings(**A))}"
     assert len(_scoring(session)) == 1
 
 
@@ -399,14 +393,14 @@ def test_submit_clonal_all_counts_the_runs_it_queues(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
-    _save_run(session, "r2", {"n_dcs": 8})
+    r1 = _save_run(session)
+    r2 = _save_run(session, {"n_dcs": 8})
     assert session.runs.submit_clonal_all() == 0
     assert _scoring(session) == []
     session._clonal = ClonalSettings(**A)  # settings in place without set_clonal's own submit
     assert session.runs.submit_clonal_all() == 2
     hb = trust_hash(ClonalSettings(**A))
-    assert {j.key for j in _scoring(session)} == {f"score_clonal:r1:{hb}", f"score_clonal:r2:{hb}"}
+    assert {j.key for j in _scoring(session)} == {f"score_clonal:{r1}:{hb}", f"score_clonal:{r2}:{hb}"}
 
 
 @pytest.mark.parametrize("second", ["put", "delete"])
@@ -414,7 +408,7 @@ def test_concurrent_settings_writes_leave_memory_disk_and_view_in_agreement(
     prepared: tuple[Path, Path], cache_root: Path, jobs: JobManager, tmp_path: Path, second: str
 ) -> None:
     session = _session(prepared, cache_root, jobs, tmp_path)
-    _save_run(session, "r1")
+    r1 = _save_run(session)
     client = _client(session)
     inside = entries = 0
     overlapped = False
@@ -458,10 +452,10 @@ def test_concurrent_settings_writes_leave_memory_disk_and_view_in_agreement(
     on_disk = settings_from_state(session.state.read())
     assert memory == on_disk
     assert session.view.clonal_columns == (settings_columns(memory) if memory else ())
-    clonal = _clonal(client, "r1")
+    clonal = _clonal(client, r1)
     if memory is None:
         assert clonal["status"] == "not_configured"
     else:
         assert clonal["status"] == "pending" and clonal["settings"] == memory.model_dump(mode="json")
-        key = f"score_clonal:r1:{trust_hash(memory)}"
+        key = f"score_clonal:{r1}:{trust_hash(memory)}"
         assert [j.state for j in _scoring(session) if j.key == key] == ["queued"]

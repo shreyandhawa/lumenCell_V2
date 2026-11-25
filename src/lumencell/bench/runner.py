@@ -21,7 +21,8 @@ from lumencell.engine.context import InferenceContext
 from lumencell.engine.registry import run_method
 from lumencell.engine.roots import ClusterRoot
 from lumencell.engine.schema import TrajectoryResult
-from lumencell.engine.stability import RunSpec, run_stability
+from lumencell.engine.stability import run_stability
+from lumencell.engine.store import RunSpec
 from lumencell.engine.tree_support import (
     ClonalEvidence,
     StabilityEvidence,
@@ -254,7 +255,6 @@ def stability_row(
     prep: PrepResult,
     params: PrepParams,
     result: TrajectoryResult,
-    label_key: str | None,
     clonal_columns: tuple[str, ...] = (),
 ) -> StabilityRow:
     """Stability replicates and the tree verdict of a finished run. Never raises: an error is ``failed``.
@@ -262,7 +262,7 @@ def stability_row(
     C2 reads the prep's PAGA at the default resolution; C5 is not configured (no clones here).
     """
     try:
-        spec = RunSpec(result.method, result.params, None, label_key, clonal_columns)
+        spec = RunSpec(result.method, result.params, result.root.spec, None, clonal_columns)
         stab = run_stability(data, prep, params, result, spec)
         tree = tree_likeness(prep.artifacts["paga_connectivities"], prep.artifacts["paga_tree"])
         n = len(stab.reseeds.rows) + len(stab.subsamples.rows)

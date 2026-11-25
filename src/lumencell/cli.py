@@ -143,11 +143,10 @@ def run(
 
     With --clone-key the run is also scored against the clones (never used to infer it).
     """
-    from lumencell.engine.context import InferenceContext
-    from lumencell.engine.registry import UnknownMethodError, run_method
+    from lumencell.engine.registry import UnknownMethodError, infer_and_save
     from lumencell.engine.roots import RootError, format_root, parse_root
-    from lumencell.engine.store import RunStore, run_id
-    from lumencell.prep.cache import dataset_dir, prep_key
+    from lumencell.engine.store import RunSpec, RunStore
+    from lumencell.prep.cache import dataset_dir
 
     clonal = _clonal_settings(clone_key, donor_key, single_donor, strata)
     ds, prep, params = _prepared(data, x_is, False)
@@ -159,17 +158,13 @@ def run(
         if problems:
             raise typer.BadParameter("; ".join(problems), param_hint="--clone-key")
         columns = settings_columns(clonal)
-    ctx = InferenceContext.from_prep(ds, prep, params, clonal_columns=columns)
     terms = [t.strip() for t in terminals.split(",")] if terminals else None
+    store = RunStore(dataset_dir(ds.fingerprint))
     try:
-        spec = parse_root(root)
-        result = run_method(ctx, method, spec, terminals=terms)
+        spec = RunSpec(method, {}, format_root(parse_root(root)), terms, columns)
+        rid, result = infer_and_save(ds, prep, params, spec, store)
     except (RootError, UnknownMethodError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
-    key = prep_key(ds, params)
-    rid = run_id(method, result.params, format_root(spec), terms, key, columns)
-    store = RunStore(dataset_dir(ds.fingerprint))
-    store.save(rid, result, terminals=terms, prep_key=key, clonal_columns=columns)
     typer.echo(f"run {rid}: {len(result.lineages)} lineages, {result.n_unassigned} cells unassigned")
     for lin in result.lineages:
         typer.echo(f"  {lin.name}: {lin.n_cells:,} cells")

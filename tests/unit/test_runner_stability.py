@@ -42,7 +42,7 @@ def test_rows_always_carry_the_stability_fields() -> None:
 
 def test_stability_row_on_a_synthetic_run(tmp_path: Path) -> None:
     ds, prep, pp, result = _run(tmp_path)
-    row = stability_row(ds, prep, pp, result, None)
+    row = stability_row(ds, prep, pp, result)
     assert row.status == "ok"
     assert row.verdict in get_args(Level)
     assert 0 <= row.lineage <= 1
@@ -58,7 +58,7 @@ def test_clonal_columns_reach_every_replicate(monkeypatch: pytest.MonkeyPatch, t
         raise RuntimeError("stop here")
 
     monkeypatch.setattr("lumencell.bench.runner.run_stability", spy)
-    stability_row(ds, prep, pp, result, None, clonal_columns=("clone_id", "donor"))
+    stability_row(ds, prep, pp, result, clonal_columns=("clone_id", "donor"))
     assert seen[0].clonal_columns == ("clone_id", "donor")
 
 
@@ -71,7 +71,7 @@ def test_a_stability_error_is_recorded_as_failed(
         raise RuntimeError("no replicates today")
 
     monkeypatch.setattr("lumencell.bench.runner.run_stability", boom)
-    row = stability_row(ds, prep, pp, result, None)
+    row = stability_row(ds, prep, pp, result)
     assert row.status == "failed"
     assert row.reason == "RuntimeError: no replicates today"
     assert "no replicates today" in capsys.readouterr().err
@@ -87,7 +87,7 @@ def test_a_stability_failure_reason_is_one_escaped_line_of_bounded_length(
         raise ValueError("bad column 'a\x1b[31m\nb' " + "x" * 1000)
 
     monkeypatch.setattr("lumencell.bench.runner.run_stability", boom)
-    reason = stability_row(ds, prep, pp, result, None).reason
+    reason = stability_row(ds, prep, pp, result).reason
     assert reason is not None and reason.startswith("ValueError: ")
     assert reason.isprintable() and "\n" not in reason and "\x1b" not in reason
     assert len(reason) <= 300
@@ -133,15 +133,16 @@ def test_stability_row_is_wired_to_the_run(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(runner, "coverage", fake_cov)
     monkeypatch.setattr(runner, "verdict", fake_verdict)
     pt = np.array([0.0, 0.5, 1.0], dtype=np.float32)
-    result = SimpleNamespace(method="paga_dpt", params={}, pseudotime=pt, lineages=[1, 2])
+    root = SimpleNamespace(spec="cluster:true_label=trunk_early")
+    result = SimpleNamespace(method="paga_dpt", params={}, root=root, pseudotime=pt, lineages=[1, 2])
     prep = SimpleNamespace(artifacts={"paga_connectivities": "CONN", "paga_tree": "TREE"})
-    row = stability_row(object(), prep, object(), result, "true_label")  # type: ignore[arg-type]
+    row = stability_row(object(), prep, object(), result)  # type: ignore[arg-type]
     cov, tree, ev = seen["verdict_args"]
     assert (ev.n_replicates, ev.n_failed, ev.lineage, ev.pseudotime) == (7, 2, 0.11, 0.22)
     assert (cov, tree) == (0.99, 0.77)
     assert seen["tree_args"] == ("CONN", "TREE")
     assert np.array_equal(seen["cov_arg"], pt) and seen["cov_arg"].dtype == np.float64
-    assert seen["spec"].label_key == "true_label"
+    assert seen["spec"].root == "cluster:true_label=trunk_early"
     assert (row.status, row.lineage, row.pseudotime, row.tree_likeness, row.verdict) == (
         "ok",
         0.11,
