@@ -249,9 +249,6 @@ def test_scoring_only_cluster_key_and_label_key_are_refused(
         run_method(ctx, "paga_dpt", ROOT, params={"cluster_key": "clone_id"})
     with pytest.raises(ScoringOnlyColumnError, match=r"holds clone or receptor data.*the label column"):
         run_method(ctx, "paga_dpt", ROOT, label_key="clone_id")
-    # With terminals named, lineages are named in the cluster column: that is refused once.
-    with pytest.raises(ScoringOnlyColumnError, match="the cluster column"):
-        run_method(ctx, "palantir", ROOT, terminals=["A"], params={"cluster_key": "clone_id"})
 
 
 def test_a_named_column_is_refused_in_its_own_words(plain: Dataset, preps: dict[str, PrepResult]) -> None:

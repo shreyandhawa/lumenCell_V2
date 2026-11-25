@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 from scipy import sparse
 
+from lumencell.engine.lineages import name_lineages
 from lumencell.engine.methods.scfates_adapter import INSTALL_HINT, ScFates, _root_point
 from lumencell.engine.projection import project
 from lumencell.engine.registry import run_method
@@ -63,6 +64,7 @@ def test_named_terminal_keeps_one_lineage(bifurcation: Prepared) -> None:
         bifurcation.ctx, "scfates_ppt", ROOT, terminals=["A_late"], params={"cluster_key": "true_label"}
     )
     assert len(r.lineages) == 1
+    name_lineages(bifurcation.ctx, r, "true_label")  # the run names them in the detected column
     assert r.lineages[0].terminal_label == "A_late"
     assert r.n_unassigned > 0
 

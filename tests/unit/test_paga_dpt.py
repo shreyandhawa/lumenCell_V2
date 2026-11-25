@@ -58,6 +58,17 @@ def test_named_terminals_restrict_the_lineages(bifurcation: Prepared, result: Tr
     assert any(w.code == "cells_off_lineages" for w in only.warnings)
 
 
+def test_lineages_are_named_in_the_detected_label_column_when_terminals_are_named(
+    bifurcation: Prepared,
+) -> None:
+    # The API and the CLI give the same request the same run id, so they must name it alike.
+    terminals = ["A_late", "B_late"]
+    r = run_method(
+        bifurcation.ctx, "paga_dpt", ROOT, terminals=terminals, params={"cluster_key": "true_label"}
+    )
+    assert r.label_key == bifurcation.ctx.label_key != "true_label"
+
+
 def test_unknown_terminal_is_an_error(bifurcation: Prepared) -> None:
     with pytest.raises(ValueError, match="terminal clusters not found"):
         run_method(bifurcation.ctx, "paga_dpt", ROOT, terminals=["no-such-cluster"])
