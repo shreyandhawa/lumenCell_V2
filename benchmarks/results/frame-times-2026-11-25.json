@@ -1,0 +1,174 @@
+{
+  "note": "benchmarks/perf/frame_times.cjs on an Apple M4 (10 CPUs, 16 GB), one run per size, under heavy system-wide swapping (the swap field). Datasets: lumencell synth --n-cells N (2,000 genes, bifurcation, realistic), prepared with lumencell prepare (100k: 204 s, 2.8 GB peak RSS; 500k: 2,148 s, 7.5 GB), root from lumencell roots, each launch running paga_dpt. 1M was not tried: 500k took 36 min to prepare and swap was nearly full. 500k_at_1x is a one-off diagnostic, the same script with deviceScaleFactor 1, to test whether pixel count is the limit: it is not, the numbers match 500k at 2x. An earlier one-off probe (not kept) counted vm_stat swap-ins per scenario at 500k: about 3,000 per second at rest, where every frame was on time, and about 3,500 per second during auto-rotate, so paging does not explain the slow frames either. main_ms_per_frame stays at 2 ms or less at 500k, so the slow frames are not the main thread: the limit is on the GPU side.",
+  "100k": {
+    "date": "2026-11-26",
+    "n_cells": 100000,
+    "gpu": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)",
+    "software_gpu": false,
+    "swap": "total = 8192.00M  used = 7028.56M  free = 1163.44M  (encrypted)",
+    "viewport": "1440x900 @2x",
+    "repeats": 3,
+    "missed_means_gap_over_ms": 25,
+    "scenarios": {
+      "rest_3d": {
+        "frames": 358,
+        "drawn": 0,
+        "p50_ms": 16.7,
+        "p95_ms": 16.8,
+        "max_ms": 16.8,
+        "missed": 0,
+        "main_ms_per_frame": 0.2
+      },
+      "morph_to_3d": {
+        "frames": 133,
+        "drawn": 114,
+        "p50_ms": 16.7,
+        "p95_ms": 16.7,
+        "max_ms": 16.8,
+        "missed": 0,
+        "main_ms_per_frame": 3.7
+      },
+      "morph_to_2d": {
+        "frames": 133,
+        "drawn": 114,
+        "p50_ms": 16.7,
+        "p95_ms": 16.8,
+        "max_ms": 16.8,
+        "missed": 0,
+        "main_ms_per_frame": 3.6
+      },
+      "auto_rotate": {
+        "frames": 546,
+        "drawn": 540,
+        "p50_ms": 16.7,
+        "p95_ms": 16.7,
+        "max_ms": 16.8,
+        "missed": 0,
+        "main_ms_per_frame": 3.8
+      },
+      "orbit_drag": {
+        "frames": 723,
+        "drawn": 362,
+        "p50_ms": 16.7,
+        "p95_ms": 16.8,
+        "max_ms": 16.8,
+        "missed": 0,
+        "main_ms_per_frame": 3.6
+      }
+    }
+  },
+  "500k": {
+    "date": "2026-11-26",
+    "n_cells": 500000,
+    "gpu": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)",
+    "software_gpu": false,
+    "swap": "total = 17408.00M  used = 16458.19M  free = 949.81M  (encrypted)",
+    "viewport": "1440x900 @2x",
+    "repeats": 3,
+    "missed_means_gap_over_ms": 25,
+    "scenarios": {
+      "rest_3d": {
+        "frames": 357,
+        "drawn": 0,
+        "p50_ms": 16.7,
+        "p95_ms": 16.7,
+        "max_ms": 16.8,
+        "missed": 0,
+        "main_ms_per_frame": 0.1
+      },
+      "morph_to_3d": {
+        "frames": 93,
+        "drawn": 89,
+        "p50_ms": 16.7,
+        "p95_ms": 50,
+        "max_ms": 50.1,
+        "missed": 21,
+        "main_ms_per_frame": 2.1
+      },
+      "morph_to_2d": {
+        "frames": 92,
+        "drawn": 78,
+        "p50_ms": 16.7,
+        "p95_ms": 50,
+        "max_ms": 50.1,
+        "missed": 30,
+        "main_ms_per_frame": 1.8
+      },
+      "auto_rotate": {
+        "frames": 200,
+        "drawn": 197,
+        "p50_ms": 50,
+        "p95_ms": 66.7,
+        "max_ms": 66.8,
+        "missed": 179,
+        "main_ms_per_frame": 1.8
+      },
+      "orbit_drag": {
+        "frames": 789,
+        "drawn": 363,
+        "p50_ms": 16.7,
+        "p95_ms": 33.4,
+        "max_ms": 49.9,
+        "missed": 94,
+        "main_ms_per_frame": 1.4
+      }
+    }
+  },
+  "500k_at_1x": {
+    "date": "2026-11-26",
+    "n_cells": 500000,
+    "gpu": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)",
+    "software_gpu": false,
+    "swap": "total = 17408.00M  used = 16540.06M  free = 867.94M  (encrypted)",
+    "viewport": "1440x900 @1x",
+    "repeats": 3,
+    "missed_means_gap_over_ms": 25,
+    "scenarios": {
+      "rest_3d": {
+        "frames": 357,
+        "drawn": 0,
+        "p50_ms": 16.7,
+        "p95_ms": 16.7,
+        "max_ms": 16.8,
+        "missed": 0,
+        "main_ms_per_frame": 0.1
+      },
+      "morph_to_3d": {
+        "frames": 93,
+        "drawn": 85,
+        "p50_ms": 16.7,
+        "p95_ms": 50,
+        "max_ms": 50.1,
+        "missed": 21,
+        "main_ms_per_frame": 2
+      },
+      "morph_to_2d": {
+        "frames": 91,
+        "drawn": 76,
+        "p50_ms": 16.7,
+        "p95_ms": 50,
+        "max_ms": 66.7,
+        "missed": 31,
+        "main_ms_per_frame": 1.7
+      },
+      "auto_rotate": {
+        "frames": 198,
+        "drawn": 195,
+        "p50_ms": 50,
+        "p95_ms": 66.7,
+        "max_ms": 66.7,
+        "missed": 177,
+        "main_ms_per_frame": 2
+      },
+      "orbit_drag": {
+        "frames": 779,
+        "drawn": 363,
+        "p50_ms": 16.7,
+        "p95_ms": 33.4,
+        "max_ms": 50,
+        "missed": 93,
+        "main_ms_per_frame": 1.4
+      }
+    }
+  }
+}
