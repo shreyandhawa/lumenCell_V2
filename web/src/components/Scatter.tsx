@@ -28,7 +28,7 @@ import { Gimbal } from "@/components/scatter/Gimbal";
 import { type Ends, knnLayer, pagaLayers, type PlacedNode } from "@/components/scatter/graphLayers";
 import { type GroupBy, SelectionBar } from "@/components/scatter/SelectionBar";
 import { trajectoryLayers } from "@/components/scatter/trajectoryLayers";
-import { EASE_OUT, MORPH, type Pane, PANES, useStageMotion, VIEW_ID } from "@/components/scatter/useStageMotion";
+import { MORPH, type Pane, PANES, useStageMotion, VIEW_ID } from "@/components/scatter/useStageMotion";
 import { useStageSize } from "@/components/scatter/useStageSize";
 import { describeRoot } from "@/components/trajectory/RootPicker";
 import { fmt, Select } from "@/components/ui";
@@ -52,6 +52,7 @@ const FADE = new DepthFadeExtension();
 const RAIL = 304;
 const SHEET = 384;
 const BAR = 80;
+const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 /** How far the farthest cells fade toward the stage in 3-D (0 = not at all, 1 = into the stage). */
 const FOG = 0.6;
 /** The stage colour per theme (index.css --color-stage): what fog and faint cells fade toward. */

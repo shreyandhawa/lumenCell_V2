@@ -8,12 +8,23 @@ export const TILTED = { rotationX: 18, rotationOrbit: -32 };
 
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-export const lerpCam = (a: Camera, b: Camera, t: number): Camera => ({
-  target: [0, 1, 2].map((k) => lerp(a.target[k] ?? 0, b.target[k] ?? 0, t)) as Vec3,
-  zoom: lerp(a.zoom as number, b.zoom as number, t),
-  rotationX: lerp(a.rotationX ?? 0, b.rotationX ?? 0, t),
-  rotationOrbit: lerp(a.rotationOrbit ?? 0, b.rotationOrbit ?? 0, t),
-});
+/** An angle in degrees, brought into [-180, 180). */
+export const wrapAngle = (deg: number) => ((((deg + 180) % 360) + 360) % 360) - 180;
+
+/**
+ * The camera at t between a and b. The orbit turns the shorter way round, at most 180 degrees, so a
+ * camera that has spun for a while never unwinds every turn; at t = 1 it is exactly b's angle.
+ */
+export const lerpCam = (a: Camera, b: Camera, t: number): Camera => {
+  const from = a.rotationOrbit ?? 0;
+  const to = b.rotationOrbit ?? 0;
+  return {
+    target: [0, 1, 2].map((k) => lerp(a.target[k] ?? 0, b.target[k] ?? 0, t)) as Vec3,
+    zoom: lerp(a.zoom as number, b.zoom as number, t),
+    rotationX: lerp(a.rotationX ?? 0, b.rotationX ?? 0, t),
+    rotationOrbit: t === 1 ? to : from + wrapAngle(to - from) * t,
+  };
+};
 
 /** Zoom at which the unit-span data fills 80% of the free stage (log2 of pixels per unit). */
 export function fitZoom(width: number, height: number): number {

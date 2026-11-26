@@ -1,7 +1,8 @@
 import type { OrbitViewState } from "@deck.gl/core";
 import { Clapperboard, Play, Square } from "lucide-react";
-import { animate } from "motion";
+import { animate, type ValueAnimationTransition } from "motion";
 import { useRef, useState } from "react";
+import { CAMERA_SPRING } from "@/components/scatter/useStageMotion";
 import { type Camera, lerpCam } from "@/lib/camera";
 import { useCamera } from "@/state/camera";
 
@@ -11,7 +12,7 @@ const LEG = 1.6;
 
 /**
  * Saved views of the 3-D stage, and a tour through them: the camera moves linearly from each to
- * the next. Moving the view yourself stops the tour.
+ * the next, turning the shorter way round. Moving the view yourself stops the tour.
  */
 export function CameraTour({ id, reduce, onStart }: { id: string; reduce: boolean; onStart: () => void }) {
   const [open, setOpen] = useState(false);
@@ -20,7 +21,7 @@ export function CameraTour({ id, reduce, onStart }: { id: string; reduce: boolea
   const stop = useRef<() => void>(() => {});
 
   // Moves the camera along a path (p from 0 to 1); anything else moving the camera stops it.
-  const fly = (path: (p: number) => Camera, seconds: number, ease: "linear" | "easeOut", onDone?: () => void) => {
+  const fly = (path: (p: number) => Camera, how: ValueAnimationTransition<number>, onDone?: () => void) => {
     stop.current();
     onStart();
     const { cameras, setCamera } = useCamera.getState();
@@ -33,8 +34,7 @@ export function CameraTour({ id, reduce, onStart }: { id: string; reduce: boolea
     }
     let last: OrbitViewState = base;
     const c = animate(0, 1, {
-      duration: seconds,
-      ease,
+      ...how,
       onUpdate: (p) => {
         if (useCamera.getState().cameras[id] !== last) {
           c.stop(); // the user moved it
@@ -51,7 +51,7 @@ export function CameraTour({ id, reduce, onStart }: { id: string; reduce: boolea
 
   const goTo = (k: number) => {
     const from = useCamera.getState().cameras[id] as Camera | null;
-    if (from) fly((p) => lerpCam(from, stops[k]!, p), 0.6, "easeOut");
+    if (from) fly((p) => lerpCam(from, stops[k]!, p), CAMERA_SPRING);
   };
   const play = () => {
     const from = useCamera.getState().cameras[id] as Camera | null;
@@ -64,8 +64,7 @@ export function CameraTour({ id, reduce, onStart }: { id: string; reduce: boolea
         const k = Math.min(legs.length - 2, Math.floor(x));
         return lerpCam(legs[k]!, legs[k + 1]!, x - k);
       },
-      LEG * (legs.length - 1),
-      "linear",
+      { duration: LEG * (legs.length - 1), ease: "linear" },
       () => setPlaying(false),
     );
   };
