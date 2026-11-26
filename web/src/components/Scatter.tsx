@@ -3,7 +3,7 @@ import { DataFilterExtension } from "@deck.gl/extensions";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL, { type DeckGLRef } from "@deck.gl/react";
 import { ImageDown, Lasso, Rotate3d, RotateCcw, SlidersHorizontal } from "lucide-react";
-import { animate, cubicBezier } from "motion";
+import { animate } from "motion";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -28,18 +28,19 @@ import { Gimbal } from "@/components/scatter/Gimbal";
 import { type Ends, knnLayer, pagaLayers, type PlacedNode } from "@/components/scatter/graphLayers";
 import { type GroupBy, SelectionBar } from "@/components/scatter/SelectionBar";
 import { trajectoryLayers } from "@/components/scatter/trajectoryLayers";
+import { EASE_OUT, MORPH, type Pane, PANES, useStageMotion, VIEW_ID } from "@/components/scatter/useStageMotion";
 import { useStageSize } from "@/components/scatter/useStageSize";
 import { describeRoot } from "@/components/trajectory/RootPicker";
 import { fmt, Select } from "@/components/ui";
 import { axesLabel, axesName, setAxis } from "@/lib/axes";
-import { type Camera, clampTarget, FLAT, fitZoom as fitZoomFor, lerp, lerpCam, TILTED } from "@/lib/camera";
+import { clampTarget, FLAT, fitZoom as fitZoomFor, lerp, TILTED } from "@/lib/camera";
 import { normalise, type Vec3 } from "@/lib/embedding";
 import { type Point, selectInPolygon } from "@/lib/geometry";
 import { exportPng } from "@/lib/exportPng";
 import { DepthFadeExtension } from "@/lib/gl/depthFade";
 import { edgeEnds } from "@/lib/graph";
 import { combine, projectAll } from "@/lib/selection";
-import { centroid, cursorPoint, type PlacedMilestone, placeMilestones, prefixTo } from "@/lib/trajectory";
+import { cursorPoint, type PlacedMilestone, placeMilestones, prefixTo } from "@/lib/trajectory";
 import { useCamera } from "@/state/camera";
 import { useSelection } from "@/state/selection";
 import { useUi } from "@/state/ui";
@@ -51,21 +52,10 @@ const FADE = new DepthFadeExtension();
 const RAIL = 304;
 const SHEET = 384;
 const BAR = 80;
-const EASE_OUT = [0.23, 1, 0.32, 1] as const;
-const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
-const MORPH_SECONDS = 0.6;
-// The GPU moves the cells on the same curve as the camera, so the root pin and curves stay on them.
-const MORPH = { duration: MORPH_SECONDS * 1000, easing: cubicBezier(...EASE_IN_OUT) };
-/** Auto-rotate speed, degrees per second. */
-const SPIN = 12;
 /** How far the farthest cells fade toward the stage in 3-D (0 = not at all, 1 = into the stage). */
 const FOG = 0.6;
 /** The stage colour per theme (index.css --color-stage): what fog and faint cells fade toward. */
 const STAGE = { dark: [0, 0, 0], light: [244, 246, 243] } as const;
-const VIEW_ID = "stage";
-/** The split view: the 2-D embedding on the left, DC1-DC3 on the right, each with its own camera. */
-const PANES = ["flat", "deep"] as const;
-type Pane = (typeof PANES)[number];
 type Positions = { value: Float32Array; size: number };
 const ON_TOP = { depthCompare: "always", depthWriteEnabled: false } as const;
 /** A layer id without its pane: "deep:cells" -> "cells". */
@@ -183,11 +173,6 @@ export function Scatter() {
       (flat && size.width ? { target: [0, 0, 0], ...FLAT, zoom: fitZoom, minZoom: fitZoom - 3, maxZoom: fitZoom + MAX_ZOOM_PAST_FIT } : null),
     [userViewState, flat, size.width, fitZoom],
   );
-  const [t, setT] = useState(0); // 0 = 2-D embedding, 1 = DC1-DC3; in between while morphing
-  // The box that holds the cells at this point of the morph, the same blend the fog uses.
-  const morphBox = (flat && deep
-    ? [0, 1].map((k) => [0, 1, 2].map((j) => lerp(flat.bounds[k as 0 | 1][j]!, deep.bounds[k as 0 | 1][j]!, t))) as [Vec3, Vec3]
-    : flat?.bounds) as [Vec3, Vec3] | undefined;
 
   // Side by side: two panes share the free stage, each fitted and moved on its own.
   const split = view === "split" && flat !== null && deep !== null;
@@ -233,76 +218,18 @@ export function Scatter() {
     [paneViews, paneStates, size.width, size.height],
   );
 
-  // Live values for the animations below, which must not restart when these change.
-  const live = useRef({ viewState, t, fitZoom, padRight, paneStates });
+  // The pad now, for the sheet tween below, which must not restart when it changes.
+  const padNow = useRef(padRight);
   useEffect(() => {
-    live.current = { viewState, t, fitZoom, padRight, paneStates };
+    padNow.current = padRight;
   });
 
   // The sheet opening or closing moves the stage centre with it.
   useEffect(() => {
     if (reduce) return;
-    const c = animate(live.current.padRight, sheetVisible ? SHEET : 0, { duration: 0.24, ease: EASE_OUT, onUpdate: setPadTween });
+    const c = animate(padNow.current, sheetVisible ? SHEET : 0, { duration: 0.24, ease: EASE_OUT, onUpdate: setPadTween });
     return () => c.stop();
   }, [sheetVisible, reduce]);
-
-  /** Move a camera (the stage's unless a pane is named) and the morph toward toT together. */
-  const tween = (
-    to: Camera,
-    toT: number,
-    seconds: number,
-    ease: readonly number[],
-    id: string = VIEW_ID,
-    from: OrbitViewState | null = live.current.viewState,
-  ) => {
-    const t0 = live.current.t;
-    if (!from) return () => {};
-    if (reduce) {
-      setT(toT);
-      setCamera(id, { ...from, ...to });
-      return () => {};
-    }
-    const c = animate(0, 1, {
-      duration: seconds,
-      ease: [...ease] as [number, number, number, number],
-      onUpdate: (p) => {
-        setT(lerp(t0, toT, p));
-        setCamera(id, { ...from, ...lerpCam(from as Camera, to, p) });
-      },
-    });
-    return () => c.stop();
-  };
-
-  // The 2-D <-> 3-D morph: positions and camera move together. It waits for the stage's first
-  // camera and, into 3-D, for the diffusion components; it runs again when they arrive.
-  const staged = viewState !== null;
-  useEffect(() => {
-    if (view === "split") return; // the panes do not morph; the stage morphs when it is shown again
-    const toT = view === "3d" ? 1 : 0;
-    if (live.current.t === toT || (toT === 1 && !deep) || !staged) return;
-    // A shared link's 3-D camera, once; otherwise the default tilt.
-    const { arrival, setArrival } = useCamera.getState();
-    if (arrival && toT === 1) setArrival(null);
-    const cam = (toT === 1 && arrival) || { target: [0, 0, 0] as Vec3, zoom: live.current.fitZoom, ...(toT ? TILTED : FLAT) };
-    return tween(cam, toT, MORPH_SECONDS, EASE_IN_OUT);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- tween reads live values; only these start a morph
-  }, [view, deep, staged]);
-
-  // Auto-rotate, in 3-D only (the right pane side by side); any drag, key or reset stops it.
-  const [spinning, setSpinning] = useState(false);
-  const spin = spinning && (split || t === 1) && !reduce;
-  useEffect(() => {
-    if (!spin) return;
-    let last = performance.now();
-    let id = requestAnimationFrame(function step(now) {
-      const panes = live.current.paneStates;
-      const vs = panes ? panes.deep : live.current.viewState;
-      if (vs) setCamera(panes ? "deep" : VIEW_ID, { ...vs, rotationOrbit: (vs.rotationOrbit ?? 0) + ((now - last) / 1000) * SPIN });
-      last = now;
-      id = requestAnimationFrame(step);
-    });
-    return () => cancelAnimationFrame(id);
-  }, [spin, setCamera]);
 
   // deck.gl makes its root focusable for the keyboard controls once it has loaded; name it and say
   // which keys work.
@@ -313,16 +240,6 @@ export function Scatter() {
       "aria-label",
       "Plot. Arrow keys pan, minus and equals zoom, Shift with arrows orbits in 3-D, R resets. Side by side, keys move the side the pointer was over last.",
     );
-  };
-
-  const reset = () => {
-    setSpinning(false);
-    if (paneStates) {
-      for (const id of PANES)
-        tween({ target: [0, 0, 0], zoom: paneFit, ...(id === "deep" ? TILTED : FLAT) }, t, 0.3, EASE_OUT, id, paneStates[id]);
-      return;
-    }
-    tween({ target: [0, 0, 0], zoom: fitZoom, ...(view === "3d" ? TILTED : FLAT) }, t, 0.3, EASE_OUT);
   };
 
   // The set piece: when a run finishes, pseudotime washes out from the root, once. It holds at 0
@@ -372,6 +289,25 @@ export function Scatter() {
       cs && norm ? cs.curves.filter((c) => c.points.length > 1).map((c) => ({ lineage: c.lineage, path: c.points.map(norm.map) })) : null;
     return { a: shape(curves2, flat), b: deepStale ? null : shape(curves3, deep) };
   }, [curves2, curves3, flat, deep, deepStale]);
+  const deepFocus = shapes.b?.find((p) => p.lineage === focus)?.path;
+
+  // t: 0 = 2-D embedding, 1 = DC1-DC3; in between while morphing.
+  const { t, spin, setSpinning, reset } = useStageMotion({
+    view,
+    deep,
+    viewState,
+    paneStates,
+    fitZoom,
+    paneFit,
+    focus,
+    focusPath: deepFocus,
+    reduce,
+  });
+  // The box that holds the cells at this point of the morph, the same blend the fog uses.
+  const morphBox = (flat && deep
+    ? [0, 1].map((k) => [0, 1, 2].map((j) => lerp(flat.bounds[k as 0 | 1][j]!, deep.bounds[k as 0 | 1][j]!, t))) as [Vec3, Vec3]
+    : flat?.bounds) as [Vec3, Vec3] | undefined;
+
   /** The curves at tt: 0 on the 2-D embedding, 1 on DC1-DC3, in between while morphing. */
   const pathsAt = (tt: number) => {
     const { a, b } = shapes;
@@ -421,18 +357,6 @@ export function Scatter() {
     const path = pathsAt(tt).find((p) => p.lineage === focus)?.path;
     return head && path ? prefixTo(path, head) : null;
   };
-  const deepFocus = shapes.b?.find((p) => p.lineage === focus)?.path;
-
-  // Focusing a lineage in 3-D (the right pane side by side) turns the camera around it.
-  useEffect(() => {
-    const centre = deepFocus && centroid(deepFocus);
-    const pane = paneStates?.deep;
-    const vs = pane ?? live.current.viewState;
-    if ((!pane && live.current.t !== 1) || !vs || !centre) return;
-    const to = { target: centre, zoom: vs.zoom, rotationX: vs.rotationX, rotationOrbit: vs.rotationOrbit };
-    return pane ? tween(to, live.current.t, 0.45, EASE_OUT, "deep", pane) : tween(to, 1, 0.45, EASE_OUT);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a focus change moves the camera
-  }, [focus]);
 
   const haloOf = useMemo(() => perPositions((pos) => ({ length: n, attributes: { getPosition: pos } })), [n]);
   const selected = useMemo(() => (mask ? Float32Array.from(mask) : null), [mask]);
