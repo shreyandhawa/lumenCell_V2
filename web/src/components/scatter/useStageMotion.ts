@@ -1,7 +1,7 @@
 import type { OrbitViewState } from "@deck.gl/core";
-import { animate, cubicBezier } from "motion";
+import { animate, cubicBezier, type ValueAnimationTransition } from "motion";
 import { useEffect, useRef, useState } from "react";
-import { type Camera, FLAT, lerp, lerpCam, TILTED } from "@/lib/camera";
+import { type Camera, FLAT, lerp, lerpCam, TILTED, wrapAngle } from "@/lib/camera";
 import type { Normalised, Vec3 } from "@/lib/embedding";
 import { centroid } from "@/lib/trajectory";
 import { useCamera } from "@/state/camera";
@@ -12,11 +12,13 @@ export const VIEW_ID = "stage";
 /** The split view: the 2-D embedding on the left, DC1-DC3 on the right, each with its own camera. */
 export const PANES = ["flat", "deep"] as const;
 export type Pane = (typeof PANES)[number];
-export const EASE_OUT = [0.23, 1, 0.32, 1] as const;
-const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
+const EASE_IN_OUT = cubicBezier(0.77, 0, 0.175, 1);
 const MORPH_SECONDS = 0.6;
 /** The cells' GPU transition. It runs on the same curve as the camera, so the root pin and curves stay on them. */
-export const MORPH = { duration: MORPH_SECONDS * 1000, easing: cubicBezier(...EASE_IN_OUT) };
+export const MORPH = { duration: MORPH_SECONDS * 1000, easing: EASE_IN_OUT };
+const MORPH_CAMERA: ValueAnimationTransition<number> = { duration: MORPH_SECONDS, ease: EASE_IN_OUT };
+/** Camera moves that are not part of the morph (reset, focus, tour stops): a spring that barely overshoots. */
+export const CAMERA_SPRING: ValueAnimationTransition<number> = { type: "spring", visualDuration: 0.35, bounce: 0.1 };
 /** Auto-rotate speed, degrees per second. */
 const SPIN = 12;
 
@@ -62,8 +64,7 @@ export function useStageMotion({
   const tween = (
     to: Camera,
     toT: number,
-    seconds: number,
-    ease: readonly number[],
+    how: ValueAnimationTransition<number>,
     id: string = VIEW_ID,
     from: OrbitViewState | null = live.current.viewState,
   ) => {
@@ -75,8 +76,7 @@ export function useStageMotion({
       return () => {};
     }
     const c = animate(0, 1, {
-      duration: seconds,
-      ease: [...ease] as [number, number, number, number],
+      ...how,
       onUpdate: (p) => {
         setT(lerp(t0, toT, p));
         setCamera(id, { ...from, ...lerpCam(from as Camera, to, p) });
@@ -96,7 +96,7 @@ export function useStageMotion({
     const { arrival, setArrival } = useCamera.getState();
     if (arrival && toT === 1) setArrival(null);
     const cam = (toT === 1 && arrival) || { target: [0, 0, 0] as Vec3, zoom: live.current.fitZoom, ...(toT ? TILTED : FLAT) };
-    return tween(cam, toT, MORPH_SECONDS, EASE_IN_OUT);
+    return tween(cam, toT, MORPH_CAMERA);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tween reads live values; only these start a morph
   }, [view, deep, staged]);
 
@@ -109,7 +109,11 @@ export function useStageMotion({
     let id = requestAnimationFrame(function step(now) {
       const panes = live.current.paneStates;
       const vs = panes ? panes.deep : live.current.viewState;
-      if (vs) setCamera(panes ? "deep" : VIEW_ID, { ...vs, rotationOrbit: (vs.rotationOrbit ?? 0) + ((now - last) / 1000) * SPIN });
+      if (vs) {
+        // Wrapped, so the angle stays small however long it spins.
+        const rotationOrbit = wrapAngle((vs.rotationOrbit ?? 0) + ((now - last) / 1000) * SPIN);
+        setCamera(panes ? "deep" : VIEW_ID, { ...vs, rotationOrbit });
+      }
       last = now;
       id = requestAnimationFrame(step);
     });
@@ -123,7 +127,7 @@ export function useStageMotion({
     const vs = pane ?? live.current.viewState;
     if ((!pane && live.current.t !== 1) || !vs || !centre) return;
     const to = { target: centre, zoom: vs.zoom, rotationX: vs.rotationX, rotationOrbit: vs.rotationOrbit };
-    return pane ? tween(to, live.current.t, 0.45, EASE_OUT, "deep", pane) : tween(to, 1, 0.45, EASE_OUT);
+    return pane ? tween(to, live.current.t, CAMERA_SPRING, "deep", pane) : tween(to, 1, CAMERA_SPRING);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only a focus change moves the camera
   }, [focus]);
 
@@ -131,10 +135,10 @@ export function useStageMotion({
     setSpinning(false);
     if (paneStates) {
       for (const id of PANES)
-        tween({ target: [0, 0, 0], zoom: paneFit, ...(id === "deep" ? TILTED : FLAT) }, t, 0.3, EASE_OUT, id, paneStates[id]);
+        tween({ target: [0, 0, 0], zoom: paneFit, ...(id === "deep" ? TILTED : FLAT) }, t, CAMERA_SPRING, id, paneStates[id]);
       return;
     }
-    tween({ target: [0, 0, 0], zoom: fitZoom, ...(view === "3d" ? TILTED : FLAT) }, t, 0.3, EASE_OUT);
+    tween({ target: [0, 0, 0], zoom: fitZoom, ...(view === "3d" ? TILTED : FLAT) }, t, CAMERA_SPRING);
   };
 
   return { t, spin, setSpinning, reset };
