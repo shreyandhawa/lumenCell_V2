@@ -50,7 +50,7 @@ export default function App() {
 
   if (dataset.isLoading) {
     return (
-      <div className="grid h-full place-items-center text-[13px] text-ink-muted">
+      <div className="grid h-full place-items-center text-sm text-ink-muted">
         <span className="flex items-center gap-2">
           <LoaderCircle size={16} className="animate-spin text-ink" /> Loading dataset…
         </span>
@@ -60,7 +60,7 @@ export default function App() {
   if (dataset.error) {
     return (
       <div className="grid h-full place-items-center p-8">
-        <div role="alert" className="max-w-md rounded-xl bg-panel p-4 text-[13px]">
+        <div role="alert" className="max-w-md rounded-xl bg-panel p-4 text-sm">
           <h1 className="mb-1 flex items-center gap-2 font-semibold text-ink">
             <TriangleAlert size={16} className="text-ink" /> Could not reach the lumenCell server
           </h1>
@@ -98,7 +98,7 @@ export default function App() {
             type="button"
             aria-label="Show evidence"
             onClick={() => setSheetOpen(true)}
-            className="press absolute top-3 right-3 z-10 flex h-[34px] items-center gap-2 rounded-lg bg-panel px-2.5 text-[13px] text-ink"
+            className="press lift absolute top-3 right-3 z-10 flex h-[34px] items-center gap-2 rounded-lg bg-panel px-2.5 text-sm text-ink"
           >
             <PanelRightOpen size={16} /> Evidence
           </button>

@@ -27,13 +27,13 @@ export function ReferenceResults({ rows }: { rows: Row[] }) {
       </p>
       {[...groups].map(([dataset, group]) => (
         <div key={dataset} className="mb-3 last:mb-0">
-          <h4 className="text-[13px] font-medium text-ink">{dataset}</h4>
+          <h4 className="text-sm font-medium text-ink">{dataset}</h4>
           <p className="font-mono text-2xs break-words text-ink-faint">{group[0]?.source}</p>
           <ul aria-label={`${dataset}: reference results`} className="mt-1.5 space-y-2">
             {group.map((r) => {
               const { Icon, text } = status(r);
               return (
-                <li key={r.gate} className="grid grid-cols-[16px_1fr_auto] gap-x-2 text-[13px]">
+                <li key={r.gate} className="grid grid-cols-[16px_1fr_auto] gap-x-2 text-sm">
                   <Icon size={15} aria-hidden className="mt-0.5 text-ink" />
                   <span className="text-ink">
                     {r.metric} <span className="font-mono text-2xs text-ink-faint">{r.gate}</span>

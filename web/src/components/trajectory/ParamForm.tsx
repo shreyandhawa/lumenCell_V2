@@ -78,7 +78,7 @@ export function checkParams(
   return { params, errors };
 }
 
-const INPUT = "h-9 w-full rounded-md bg-panel-raised px-2.5 text-[13px] text-ink focus-visible:outline-2 focus-visible:outline-ink";
+const INPUT = "h-9 w-full rounded-md bg-panel-raised px-2.5 text-sm text-ink focus-visible:outline-2 focus-visible:outline-ink";
 
 /** One input per parameter, typed from its schema. Errors are shown under the field they belong to. */
 export function ParamForm({

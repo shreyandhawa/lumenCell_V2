@@ -3,7 +3,15 @@ import type { ButtonHTMLAttributes, ReactNode, SelectHTMLAttributes } from "reac
 
 type StepState = "active" | "done" | "pending";
 
-/** One step of the rail: Prepare, Pick a root, Run, Inspect. A done step's header reopens it. */
+/** The line's stretch already travelled, and the stretch ahead. */
+const travelled = "bg-ink-muted";
+const ahead = "bg-ink-faint";
+
+/**
+ * One step of the rail: Prepare, Pick a root, Run, Inspect, drawn as stations on one line. Done
+ * stations are filled, the current one is the red "you are here", the rest are hollow. A done
+ * step's header reopens it.
+ */
 export function Step({
   n,
   title,
@@ -11,6 +19,7 @@ export function Step({
   aside,
   open,
   onToggle,
+  last = false,
   children,
 }: {
   n: number;
@@ -19,6 +28,8 @@ export function Step({
   aside?: ReactNode;
   open: boolean;
   onToggle?: () => void;
+  /** The last station: the line ends here. */
+  last?: boolean;
   children?: ReactNode;
 }) {
   const active = state === "active";
@@ -26,22 +37,25 @@ export function Step({
     <>
       <span
         aria-hidden
-        className={`grid size-[22px] shrink-0 place-items-center rounded-full text-2xs ${
+        className={`relative grid size-[22px] shrink-0 place-items-center rounded-full text-2xs font-semibold ${
           state === "done"
-            ? "bg-panel-raised text-ink-muted"
+            ? "bg-ink text-panel"
             : active
-              ? "border-[1.5px] border-ink text-ink"
-              : "border border-line text-ink-muted"
+              ? "bg-accent text-on-accent ring-2 ring-ink"
+              : "border-2 border-ink-faint bg-panel text-ink-muted"
         }`}
       >
-        {state === "done" ? <Check size={12} strokeWidth={2.5} /> : n}
+        {state === "done" ? <Check size={13} strokeWidth={3} /> : n}
       </span>
-      <span className={`shrink-0 ${active ? "text-[15px] font-semibold text-ink" : "text-[13px] font-medium text-ink"}`}>{title}</span>
-      {aside != null && <span className="ml-auto min-w-0 truncate pl-2 font-mono text-xs text-ink-muted">{aside}</span>}
+      <span className={`shrink-0 ${active ? "text-base font-semibold text-ink" : "text-sm font-medium text-ink"}`}>{title}</span>
+      {aside != null && <span className="ml-auto min-w-0 pl-2 text-right text-xs leading-tight text-balance text-ink-muted">{aside}</span>}
     </>
   );
   return (
-    <section aria-label={title} className="py-2">
+    <section aria-label={title} aria-current={active ? "step" : undefined} className="relative py-2.5">
+      {/* The line through the stations, drawn under them: in from the last station, out to the next. */}
+      {n > 1 && <span aria-hidden className={`absolute top-0 left-[9.5px] h-[22px] w-[3px] ${state === "pending" ? ahead : travelled}`} />}
+      {!last && <span aria-hidden className={`absolute top-[22px] bottom-0 left-[9.5px] w-[3px] ${state === "done" ? travelled : ahead}`} />}
       {onToggle ? (
         <button type="button" aria-expanded={open} onClick={onToggle} className="flex w-full items-center gap-2.5 text-left">
           {head}
@@ -62,14 +76,15 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone }) {
   const tones: Record<Tone, string> = {
-    primary: "bg-accent px-3 text-on-accent hover:brightness-110",
+    // Ink, as on a station sign (white on the blue line): the red is kept for "you are here".
+    primary: "bg-ink px-3 text-panel hover:opacity-90 disabled:bg-panel-raised",
     secondary: "bg-panel-raised px-3 text-ink hover:bg-line",
     ghost: "px-2 text-ink-muted hover:text-ink",
   };
   return (
     <button
       type="button"
-      className={`press inline-flex h-8 items-center justify-center gap-1.5 rounded text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:text-ink-faint ${tones[tone]} ${className}`}
+      className={`press inline-flex h-8 items-center justify-center gap-1.5 rounded text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:text-ink-faint ${tones[tone]} ${className}`}
       {...props}
     />
   );
@@ -79,7 +94,7 @@ export function Select({ className = "", ...props }: SelectHTMLAttributes<HTMLSe
   return (
     <div className={`relative ${className}`}>
       <select
-        className="h-9 w-full appearance-none rounded-md bg-panel-raised pr-8 pl-2.5 text-[13px] text-ink focus-visible:outline-2 focus-visible:outline-ink"
+        className="h-9 w-full appearance-none rounded-md bg-panel-raised pr-8 pl-2.5 text-sm text-ink focus-visible:outline-2 focus-visible:outline-ink"
         {...props}
       />
       <ChevronDown size={16} aria-hidden className="pointer-events-none absolute top-2.5 right-2.5 text-ink-muted" />

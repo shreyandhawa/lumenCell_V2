@@ -76,7 +76,7 @@ export function CameraTour({ id, reduce, onStart }: { id: string; reduce: boolea
           id="camera-tour"
           role="group"
           aria-label="Camera tour"
-          className="absolute right-0 bottom-full mb-2 w-60 rounded-xl bg-panel p-3 text-[13px] text-ink"
+          className="lift absolute right-0 bottom-full mb-2 w-60 rounded-xl bg-panel p-3 text-sm text-ink"
         >
           <p className="text-xs leading-snug text-ink-muted">Save views of the 3-D stage, then play through them.</p>
           <div className="mt-2 flex flex-wrap gap-1">

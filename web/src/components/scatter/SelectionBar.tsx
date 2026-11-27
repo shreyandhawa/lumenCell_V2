@@ -24,7 +24,7 @@ export function SelectionBar({ lasso, groupBy, total }: { lasso: boolean; groupB
 
   const rows = mask && groupBy ? breakdown(mask, groupBy) : [];
   return (
-    <div role="group" aria-label="Selection" className="w-72 rounded-xl bg-panel p-3 text-[13px] text-ink">
+    <div role="group" aria-label="Selection" className="lift w-72 rounded-xl bg-panel p-3 text-sm text-ink">
       <div className="flex items-baseline justify-between gap-2">
         <p aria-live="polite">
           {mask ? (

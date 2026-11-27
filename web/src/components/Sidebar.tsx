@@ -32,7 +32,7 @@ export function Sidebar() {
   const columns = dataset.obs.filter((c) => c.kind !== "string");
 
   return (
-    <aside aria-label="Steps" className="absolute top-3 bottom-3 left-3 z-10 flex w-[280px] flex-col overflow-y-auto rounded-xl bg-panel p-4">
+    <aside aria-label="Steps" className="shell absolute top-3 bottom-3 left-3 z-10 flex w-[280px] flex-col overflow-y-auto rounded-xl bg-panel p-4">
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold tracking-tight">lumenCell</h1>
         <button
@@ -45,7 +45,7 @@ export function Sidebar() {
         </button>
       </header>
       <div className="mt-5 border-b border-line pb-3">
-        <p className="flex items-center gap-2 text-[13px] font-medium text-ink">
+        <p className="flex items-center gap-2 text-sm font-medium text-ink">
           <Database size={15} aria-hidden className="shrink-0 text-ink-muted" />
           <span className="truncate" title={dataset.name}>
             {dataset.name}
@@ -89,6 +89,7 @@ export function Sidebar() {
 
         <Step
           n={4}
+          last
           title="Inspect"
           state={runDone ? "active" : "pending"}
           aside={runDone ? `${run.lineages.length} lineages` : null}
