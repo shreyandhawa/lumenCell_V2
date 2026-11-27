@@ -80,7 +80,9 @@ export default function App() {
         <Scatter />
         <Sidebar />
 
-        <div className="absolute right-[384px] bottom-3 left-[304px] z-10 flex flex-col gap-2">
+        <div
+          className={`absolute bottom-3 left-[304px] z-10 flex flex-col gap-2 transition-[right] duration-200 ${run && sheetOpen ? "right-[384px]" : "right-3"}`}
+        >
           <AnimatePresence>{trends && <GenePanel key="trends" run={run} />}</AnimatePresence>
           <PseudotimeBar ready={run !== undefined} />
           {run && cursor !== null && (

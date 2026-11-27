@@ -29,6 +29,9 @@ export function Sidebar() {
 
   const prepDone = dataset.prep.state === "ready";
   const runDone = run !== undefined;
+  // The station you are at: the first step not yet done. Earlier ones are done, later ones ahead.
+  const current = !prepDone ? 1 : runDone ? 4 : root === null ? 2 : 3;
+  const stateOf = (n: number) => (n < current ? "done" : n === current ? "active" : "pending");
   const columns = dataset.obs.filter((c) => c.kind !== "string");
 
   return (
@@ -57,17 +60,17 @@ export function Sidebar() {
       </div>
 
       <div className="mt-2">
-        <Step n={1} title="Prepare" state={prepDone ? "done" : "active"} aside={prepDone ? "done" : prepCount(dataset.prep)} open={!prepDone}>
+        <Step n={1} title="Prepare" state={stateOf(1)} aside={prepDone ? "done" : prepCount(dataset.prep)} open={!prepDone}>
           <PrepProgress prep={dataset.prep} hasFileEmbedding={dataset.embeddings.some((e) => e.source === "file")} />
         </Step>
 
         <Step
           n={2}
           title="Pick a root"
-          state={!prepDone ? "pending" : runDone ? "done" : "active"}
-          aside={!prepDone ? "after prep" : runDone && root ? describeRoot(root.spec) : null}
-          open={prepDone && (!runDone || reopen === 2)}
-          onToggle={runDone ? toggle(2) : undefined}
+          state={stateOf(2)}
+          aside={!prepDone ? "after prep" : root ? describeRoot(root.spec) : null}
+          open={prepDone && (current === 2 || reopen === 2)}
+          onToggle={current > 2 ? toggle(2) : undefined}
         >
           <RootPicker />
         </Step>
@@ -75,7 +78,7 @@ export function Sidebar() {
         <Step
           n={3}
           title="Run"
-          state={runDone ? "done" : "pending"}
+          state={stateOf(3)}
           aside={runDone ? (method?.label ?? run.provenance.method) : prepDone && root ? "ready" : null}
           open={prepDone && root !== null && (!runDone || reopen === 3 || method?.experimental === true)}
           onToggle={runDone ? toggle(3) : undefined}
@@ -91,12 +94,15 @@ export function Sidebar() {
           n={4}
           last
           title="Inspect"
-          state={runDone ? "active" : "pending"}
+          state={stateOf(4)}
           aside={runDone ? `${run.lineages.length} lineages` : null}
           open={runDone}
         >
           {run && (
             <div className="space-y-5">
+              <p className="text-xs leading-snug text-ink-muted">
+                Focus a lineage, then play pseudotime below. Evidence says how far to trust it.
+              </p>
               <div>
                 <label htmlFor="colour-by" className="mb-1.5 block text-xs text-ink-muted">
                   Colour by

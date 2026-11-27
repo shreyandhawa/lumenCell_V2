@@ -3,6 +3,7 @@ import { Clapperboard, Play, Square } from "lucide-react";
 import { animate, type ValueAnimationTransition } from "motion";
 import { useRef, useState } from "react";
 import { CAMERA_SPRING } from "@/components/scatter/useStageMotion";
+import { toolClass } from "@/components/ui";
 import { type Camera, lerpCam } from "@/lib/camera";
 import { useCamera } from "@/state/camera";
 
@@ -131,9 +132,9 @@ export function CameraTour({ id, reduce, onStart }: { id: string; reduce: boolea
         aria-expanded={open}
         aria-controls="camera-tour"
         onClick={() => setOpen((o) => !o)}
-        className={`press grid size-8 place-items-center rounded-md text-ink ${open ? "bg-panel-raised" : "bg-panel"}`}
+        className={toolClass(open)}
       >
-        <Clapperboard size={16} />
+        <Clapperboard size={16} aria-hidden /> Tour
       </button>
     </div>
   );

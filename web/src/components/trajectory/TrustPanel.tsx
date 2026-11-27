@@ -1,5 +1,6 @@
-import { Check, LoaderCircle, Minus, PanelRightClose, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronDown, LoaderCircle, Minus, PanelRightClose, TriangleAlert, X } from "lucide-react";
 import { motion } from "motion/react";
+import type { ReactNode } from "react";
 import type * as T from "@/api/generated";
 import { useCurves, useDataset, useMethods } from "@/api/queries";
 import { describeRoot } from "@/components/trajectory/RootPicker";
@@ -45,9 +46,7 @@ function explain(ts: T.TreeSupport): string {
   return lead + scope;
 }
 
-function checkLine(c: T.SupportCheck, afterExcluded: boolean, clonal: T.ClonalAgreement | null): string {
-  if (c.state === "excluded")
-    return afterExcluded ? "Left out for the same reason" : "Left out: did not separate trees from the controls";
+function checkLine(c: T.SupportCheck, clonal: T.ClonalAgreement | null): string {
   if (c.state === "pending") return "Still being computed";
   if (c.state === "unavailable") return "Could not be measured";
   if (c.id === "C1") return "Share of cells with a pseudotime";
@@ -71,12 +70,13 @@ function checkValue(c: T.SupportCheck, clonal: T.ClonalAgreement | null): string
   return num(c.value);
 }
 
+/** The checks the verdict reads, then one line for those left out. */
 function Checks({ ts, clonal }: { ts: T.TreeSupport; clonal: T.ClonalAgreement | null }) {
+  const left = ts.checks.filter((c) => c.state === "excluded");
   return (
     <ul className="space-y-2" aria-label="Checks">
-      {ts.checks.map((c, i) => {
+      {ts.checks.filter((c) => c.state !== "excluded").map((c) => {
         const Icon = c.state in STATE_ICON ? STATE_ICON[c.state as keyof typeof STATE_ICON] : Minus;
-        const afterExcluded = ts.checks.slice(0, i).some((x) => x.state === "excluded");
         return (
           <li key={c.id} className="grid grid-cols-[16px_24px_1fr_auto] gap-x-2 text-sm" title={c.reason ?? undefined}>
             <Icon size={15} aria-label={c.state.replace("_", " ")} className={`mt-0.5 text-ink ${c.state === "pending" ? "animate-spin" : ""}`} />
@@ -84,12 +84,38 @@ function Checks({ ts, clonal }: { ts: T.TreeSupport; clonal: T.ClonalAgreement |
             <span className="text-ink">{c.name}</span>
             <span className="font-mono text-xs text-ink">{checkValue(c, clonal)}</span>
             <span className="col-start-3 col-end-5 mt-0.5 text-xs leading-snug text-ink-muted">
-              {checkLine(c, afterExcluded, clonal)}
+              {checkLine(c, clonal)}
             </span>
           </li>
         );
       })}
+      {left.length > 0 && (
+        <li className="grid grid-cols-[16px_1fr] gap-x-2">
+          <Minus size={15} aria-label="excluded" className="mt-0.5 text-ink" />
+          <span className="text-xs leading-snug text-ink-muted">
+            Left out: {list(left.map((c) => `${c.name} (${c.id})`))}. They did not separate trees from the controls.
+          </span>
+        </li>
+      )}
     </ul>
+  );
+}
+
+const RULE = "border-t border-line pt-4 mt-4";
+
+/** A section folded to its heading: the detail behind the verdict, one click away. */
+function Fold({ label, summary, children }: { label: string; summary?: string; children: ReactNode }) {
+  return (
+    <section aria-label={label} className={RULE}>
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink [&::-webkit-details-marker]:hidden">
+          <Label className="">{label}</Label>
+          {summary && <span className="ml-auto text-xs text-ink">{summary}</span>}
+          <ChevronDown size={14} aria-hidden className={`text-ink-muted transition-transform group-open:rotate-180 ${summary ? "" : "ml-auto"}`} />
+        </summary>
+        <div className="mt-3">{children}</div>
+      </details>
+    </section>
   );
 }
 
@@ -163,7 +189,7 @@ function Clones({ clonal }: { clonal: T.ClonalAgreement | null }) {
   );
 }
 
-/** The Evidence sheet: verdict, checks, clones against nulls, provenance. */
+/** The Evidence sheet: the verdict and its warnings first, then the checks; the detail behind them is folded. */
 export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
   const embedding = useUi((s) => s.embedding);
   const setSheetOpen = useUi((s) => s.setSheetOpen);
@@ -180,7 +206,8 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
   const ts = run.trust?.tree_support ?? null;
   const clonal = run.trust?.clonal ?? null;
   const notices = [...run.warnings, ...(curves?.warnings ?? [])];
-  const rule = "border-t border-line pt-4 mt-4";
+  const reference = method?.reference_scores ?? [];
+  const failed = reference.filter((r) => r.passed === false).length;
 
   return (
     <motion.aside
@@ -208,65 +235,17 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
         {ts ? (
           <>
             <Mark>{LEVEL_LABEL[ts.level]}</Mark>
-            <p className="mt-2 text-xs leading-snug text-ink-muted" title={ts.reasons.join("\n")}>
+            <p className="mt-2 text-sm leading-snug text-ink" title={ts.reasons.join("\n")}>
               {explain(ts)}
             </p>
           </>
         ) : (
-          <p className="text-xs text-ink-muted">The checks are still running.</p>
+          <p className="text-sm text-ink-muted">The checks are still running.</p>
         )}
       </section>
 
-      {ts && (
-        <section aria-label="Checks" className={rule}>
-          <Label>Checks</Label>
-          <Checks ts={ts} clonal={clonal} />
-        </section>
-      )}
-
-      <section aria-label="Clones against nulls" className={rule}>
-        <Label>Clones against nulls</Label>
-        <Clones clonal={clonal} />
-      </section>
-
-      <section aria-label="Reference results" className={rule}>
-        <Label>Reference results</Label>
-        <ReferenceResults rows={method?.reference_scores ?? []} />
-      </section>
-
-      {run.lineages.length > 0 && (
-        <section aria-label="Curve fidelity" className={rule}>
-          <Label>Curve fidelity</Label>
-          <p className="mb-2 text-xs leading-snug text-ink-muted">
-            How well each drawn curve keeps its cells' pseudotime order (Spearman, 1 is perfect). A low value means
-            the view bends the lineage, not that the lineage is wrong.
-          </p>
-          <KeyValues
-            label="Curve fidelity"
-            rows={run.lineages.map((l) => [
-              l.name,
-              `${embedding ?? "2-D"} ${fidelity(curves, l.id)} · ${axesLabel(axes)} ${fidelity(curves3, l.id)}`,
-            ])}
-          />
-        </section>
-      )}
-
-      <section aria-label="Provenance" className={rule}>
-        <Label>Provenance</Label>
-        <KeyValues
-          label="Provenance"
-          rows={[
-            ["Method", `${method?.label ?? p.method}${method?.experimental ? " (experimental)" : ""}`],
-            ["Inferred in", `${p.inference_rep}, ${p.inference_dims} components`],
-            ["Root", describeRoot(p.root.spec)],
-            ["Data", `${dataset?.name ?? ""} · ${p.dataset_fingerprint.slice(0, 8)}`],
-            ["lumenCell", p.lumencell_version],
-          ]}
-        />
-      </section>
-
       {notices.length > 0 && (
-        <section aria-label="Warnings" className={rule}>
+        <section aria-label="Warnings" className={RULE}>
           <Label>Warnings</Label>
           <ul className="space-y-1.5">
             {notices.map((w, i) => (
@@ -278,6 +257,50 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
           </ul>
         </section>
       )}
+
+      {ts && (
+        <section aria-label="Checks" className={RULE}>
+          <Label>Checks</Label>
+          <Checks ts={ts} clonal={clonal} />
+        </section>
+      )}
+
+      <Fold label="Clones against nulls">
+        <Clones clonal={clonal} />
+      </Fold>
+
+      <Fold label="Reference results" summary={reference.length ? `${failed} of ${reference.length} gates fail` : undefined}>
+        <ReferenceResults rows={reference} />
+      </Fold>
+
+      {run.lineages.length > 0 && (
+        <Fold label="Curve fidelity">
+          <p className="mb-2 text-xs leading-snug text-ink-muted">
+            How well each drawn curve keeps its cells' pseudotime order (Spearman, 1 is perfect). A low value means
+            the view bends the lineage, not that the lineage is wrong.
+          </p>
+          <KeyValues
+            label="Curve fidelity"
+            rows={run.lineages.map((l) => [
+              l.name,
+              `${embedding ?? "2-D"} ${fidelity(curves, l.id)} · ${axesLabel(axes)} ${fidelity(curves3, l.id)}`,
+            ])}
+          />
+        </Fold>
+      )}
+
+      <Fold label="Provenance">
+        <KeyValues
+          label="Provenance"
+          rows={[
+            ["Method", `${method?.label ?? p.method}${method?.experimental ? " (experimental)" : ""}`],
+            ["Inferred in", `${p.inference_rep}, ${p.inference_dims} components`],
+            ["Root", describeRoot(p.root.spec)],
+            ["Data", `${dataset?.name ?? ""} · ${p.dataset_fingerprint.slice(0, 8)}`],
+            ["lumenCell", p.lumencell_version],
+          ]}
+        />
+      </Fold>
     </motion.aside>
   );
 }
