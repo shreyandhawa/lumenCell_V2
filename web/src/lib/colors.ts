@@ -33,6 +33,12 @@ export function hexToRgb(hex: string): [number, number, number] {
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
 }
 
+/** A colour token (e.g. "--color-ink") as it resolves now, for the canvas, which cannot read CSS. */
+// shortcut: hex tokens only (all of index.css today); parse through a canvas if a token moves to oklch().
+export function cssColor(name: string): [number, number, number] {
+  return hexToRgb(getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#000");
+}
+
 export function sequential(t: number, alpha = 230): RGBA {
   const x = Math.min(1, Math.max(0, t)) * (VIRIDIS.length - 1);
   const i = Math.min(VIRIDIS.length - 2, Math.floor(x));

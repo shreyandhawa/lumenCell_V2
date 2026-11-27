@@ -34,6 +34,7 @@ import { describeRoot } from "@/components/trajectory/RootPicker";
 import { fmt, Select } from "@/components/ui";
 import { axesLabel, axesName, setAxis } from "@/lib/axes";
 import { clampTarget, FLAT, fitZoom as fitZoomFor, lerp, TILTED } from "@/lib/camera";
+import { cssColor } from "@/lib/colors";
 import { normalise, type Vec3 } from "@/lib/embedding";
 import { type Point, selectInPolygon } from "@/lib/geometry";
 import { exportPng } from "@/lib/exportPng";
@@ -55,8 +56,10 @@ const BAR = 80;
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 /** How far the farthest cells fade toward the stage in 3-D (0 = not at all, 1 = into the stage). */
 const FOG = 0.6;
-/** The stage colour per theme (index.css --color-stage): what fog and faint cells fade toward. */
-const STAGE = { dark: [0, 0, 0], light: [244, 246, 243] } as const;
+/** Alphas over the theme's ink: graph edges and curves, the ghost of every cell, the hovered cell. */
+const INK_A = 180;
+const HALO_A = 12;
+const HOVER_A = 210;
 type Positions = { value: Float32Array; size: number };
 const ON_TOP = { depthCompare: "always", depthWriteEnabled: false } as const;
 /** A layer id without its pane: "deep:cells" -> "cells". */
@@ -386,7 +389,17 @@ export function Scatter() {
       }),
     [knn],
   );
-  const ink: [number, number, number, number] = theme === "dark" ? [243, 245, 242, 190] : [20, 23, 22, 170];
+  // The canvas takes its colours from the theme's tokens. state/ui.ts sets data-theme before `theme`
+  // changes, so the read here already sees the new values.
+  const { stage, ink, accent } = useMemo(() => {
+    const ink = cssColor("--color-ink");
+    return {
+      stage: cssColor("--color-stage"),
+      ink: [...ink, INK_A] as [number, number, number, number],
+      accent: [...cssColor("--color-accent"), 255] as [number, number, number, number],
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the values live in CSS; theme is what changes them
+  }, [theme]);
   // Cells are balls of one size in embedding units (near ones look bigger in 3-D), sized so they
   // are r pixels at the fitted zoom, and never smaller than 0.6 r or larger than 3 r before perspective.
   const r = pointRadius(n) * pointSize;
@@ -407,13 +420,13 @@ export function Scatter() {
         id: `${prefix}halo`,
         visible: mask === null,
         data: haloOf(pos),
-        getFillColor: theme === "dark" ? [255, 255, 255, 10] : [0, 0, 0, 14],
+        getFillColor: [ink[0], ink[1], ink[2], HALO_A],
         radiusUnits: "pixels",
         getRadius: r + 1.5,
         billboard: true,
         parameters: { depthCompare: "always", depthWriteEnabled: false },
         transitions,
-        updateTriggers: { getFillColor: theme, getRadius: r },
+        updateTriggers: { getFillColor: ink, getRadius: r },
       }),
       ...(knn ? [knnLayer(prefix, endsOf(pos), ink, reduce ? undefined : MORPH)] : []),
       new ScatterplotLayer({
@@ -426,18 +439,18 @@ export function Scatter() {
         billboard: true,
         pickable: true,
         autoHighlight: true,
-        highlightColor: theme === "dark" ? [255, 255, 255, 220] : [0, 0, 0, 200],
+        highlightColor: [ink[0], ink[1], ink[2], HOVER_A],
         extensions: [FILTER, FADE],
         filterRange: [-2, limit],
         filterSoftRange: [-2, limit - 0.06],
-        depthFadeStage: STAGE[theme],
+        depthFadeStage: stage,
         depthFadeStrength: fog ? FOG * tt : 0,
         depthFadeBounds: [box(0), box(1)],
         depthFadeDim: mask !== null,
         transitions,
         updateTriggers: { getRadius: radius, getSelected: mask },
       }),
-      ...(paga ? pagaLayers(prefix, paga.nodes, paga.edges, ink, STAGE[theme]) : []),
+      ...(paga ? pagaLayers(prefix, paga.nodes, paga.edges, ink, stage) : []),
       ...trajectoryLayers({
         prefix,
         paths: pathsAt(tt),
@@ -445,7 +458,8 @@ export function Scatter() {
         focus,
         travelled: travelledAt(tt),
         ink,
-        stage: STAGE[theme],
+        accent,
+        stage,
       }),
     ];
     if (paneStates && hovered !== null)

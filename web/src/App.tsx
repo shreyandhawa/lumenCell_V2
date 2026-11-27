@@ -16,7 +16,7 @@ const LEIDEN = "lumencell_leiden";
 function useDefaults() {
   const dataset = useDataset().data;
   const runs = useRuns().data?.runs;
-  const { embedding, colorBy, runId, theme, setEmbedding, setColorBy, setRun } = useUi();
+  const { embedding, colorBy, runId, setEmbedding, setColorBy, setRun } = useUi();
 
   useEffect(() => {
     if (!dataset) return;
@@ -37,10 +37,6 @@ function useDefaults() {
     const latest = runs.find((r) => r.state === "done");
     if (latest) setRun(latest.run_id);
   }, [runs, runId, setRun]);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
 }
 
 export default function App() {

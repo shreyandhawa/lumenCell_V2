@@ -28,7 +28,13 @@
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
+/* Native controls (selects, checkboxes, ranges, scrollbars) follow the theme too. */
+:root {
+  color-scheme: dark;
+}
+
 :root[data-theme="light"] {
+  color-scheme: light;
   --color-stage: #f4f6f3;
   --color-panel: #ecefec;
   --color-panel-raised: #e0e4e0;

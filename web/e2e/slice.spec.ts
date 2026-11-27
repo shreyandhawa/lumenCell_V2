@@ -2,7 +2,8 @@
 import fs from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 
-test.use({ reducedMotion: "reduce" });
+// Dark, as a new visitor whose system is dark sees it (Playwright's default is light).
+test.use({ reducedMotion: "reduce", colorScheme: "dark" });
 
 /** Collect console errors and uncaught exceptions; the test fails if there are any. */
 function watchErrors(page: Page): string[] {
@@ -210,6 +211,7 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   const cursorText = await page.getByText(/^pt \d\.\d\d$/).innerText();
   await expect.poll(() => page.evaluate(() => location.hash)).toContain("axes=1%2C2%2C4");
   await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light"); // the theme choice is remembered
   await expect(page.getByRole("list", { name: "Lineages" }).getByRole("listitem")).toHaveCount(2);
   await expect(page.getByRole("button", { name: "3-D", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("img", { name: "Orientation of DC1, DC2 and DC4" })).toBeVisible();
