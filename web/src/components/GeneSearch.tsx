@@ -27,7 +27,7 @@ export function GeneSearch({
             setQ("");
           }
         }}
-        className="h-9 w-full rounded-md bg-panel-raised pr-2 pl-8 text-[13px] text-ink placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-ink"
+        className="h-9 w-full rounded-md bg-panel-raised pr-2 pl-8 text-sm text-ink placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-ink"
       />
       {q && results.data && (
         <ul role="listbox" aria-label="Genes" className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-line bg-panel-raised py-1 shadow-xl">

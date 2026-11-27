@@ -6,14 +6,14 @@
 export type RGBA = readonly [number, number, number, number];
 
 /**
- * Distinct, colour-blind-aware categorical palette: Okabe-Ito without its reddish purple (too close
- * to the magenta accent, which is never a data colour) and without black (the stage), then Tableau
- * and Dark2 without their pinks and magentas, least like the first six first.
+ * Distinct, colour-blind-aware categorical palette: Okabe-Ito without black (the dark stage) and with
+ * its vermillion moved last (too close to the red accent, which is never a data colour), then Tableau
+ * and Dark2 without their pinks and magentas, least like the first six first; their orange-red last too.
  */
 export const CATEGORICAL = [
-  "#0072B2", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#D55E00",
+  "#0072B2", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#CC79A7",
   "#76B7B2", "#9C755F", "#BAB0AC", "#7570B3", "#66A61E", "#A6761D",
-  "#1B9E77", "#D95F02", "#4E79A7", "#F28E2B", "#59A14F", "#EDC948",
+  "#1B9E77", "#4E79A7", "#F28E2B", "#59A14F", "#EDC948", "#D55E00", "#D95F02",
 ] as const;
 
 /** Cells with no value (NaN, missing category, no pseudotime). */

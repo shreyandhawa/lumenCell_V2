@@ -48,7 +48,7 @@ export function GenePanel({ run }: { run: T.TrajectoryRun }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 8, transition: { duration: 0.15, ease: [0.23, 1, 0.32, 1] } }}
       transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-      className="rounded-xl bg-panel pt-3 pb-2"
+      className="lift rounded-xl bg-panel pt-3 pb-2"
     >
       <div className="px-3">
         <Label>Gene trends · {focusName ?? "all lineages"} · same axis as the bar</Label>

@@ -78,7 +78,7 @@ function Checks({ ts, clonal }: { ts: T.TreeSupport; clonal: T.ClonalAgreement |
         const Icon = c.state in STATE_ICON ? STATE_ICON[c.state as keyof typeof STATE_ICON] : Minus;
         const afterExcluded = ts.checks.slice(0, i).some((x) => x.state === "excluded");
         return (
-          <li key={c.id} className="grid grid-cols-[16px_24px_1fr_auto] gap-x-2 text-[13px]" title={c.reason ?? undefined}>
+          <li key={c.id} className="grid grid-cols-[16px_24px_1fr_auto] gap-x-2 text-sm" title={c.reason ?? undefined}>
             <Icon size={15} aria-label={c.state.replace("_", " ")} className={`mt-0.5 text-ink ${c.state === "pending" ? "animate-spin" : ""}`} />
             <span className="mt-px font-mono text-xs text-ink-muted">{c.id}</span>
             <span className="text-ink">{c.name}</span>
@@ -180,7 +180,7 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
   const ts = run.trust?.tree_support ?? null;
   const clonal = run.trust?.clonal ?? null;
   const notices = [...run.warnings, ...(curves?.warnings ?? [])];
-  const rule = "border-t border-line pt-3 mt-3";
+  const rule = "border-t border-line pt-4 mt-4";
 
   return (
     <motion.aside
@@ -189,7 +189,7 @@ export function TrustPanel({ run }: { run: T.TrajectoryRun }) {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 16, transition: { duration: 0.16, ease: [0.23, 1, 0.32, 1] } }}
       transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
-      className="absolute top-3 right-3 bottom-3 z-10 w-[360px] overflow-y-auto rounded-xl bg-panel px-4 pt-3 pb-4"
+      className="lift absolute top-3 right-3 bottom-3 z-10 w-[360px] overflow-y-auto rounded-xl bg-panel px-4 pt-3 pb-4"
     >
       <header className="mb-3 flex items-center justify-between">
         <h2 className="text-base font-semibold">Evidence</h2>

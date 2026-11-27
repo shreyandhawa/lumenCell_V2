@@ -2,48 +2,91 @@
 @import "@fontsource-variable/atkinson-hyperlegible-next";
 @import "@fontsource-variable/atkinson-hyperlegible-mono";
 
-/* Design tokens (Figma "Explorer loop"). Dark is the default; the theme toggle sets
-   data-theme="light" on <html>. Accent (magenta) has three roles only: the root pin, the
-   focused lineage and the primary action; it is never a data colour. Amber marks
-   experimental, provisional and weak, always with a label and an icon. */
-@theme {
-  --color-stage: #000000;
-  --color-panel: #262b2a;
-  --color-panel-raised: #313736;
-  --color-line: #3a413f;
-  --color-ink: #f3f5f2;
-  --color-ink-muted: #a3aca8;
+/* Design tokens: "Lineage lines", a trajectory read like a metro map (.impeccable/surfaces).
+   Dark is the default unless the system or a saved choice says light; data-theme on <html>.
+   The sidebar is the shell, the deep-blue line the steps run along. The accent is the red
+   "you are here": the root pin, the focused lineage and the current step; never a data
+   colour, never an error, never a button. Amber marks experimental, provisional and
+   weak, always with a label and an icon. Static: the shell tokens are only read by .shell. */
+@theme static {
+  --color-stage: #0e1116;
+  --color-panel: #171b22;
+  --color-panel-raised: #1f2530;
+  --color-line: #2a303b;
+  --color-ink: #eef1f6;
+  --color-ink-muted: #9aa3b2;
   /* Disabled controls only, never body text. */
-  --color-ink-faint: #6e7773;
-  --color-accent: #e0338f;
-  --color-on-accent: #000000;
+  --color-ink-faint: #6b7382;
+  --color-accent: #ff4d5e;
+  --color-on-accent: #0e1116;
+  --color-shell: #16305e;
+  --color-shell-raised: #1f3d72;
+  --color-shell-line: #34528a;
+  --color-on-shell: #e8edf7;
+  --color-on-shell-muted: #9fb0ce;
+  --color-on-shell-faint: #6f83a8;
   --color-amber: #f2a900;
   --color-amber-tint: rgb(242 169 0 / 0.14);
-  --color-stage-scrim: rgb(0 0 0 / 0.55);
 
-  --text-2xs: 0.6875rem;
+  --text-xs: 0.8125rem;
+  --text-2xs: 0.75rem;
   --text-2xs--line-height: 1rem;
   --font-sans: "Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Atkinson Hyperlegible Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-/* Native controls (selects, checkboxes, ranges, scrollbars) follow the theme too. */
+/* Native controls (selects, checkboxes, ranges, scrollbars) follow the theme too. The one
+   shadow lifts the sheets that float over the stage (.lift); in light the tones alone are too close. */
 :root {
   color-scheme: dark;
+  --shadow-float: 0 2px 10px rgb(0 0 0 / 0.35);
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --color-stage: #f4f6f3;
-  --color-panel: #ecefec;
-  --color-panel-raised: #e0e4e0;
-  --color-line: #cdd3ce;
-  --color-ink: #141716;
-  --color-ink-muted: #4e5753;
-  --color-ink-faint: #8a938e;
+  --shadow-float: 0 1px 2px rgb(17 20 24 / 0.06), 0 6px 20px rgb(17 20 24 / 0.08);
+  --color-stage: #fafaf7;
+  --color-panel: #ffffff;
+  --color-panel-raised: #f1f3f6;
+  --color-line: #d9dce3;
+  --color-ink: #111418;
+  --color-ink-muted: #5b6270;
+  --color-ink-faint: #8c93a0;
+  --color-accent: #d7263d;
+  --color-on-accent: #ffffff;
+  --color-shell: #0b3d91;
+  --color-shell-raised: #1a4fa6;
+  --color-shell-line: #3a68b8;
+  --color-on-shell: #ffffff;
+  --color-on-shell-muted: #c9d6ee;
+  --color-on-shell-faint: #8fa6d1;
   --color-amber: #b07a00;
   --color-amber-tint: rgb(176 122 0 / 0.12);
+}
+
+/* The shell: inside the sidebar the usual tokens point at the line's blue, so every control in
+   it (steps, root picker, method form, colour menu) takes the shell's colours with no change of
+   its own. Amber brightens to stay visible on blue. */
+.shell {
+  --color-panel: var(--color-shell);
+  --color-panel-raised: var(--color-shell-raised);
+  --color-line: var(--color-shell-line);
+  --color-ink: var(--color-on-shell);
+  --color-ink-muted: var(--color-on-shell-muted);
+  --color-ink-faint: var(--color-on-shell-faint);
+  --color-amber: #f2a900;
+  --color-amber-tint: rgb(242 169 0 / 0.18);
+  color: var(--color-ink);
+}
+
+.lift {
+  box-shadow: var(--shadow-float);
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
 }
 
 html,
@@ -57,7 +100,7 @@ body {
   background: var(--color-stage);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
 }
 

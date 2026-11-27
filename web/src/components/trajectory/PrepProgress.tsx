@@ -34,7 +34,7 @@ export function PrepProgress({ prep, hasFileEmbedding }: { prep: T.PrepStatus; h
           const running = s.state === "running" || (live?.stage === s.name && live.state === "running");
           const done = s.state === "done" || s.state === "skipped";
           return (
-            <li key={s.name} className="flex items-center gap-2.5 text-[13px]">
+            <li key={s.name} className="flex items-center gap-2.5 text-sm">
               {done ? (
                 <Check size={15} aria-hidden className="text-ink-muted" />
               ) : running ? (
