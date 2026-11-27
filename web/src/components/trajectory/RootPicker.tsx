@@ -42,12 +42,12 @@ export function RootPicker() {
 
   return (
     <>
-      <p className="mb-3 text-[13px] leading-relaxed text-ink">
+      <p className="mb-3 text-sm leading-relaxed text-ink">
         <span>Where does the trajectory start?</span> It is never guessed.
       </p>
       {root && !(all && suggestions.some((s) => same(root.spec, s.spec))) && (
         <div className="mb-2 rounded-md border border-ink-muted bg-panel-raised p-2.5">
-          <span className="flex items-center gap-2 text-[13px] text-ink">
+          <span className="flex items-center gap-2 text-sm text-ink">
             {describeRoot(root.spec)}
             <span className="ml-auto flex items-center gap-1 text-xs">
               <Check size={14} aria-hidden /> Chosen
@@ -71,7 +71,7 @@ export function RootPicker() {
                     chosen ? "border-ink-muted bg-panel-raised" : "border-line hover:border-ink-muted"
                   }`}
                 >
-                  <span className="flex items-center gap-2 text-[13px] text-ink">
+                  <span className="flex items-center gap-2 text-sm text-ink">
                     {describeRoot(s.spec)}
                     {chosen && (
                       <span className="ml-auto flex items-center gap-1 text-xs">

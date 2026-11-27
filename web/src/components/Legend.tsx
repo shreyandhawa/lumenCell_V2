@@ -8,7 +8,7 @@ export function Legend({ spec }: { spec: LegendSpec | null }) {
   return (
     <div
       aria-label="Legend"
-      className="pointer-events-auto flex max-w-[560px] flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-panel px-2.5 py-1.5 text-xs"
+      className="lift pointer-events-auto flex max-w-[560px] flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-panel px-2.5 py-1.5 text-xs"
     >
       <span className="text-ink-muted">{spec.title}</span>
       {spec.kind === "continuous" ? (

@@ -33,7 +33,7 @@ export function TerminalPicker({
       <p className="mb-1.5 text-xs leading-snug text-ink-muted">Leave all unticked and the method finds them.</p>
       <div className="grid max-h-40 grid-cols-2 gap-x-3 gap-y-1 overflow-y-auto">
         {labels.map((label) => (
-          <label key={label} className="flex items-center gap-2 text-[13px] text-ink">
+          <label key={label} className="flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" checked={value.includes(label)} onChange={() => toggle(label)} />
             {label}
           </label>

@@ -35,7 +35,7 @@ export function PseudotimeBar({ ready }: { ready: boolean }) {
   }, [playing, setCursor, setPlaying]);
 
   return (
-    <div aria-label="Pseudotime" role="group" className={`${TIMELINE_COLS} h-14 items-center rounded-xl bg-panel`}>
+    <div aria-label="Pseudotime" role="group" className={`${TIMELINE_COLS} h-14 items-center rounded-xl bg-panel lift`}>
       <button
         type="button"
         aria-label={playing ? "Pause" : "Play"}
@@ -78,7 +78,7 @@ export function PseudotimeBar({ ready }: { ready: boolean }) {
           <p className="mt-2 text-xs text-ink-muted">Pseudotime appears after a run</p>
         </div>
       )}
-      <span className="text-right font-mono text-[13px] text-ink">pt {ready ? (cursor ?? 0).toFixed(2) : "–"}</span>
+      <span className="text-right font-mono text-sm text-ink">pt {ready ? (cursor ?? 0).toFixed(2) : "–"}</span>
     </div>
   );
 }

@@ -58,7 +58,8 @@ const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 const FOG = 0.6;
 /** Alphas over the theme's ink: graph edges and curves, the ghost of every cell, the hovered cell. */
 const INK_A = 180;
-const HALO_A = 12;
+/** On the light stage the ghost is also each cell's rim, so pale cells keep an edge. */
+const HALO_A = { dark: 12, light: 48 } as const;
 const HOVER_A = 210;
 type Positions = { value: Float32Array; size: number };
 const ON_TOP = { depthCompare: "always", depthWriteEnabled: false } as const;
@@ -420,7 +421,7 @@ export function Scatter() {
         id: `${prefix}halo`,
         visible: mask === null,
         data: haloOf(pos),
-        getFillColor: [ink[0], ink[1], ink[2], HALO_A],
+        getFillColor: [ink[0], ink[1], ink[2], HALO_A[theme]],
         radiusUnits: "pixels",
         getRadius: r + 1.5,
         billboard: true,
@@ -714,7 +715,7 @@ export function Scatter() {
       )}
 
       {!flat && (
-        <div className="absolute inset-0 grid place-items-center pl-[304px] text-[13px] text-ink-muted">
+        <div className="absolute inset-0 grid place-items-center pl-[304px] text-sm text-ink-muted">
           {embedding ? "Loading the embedding…" : "No embedding yet: preparation will compute one."}
         </div>
       )}
@@ -732,7 +733,13 @@ export function Scatter() {
                   className="absolute -top-2 -left-2 size-4 rounded-full border-2 border-stage bg-accent"
                 />
                 {k === 0 && (
-                  <span className="absolute -top-[11px] left-4 rounded bg-panel-raised px-1.5 py-0.5 text-xs whitespace-nowrap text-ink">
+                  // Above the pin, clear of the curves leaving it; it hangs left near the sheet.
+                  // shortcut: assumes the label is under 240px wide; measure it if roots get long names.
+                  <span
+                    className={`absolute bottom-3 rounded bg-panel-raised px-1.5 py-0.5 text-xs whitespace-nowrap text-ink ${
+                      pin[0] > size.width - padRight - 240 ? "-right-2" : "-left-2"
+                    }`}
+                  >
                     Root · {describeRoot(root.spec)}
                   </span>
                 )}
@@ -781,7 +788,7 @@ export function Scatter() {
       <div
         role="group"
         aria-label="View"
-        className="absolute top-3 z-10 flex gap-0.5 rounded-lg bg-panel p-1"
+        className="lift absolute top-3 z-10 flex gap-0.5 rounded-lg bg-panel p-1"
         style={{ right: toggleRight }}
       >
         {(["2d", "3d", "split"] as const).map((v) => (
@@ -801,7 +808,7 @@ export function Scatter() {
               setSpinning(false);
               setView(v);
             }}
-            className={`press h-[26px] rounded-md px-2.5 text-[13px] disabled:text-ink-faint ${
+            className={`press h-[26px] rounded-md px-2.5 text-sm disabled:text-ink-faint ${
               view === v ? "bg-panel-raised text-ink" : "text-ink-muted hover:text-ink"
             }`}
           >
@@ -824,7 +831,7 @@ export function Scatter() {
                 id="display-options"
                 role="group"
                 aria-label="Display options"
-                className="absolute right-0 bottom-full mb-2 w-72 rounded-xl bg-panel p-3 text-[13px] text-ink"
+                className="lift absolute right-0 bottom-full mb-2 w-72 rounded-xl bg-panel p-3 text-sm text-ink"
               >
                 <label className="flex flex-col gap-1.5">
                   <span className="flex justify-between">
