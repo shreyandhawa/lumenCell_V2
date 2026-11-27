@@ -380,58 +380,6 @@ def test_a_root_is_never_changed_on_its_way_to_the_worker(client: TestClient) ->
     assert "no cell has true_label = 'trunk_early '" in res.json()["error"]["message"], "refused at resolve"
 
 
-def _runs_without_a_server(
-    columns: list[str], clonal_columns: tuple[str, ...] = (), label_key: str = "l"
-) -> tuple[object, list[dict[str, object]], list[object]]:
-    """Runs over a stand-in dataset view: (runs, submitted job payloads, roots resolved)."""
-    from types import SimpleNamespace
-
-    from lumencell.api.runs import Runs
-    from lumencell.clonal.isolation import scoring_only_columns
-
-    submitted: list[dict[str, object]] = []
-    resolved: list[object] = []
-
-    def submit(kind: str, key: str, payload: dict[str, object]) -> SimpleNamespace:
-        submitted.append(payload)
-        return SimpleNamespace(job_id="j", state="queued")
-
-    view = SimpleNamespace(
-        prep_key="p",
-        label_key=label_key,
-        ds=SimpleNamespace(obs=pd.DataFrame(columns=columns)),
-        clonal_columns=clonal_columns,
-        ctx=lambda: SimpleNamespace(scoring_only=scoring_only_columns(columns, clonal_columns)),
-    )
-    runs = Runs(
-        view,  # type: ignore[arg-type]
-        SimpleNamespace(exists=lambda rid: False),  # type: ignore[arg-type]
-        SimpleNamespace(submit=submit),  # type: ignore[arg-type]
-        SimpleNamespace(read=lambda: {}),  # type: ignore[arg-type]
-        dict,
-        resolved.append,  # type: ignore[arg-type]
-        lambda: None,
-    )
-    return runs, submitted, resolved
-
-
-def test_a_root_the_plain_text_cannot_carry_reaches_the_worker_unchanged() -> None:
-    from lumencell.api import models
-    from lumencell.engine.roots import ClusterRoot, parse_root
-
-    runs, submitted, resolved = _runs_without_a_server(["batch=1"])
-    root = models.ClusterRoot(kind="cluster", key="batch=1", value="A ")
-    runs.create_run(models.TrajectoryRequest(method="paga_dpt", root=root))  # type: ignore[attr-defined]
-    assert resolved == [ClusterRoot("batch=1", "A ")]
-    spec = submitted[0]["spec"]
-    assert parse_root(spec["root"]) == ClusterRoot("batch=1", "A ")  # type: ignore[index]
-    assert spec["clonal_columns"] == []  # type: ignore[index]
-
-    named, sent, _ = _runs_without_a_server(["batch=1", "donor"], ("donor",))
-    named.create_run(models.TrajectoryRequest(method="paga_dpt", root=root))  # type: ignore[attr-defined]
-    assert sent[0]["spec"]["clonal_columns"] == ["donor"], "the view's clonal columns reach the worker"  # type: ignore[index]
-
-
 # ---- clone columns are scoring-only ------------------------------------------------------
 
 
@@ -454,54 +402,6 @@ def test_create_run_refuses_a_scoring_only_root_or_cluster_key(
     assert graph["store_version"] == 2 and graph["inference_isolation"] == 1
     assert graph["prep_key"] == session.prep_key
     assert "clone_id" not in graph["obs_keys"] and "true_label" in graph["obs_keys"]
-
-
-def test_every_scoring_only_column_is_named_once_and_nothing_starts() -> None:
-    from lumencell.api import models
-    from lumencell.api.errors import ApiError
-
-    runs, submitted, resolved = _runs_without_a_server(["clone_id", "donor", "cell_type"], ("donor",))
-    root = models.ClusterRoot(kind="cluster", key="clone_id", value="A")
-    with pytest.raises(ApiError) as caught:
-        runs.create_run(  # type: ignore[attr-defined]
-            models.TrajectoryRequest(method="paga_dpt", root=root, params={"cluster_key": "donor"})
-        )
-    assert caught.value.status == 422 and caught.value.code == "scoring_only_column"
-    assert caught.value.detail == {"columns": ["clone_id", "donor"]}
-    assert caught.value.message.endswith("it cannot be the root column")
-    assert submitted == [] and resolved == [], "refused before the root is resolved"
-
-    with pytest.raises(ApiError) as caught:
-        runs.create_run(  # type: ignore[attr-defined]
-            models.TrajectoryRequest(method="paga_dpt", root=root, params={"cluster_key": "clone_id"})
-        )
-    assert caught.value.detail == {"columns": ["clone_id"]}, "each column is named once"
-
-    donor_root = models.ClusterRoot(kind="cluster", key="donor", value="d1")
-    with pytest.raises(ApiError) as caught:
-        runs.create_run(  # type: ignore[attr-defined]
-            models.TrajectoryRequest(method="paga_dpt", root=donor_root, params={"cluster_key": "donor"})
-        )
-    assert caught.value.detail == {"columns": ["donor"]}
-    assert caught.value.message == (
-        "'donor' is set as a clone or donor column, which lumenCell uses only to score runs; "
-        "it cannot be the root column"
-    )
-    with pytest.raises(ApiError, match="it cannot be the cluster column"):
-        runs.create_run(  # type: ignore[attr-defined]
-            models.TrajectoryRequest(
-                method="paga_dpt",
-                root=models.ClusterRoot(kind="cluster", key="cell_type", value="t"),
-                params={"cluster_key": "donor"},
-            )
-        )
-    labelled, _, _ = _runs_without_a_server(["clone_id", "cell_type"], label_key="clone_id")
-    with pytest.raises(ApiError, match="it cannot be the label column"):
-        labelled.create_run(  # type: ignore[attr-defined]
-            models.TrajectoryRequest(
-                method="paga_dpt", root=models.ClusterRoot(kind="cluster", key="cell_type", value="t")
-            )
-        )
 
 
 def test_unexpected_errors_use_the_error_body() -> None:

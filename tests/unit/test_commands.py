@@ -108,6 +108,37 @@ def test_run_rejects_a_bad_root(data: Path) -> None:
     assert "cannot parse root" in result.output
 
 
+def test_run_shows_a_saved_run_instead_of_computing_it_again(
+    data: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lumencell.engine import registry
+
+    first = runner.invoke(app, ["run", str(data), *ROOT])
+    assert first.exit_code == 0, first.output
+
+    def recompute(*a, **k):  # type: ignore[no-untyped-def]
+        raise AssertionError("the saved run was computed again")
+
+    monkeypatch.setattr(registry, "infer_and_save", recompute)
+    again = runner.invoke(app, ["run", str(data), *ROOT])
+    assert again.exit_code == 0, again.output
+    assert again.output == first.output
+
+
+def test_run_refuses_an_uninstalled_method_without_a_traceback(
+    data: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lumencell.engine import registry
+    from lumencell.engine.methods.base import Availability
+
+    missing = Availability(ok=False, install_hint="pip install it")
+    monkeypatch.setattr(registry.METHODS["palantir"], "available", lambda: missing)
+    result = runner.invoke(app, ["run", str(data), *ROOT, "--method", "palantir"])
+    assert result.exit_code == 2, result.output
+    message = " ".join(result.output.replace("│", " ").split())
+    assert "Palantir is not installed. pip install it" in message
+
+
 def test_unusable_file_is_reported_clearly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LUMENCELL_CACHE_DIR", str(tmp_path / "cache"))
     import scanpy as sc

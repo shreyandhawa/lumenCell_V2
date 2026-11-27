@@ -18,6 +18,10 @@ _Avoid_: request, run config
 The stored account of a run: its spec, its prep key and what it produced.
 _Avoid_: result file
 
+**Run admission**:
+Turning a request for a run into a canonical run spec and its run id, or a refusal.
+_Avoid_: validation, request handling
+
 **Prep key**:
 The identity of the preparation (normalisation, PCA, neighbours, diffusion) a run was computed on.
 _Avoid_: cache key

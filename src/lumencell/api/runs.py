@@ -16,15 +16,14 @@ from pydantic import ValidationError
 from lumencell.api import binary, models
 from lumencell.api.convert import from_api_spec, to_api_root
 from lumencell.api.dataset_view import DatasetView
-from lumencell.api.errors import ApiError, root_required
+from lumencell.api.errors import ApiError
 from lumencell.api.state import StateStore
-from lumencell.clonal.isolation import scoring_only_message
+from lumencell.engine.admission import RunRefused, admit_run
 from lumencell.engine.compare import RunComparison, compare
 from lumencell.engine.projection import project
-from lumencell.engine.registry import get_method
-from lumencell.engine.roots import ClusterRoot, RootError, RootSpec, format_root, parse_root
-from lumencell.engine.schema import ResolvedRoot, TrajectoryResult
-from lumencell.engine.store import STORE_VERSION, RunSpec, RunStore, run_id
+from lumencell.engine.roots import format_root
+from lumencell.engine.schema import TrajectoryResult
+from lumencell.engine.store import STORE_VERSION, RunStore
 from lumencell.engine.trends import gene_trends, temporal_heatmap
 from lumencell.jobs.manager import ACTIVE, Job, JobManager
 from lumencell.trust.cell_cycle import cell_cycle_check
@@ -40,6 +39,15 @@ _RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 MAX_RUNS_IN_MEMORY = 4
 MAX_HEATMAPS_IN_MEMORY = 32
 MAX_CURVES_IN_MEMORY = 16  # a few runs, each on its 2-D embedding and a 3-D view or two
+# How each run admission refusal leaves the server: these codes and statuses are the API's contract.
+REFUSAL_STATUS = {
+    "unknown_method": HTTPStatus.NOT_FOUND,
+    "method_unavailable": HTTPStatus.CONFLICT,
+    "root_required": HTTPStatus.CONFLICT,
+    "invalid_params": HTTPStatus.UNPROCESSABLE_ENTITY,
+    "invalid_root": HTTPStatus.UNPROCESSABLE_ENTITY,
+    "scoring_only_column": HTTPStatus.UNPROCESSABLE_ENTITY,
+}
 PENDING_NOTE = "being scored in the background"
 LEGACY_NOTE = "made before inference isolation; run it again"
 
@@ -77,7 +85,6 @@ class Runs:
         jobs: JobManager,
         state: StateStore,
         job_payload: Callable[[], dict[str, Any]],
-        resolve: Callable[[RootSpec], ResolvedRoot],
         clonal: Callable[[], models.ClonalSettings | None],
     ) -> None:
         self.view = view
@@ -85,7 +92,6 @@ class Runs:
         self.jobs = jobs
         self.state = state
         self._job_payload = job_payload
-        self._resolve = resolve
         self._clonal = clonal
         self._lock = threading.Lock()
         self._loaded: OrderedDict[str, TrajectoryResult] = OrderedDict()
@@ -109,73 +115,23 @@ class Runs:
 
     def create_run(self, req: models.TrajectoryRequest) -> tuple[models.RunCreated, bool]:
         """Returns (response, created). created=False means an identical run already exists."""
-        try:
-            method = get_method(req.method)
-        except KeyError as exc:
-            raise ApiError(HTTPStatus.NOT_FOUND, "unknown_method", str(exc.args[0])) from exc
-        if not method.available().ok:
-            raise ApiError(
-                HTTPStatus.CONFLICT,
-                "method_unavailable",
-                f"{method.label} is not installed. {method.available().install_hint or ''}".strip(),
-            )
         if req.root is not None:
-            spec_text = format_root(from_api_spec(req.root))
+            root_text: str | None = format_root(from_api_spec(req.root))
         else:
-            spec_text = self.state.read().get("root") or ""
-            if not spec_text:
-                raise root_required()
+            root_text = self.state.read().get("root")
         try:
-            params = method.Params.model_validate(req.params).model_dump()
-        except ValidationError as exc:
-            errors = [
-                {"loc": [str(part) for part in e["loc"]], "msg": str(e["msg"])}
-                for e in exc.errors(include_url=False, include_context=False, include_input=False)
-            ]
-            raise ApiError(
-                HTTPStatus.UNPROCESSABLE_ENTITY,
-                "invalid_params",
-                f"The parameters for {method.label} are not valid.",
-                {"errors": errors},
-            ) from exc
-        try:
-            # The root travels to the worker as text. Every spec survives that round trip;
-            # a root saved in the state file by hand, or damaged, may not.
-            spec = parse_root(spec_text)
-        except RootError as exc:
-            raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "invalid_root", str(exc)) from exc
-        self._refuse_scoring_only(spec, params)
-        self._resolve(spec)  # fail fast on a bad root
-        run = RunSpec(req.method, params, spec_text, req.terminals, tuple(self.view.clonal_columns))
-        rid = run_id(run, self.view.prep_key)
+            admitted = admit_run(
+                req.method, req.params, root_text, req.terminals, self.view.ctx, self.view.prep_key
+            )
+        except RunRefused as exc:
+            raise ApiError(REFUSAL_STATUS[exc.code], exc.code, exc.message, exc.details) from exc
+        rid = admitted.run_id
         if self.store.exists(rid):
             return models.RunCreated(run_id=rid, job_id=None, state="done"), False
-        payload = {**self._job_payload(), "spec": run.to_dict(), "run_id": rid}
+        payload = {**self._job_payload(), "spec": admitted.spec.to_dict(), "run_id": rid}
         job = self.jobs.submit("infer", f"infer:{rid}", payload)
         state = "running" if job.state == "running" else "queued"
         return models.RunCreated(run_id=rid, job_id=job.job_id, state=state), True
-
-    def _refuse_scoring_only(self, spec: RootSpec, params: dict[str, Any]) -> None:
-        """Refuse a run whose root, cluster column or label column is only for scoring runs.
-
-        Checked here, before the root is resolved, so the answer names every such column
-        at once; the worker checks again.
-        """
-        scoring_only = self.view.ctx().scoring_only
-        asked: list[tuple[str | None, str]] = [
-            (spec.key if isinstance(spec, ClusterRoot) else None, "root column"),
-            (params.get("cluster_key"), "cluster column"),
-            (self.view.label_key, "label column"),
-        ]
-        refused = [(column, role) for column, role in asked if column is not None and column in scoring_only]
-        if refused:
-            column, role = refused[0]
-            raise ApiError(
-                HTTPStatus.UNPROCESSABLE_ENTITY,
-                "scoring_only_column",
-                scoring_only_message(column, role),
-                {"columns": list(dict.fromkeys(c for c, _ in refused))},
-            )
 
     def _renames(self, rid: str) -> dict[str, str]:
         renames: dict[str, str] = self.state.read().get("lineage_names", {}).get(rid, {})

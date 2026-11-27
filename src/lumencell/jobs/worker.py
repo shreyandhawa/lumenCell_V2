@@ -65,20 +65,22 @@ def handle_prepare(payload: dict[str, Any], emit: Emit) -> str | None:
 
 
 def handle_infer(payload: dict[str, Any], emit: Emit) -> str | None:
+    from lumencell.engine.admission import AdmittedRun
     from lumencell.engine.registry import infer_and_save
     from lumencell.engine.store import RunSpec, RunStore
     from lumencell.prep.cache import PrepCache, dataset_dir
 
     if "spec" not in payload or "run_id" not in payload:
         raise ValueError("the infer job's payload must hold its run 'spec' and the 'run_id' it promised")
-    spec = RunSpec.from_dict(payload["spec"])  # checked before the file is read
+    # Admitted by the API: checked here for shape, and for its id in infer_and_save.
+    admitted = AdmittedRun(RunSpec.from_dict(payload["spec"]), payload["run_id"])
     ds = _dataset(payload["path"], payload.get("x_is"))
     params = payload["prep_params"]
     emit("load", 0, 1)
     prep = PrepCache(ds, _cache_root(payload)).run(params)
     store = RunStore(dataset_dir(ds.fingerprint, _cache_root(payload)))
-    rid, _ = infer_and_save(ds, prep, params, spec, store, progress=emit, expect_id=payload["run_id"])
-    return rid
+    infer_and_save(ds, prep, params, admitted, store, progress=emit)
+    return admitted.run_id
 
 
 SCORE_CLONAL_KEYS = ("path", "prep_params", "run_id", "settings", "trust_name")

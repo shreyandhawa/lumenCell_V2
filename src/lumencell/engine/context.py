@@ -89,6 +89,7 @@ class InferenceContext:
     fingerprint: str
     label_key: str
     scoring_only: frozenset[str] = frozenset()  # left out of obs; never a root, cluster or label column
+    clonal_columns: tuple[str, ...] = ()  # the ones the caller named, within scoring_only
 
     def __post_init__(self) -> None:
         # However a context is built (from_prep, directly, dataclasses.replace), methods never see
@@ -100,14 +101,19 @@ class InferenceContext:
             raise ScoringOnlyColumnError(
                 f"the annotations given to methods hold scoring-only column(s) {', '.join(map(repr, leaked))}"
             )
+        # A run spec records these as kept out of inference, so each one must be.
+        outside = [c for c in self.clonal_columns if c not in self.scoring_only]
+        if outside:
+            raise ValueError(f"clonal column(s) {', '.join(map(repr, outside))} are not scoring-only here")
 
     @classmethod
     def from_prep(
         cls, ds: Dataset, prep: PrepResult, params: PrepParams, clonal_columns: Iterable[str] = ()
     ) -> "InferenceContext":
         """``clonal_columns`` names columns that are scoring-only besides the receptor-pattern ones."""
+        named = column_names(clonal_columns)
         leiden = np.asarray(prep.artifacts["leiden"])
-        obs, scoring_only = inference_obs(ds.obs, clonal_columns)
+        obs, scoring_only = inference_obs(ds.obs, named)
         label_key = detect_label_key(obs)
         obs[LEIDEN_KEY] = pd.Categorical(
             leiden.astype(str), categories=[str(i) for i in range(int(leiden.max()) + 1)]
@@ -123,6 +129,7 @@ class InferenceContext:
             fingerprint=ds.fingerprint,
             label_key=label_key,
             scoring_only=scoring_only,
+            clonal_columns=named,
         )
 
     def labels(self, key: str) -> npt.NDArray[np.str_]:

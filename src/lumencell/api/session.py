@@ -80,7 +80,6 @@ class Session:
             jobs,
             self.state,
             self._job_payload,
-            self._resolve,
             self.clonal_settings,
         )
         # Scores each run this session's file finishes; runs on the job manager's listener thread.

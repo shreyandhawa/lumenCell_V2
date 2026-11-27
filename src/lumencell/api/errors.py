@@ -22,15 +22,6 @@ class ApiError(Exception):
         self.detail = detail
 
 
-def root_required() -> ApiError:
-    return ApiError(
-        HTTPStatus.CONFLICT,
-        "root_required",
-        "Pick where the trajectory starts before running a method. "
-        "lumenCell never guesses the root, because a wrong guess silently reverses pseudotime.",
-    )
-
-
 def _body(code: str, message: str, detail: dict[str, Any] | None = None) -> dict[str, Any]:
     return ErrorBody(error=ErrorInfo(code=code, message=message, detail=detail)).model_dump()
 

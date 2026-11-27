@@ -141,12 +141,14 @@ def run(
 ) -> None:
     """Run a trajectory method from the terminal and save the run (launch shows it).
 
+    A run already saved for the same request is shown instead of being computed again.
     With --clone-key the run is also scored against the clones (never used to infer it).
     """
-    from lumencell.engine.registry import UnknownMethodError, infer_and_save
-    from lumencell.engine.roots import RootError, format_root, parse_root
-    from lumencell.engine.store import RunSpec, RunStore
-    from lumencell.prep.cache import dataset_dir
+    from lumencell.engine.admission import RunRefused, admit_run
+    from lumencell.engine.context import InferenceContext
+    from lumencell.engine.registry import infer_and_save
+    from lumencell.engine.store import RunStore
+    from lumencell.prep.cache import dataset_dir, prep_key
 
     clonal = _clonal_settings(clone_key, donor_key, single_donor, strata)
     ds, prep, params = _prepared(data, x_is, False)
@@ -160,11 +162,19 @@ def run(
         columns = settings_columns(clonal)
     terms = [t.strip() for t in terminals.split(",")] if terminals else None
     store = RunStore(dataset_dir(ds.fingerprint))
+    ctx = InferenceContext.from_prep(ds, prep, params, clonal_columns=columns)
     try:
-        spec = RunSpec(method, {}, format_root(parse_root(root)), terms, columns)
-        rid, result = infer_and_save(ds, prep, params, spec, store)
-    except (RootError, UnknownMethodError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
+        admitted = admit_run(method, {}, root, terms, lambda: ctx, prep_key(ds, params))
+    except RunRefused as exc:
+        raise typer.BadParameter(exc.message) from exc
+    rid = admitted.run_id
+    if store.exists(rid):
+        result = store.load(rid)
+    else:
+        try:
+            result = infer_and_save(ds, prep, params, admitted, store)
+        except ValueError as exc:  # e.g. terminals the method cannot reach
+            raise typer.BadParameter(str(exc)) from exc
     typer.echo(f"run {rid}: {len(result.lineages)} lineages, {result.n_unassigned} cells unassigned")
     for lin in result.lineages:
         typer.echo(f"  {lin.name}: {lin.n_cells:,} cells")

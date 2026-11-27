@@ -8,10 +8,13 @@ import pytest
 
 from lumencell.api import binary
 from lumencell.clonal.isolation import ISOLATION_VERSION
+from lumencell.engine.admission import AdmittedRun, admit_run
+from lumencell.engine.context import InferenceContext
 from lumencell.engine.registry import infer_and_save, run_method
 from lumencell.engine.roots import ClusterRoot
 from lumencell.engine.schema import TrajectoryResult
 from lumencell.engine.store import STORE_VERSION, RunSpec, RunStore, run_id
+from lumencell.prep.cache import prep_key
 from lumencell.prep.stages import PrepParams
 from tests.conftest import Prepared
 
@@ -449,17 +452,20 @@ def test_a_run_id_is_recomputed_from_its_record(tmp_path: Path, bifurcation: Pre
     obs = bifurcation.ds.obs.assign(cluster_id=bifurcation.ds.obs["true_label"].astype(str))
     ds = replace(bifurcation.ds, obs=obs)
     store = RunStore(tmp_path)
-    rid, _ = infer_and_save(ds, bifurcation.prep, PrepParams(), spec, store)
+    ctx = InferenceContext.from_prep(ds, bifurcation.prep, PrepParams(), clonal_columns=spec.clonal_columns)
+    key = prep_key(ds, PrepParams())
+    admitted = admit_run(spec.method, spec.params, spec.root, spec.terminals, lambda: ctx, key)
+    infer_and_save(ds, bifurcation.prep, PrepParams(), admitted, store)
+    rid = admitted.run_id
     graph = store.graph(rid)
     assert run_id(RunSpec.from_record(graph), graph["prep_key"]) == rid
     assert graph["clonal_columns"] == sorted(spec.clonal_columns)
 
 
 def test_a_run_saved_under_another_id_than_promised_is_refused(tmp_path: Path, bifurcation: Prepared) -> None:
-    spec = RunSpec("paga_dpt", {}, "cluster:true_label=trunk_early", None, ())
     store = RunStore(tmp_path)
     with pytest.raises(ValueError, match="nothing was run"):
-        infer_and_save(bifurcation.ds, bifurcation.prep, PrepParams(), spec, store, expect_id="0" * 16)
+        infer_and_save(bifurcation.ds, bifurcation.prep, PrepParams(), AdmittedRun(SPEC, "0" * 16), store)
     assert not store.dir.exists() or list(store.dir.iterdir()) == []
 
 
