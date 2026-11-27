@@ -9,8 +9,8 @@ trends along pseudotime and how far to trust the result, in the browser.
 ![CAR T cells from patient NHL-6 (Sheih 2020) on diffusion components 1 to 3, with the Evidence sheet](https://raw.githubusercontent.com/shreyandhawa/lumenCell_V2/main/docs/images/explorer-3d-evidence.png)
 
 CAR T cells from patient NHL-6 (Sheih 2020) on diffusion components 1 to 3, with the
-trajectory's lineages drawn through them. The Evidence sheet on the right rates the run
-weak: clones do not back these lineages any better than plain expression clusters do.
+trajectory's lineages drawn through them. The Evidence sheet on the right leads with its
+verdict: clones do not back these lineages any better than plain expression clusters do.
 
 <table>
   <tr>
