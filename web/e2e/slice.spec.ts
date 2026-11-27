@@ -55,7 +55,9 @@ test("prepare, choose a root, run, and inspect the lineages", async ({ page }) =
   const suggestions = page.getByRole("list", { name: "Suggested roots" });
   await expect(suggestions).toContainText("Stored in the file");
   await suggestions.getByRole("button").first().click();
-  await expect(page.getByRole("region", { name: "Pick a root" })).toContainText("Chosen");
+  // The root step folds to its choice, and Run becomes the current station.
+  await expect(page.getByRole("region", { name: "Pick a root" })).toContainText("the root stored in the file");
+  await expect(page.getByRole("region", { name: "Run" })).toHaveAttribute("aria-current", "step");
 
   // 4. Change a parameter (8 diffusion components, not 10), then run; the request carries it and two lineages appear.
   await page.getByRole("spinbutton", { name: "N Dcs", exact: true }).fill("8");

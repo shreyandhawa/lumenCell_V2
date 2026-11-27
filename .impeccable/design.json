@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-27T12:30:00Z",
+  "title": "Design System: lumenCell",
+  "extensions": {
+    "colorMeta": {
+      "line-blue": { "role": "primary", "displayName": "Line Blue", "canonical": "#0b3d91", "tonalRamp": ["#04173a", "#082a63", "#0b3d91", "#1a4fa6", "#3a68b8", "#6f8fcb", "#a7bde3", "#dde6f5"] },
+      "night-line": { "role": "primary", "displayName": "Night Line", "canonical": "#16305e" },
+      "on-line": { "role": "primary", "displayName": "On-line White", "canonical": "#ffffff" },
+      "you-are-here": { "role": "secondary", "displayName": "You-are-here Red", "canonical": "#d7263d", "tonalRamp": ["#4a0b13", "#7d1322", "#b01d31", "#d7263d", "#ff4d5e", "#ff7d89", "#ffb3ba", "#ffe3e6"] },
+      "you-are-here-night": { "role": "secondary", "displayName": "You-are-here Red (night)", "canonical": "#ff4d5e" },
+      "platform-paper": { "role": "neutral", "displayName": "Platform Paper", "canonical": "#fafaf7" },
+      "sheet-white": { "role": "neutral", "displayName": "Sheet White", "canonical": "#ffffff" },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#111418", "tonalRamp": ["#111418", "#2a303b", "#5b6270", "#8c93a0", "#b5bac4", "#d9dce3", "#f1f3f6", "#fafaf7"] },
+      "night-stage": { "role": "neutral", "displayName": "Night Stage", "canonical": "#0e1116" },
+      "night-sheet": { "role": "neutral", "displayName": "Night Sheet", "canonical": "#171b22" },
+      "caution-amber": { "role": "tertiary", "displayName": "Caution Amber", "canonical": "#b07a00" },
+      "caution-amber-night": { "role": "tertiary", "displayName": "Caution Amber (night and shell)", "canonical": "#f2a900" }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "The product name at the top of the shell." },
+      "title": { "displayName": "Title", "purpose": "The current step's name and sheet titles." },
+      "body": { "displayName": "Body", "purpose": "The default size of the interface." },
+      "small": { "displayName": "Small", "purpose": "Supporting lines under checks and warnings, captions." },
+      "label": { "displayName": "Label", "purpose": "Uppercase section heads." },
+      "data": { "displayName": "Data", "purpose": "Numbers, ids, thresholds, provenance." }
+    },
+    "shadows": [
+      { "name": "float-light", "value": "0 1px 2px rgb(17 20 24 / 0.06), 0 6px 20px rgb(17 20 24 / 0.08)", "purpose": "Sheets floating over the light stage (.lift)." },
+      { "name": "float-dark", "value": "0 2px 10px rgb(0 0 0 / 0.35)", "purpose": "Sheets floating over the dark stage (.lift)." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0.23, 1, 0.32, 1)", "purpose": "Presses, sheet entrances and the bottom bar's width change." },
+      { "name": "press", "value": "transform: scale(0.97) over 160ms", "purpose": "Every pressable control answers the press." }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one primary action of a step, in ink as on a station sign.",
+      "html": "<button class=\"ds-btn-primary\">Run PAGA + DPT</button>",
+      "css": ".ds-btn-primary { background: var(--color-ink, #111418); color: var(--color-panel, #fff); height: 32px; padding: 0 12px; border: none; border-radius: 4px; font: 500 14px 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif; transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), opacity 160ms; } .ds-btn-primary:hover { opacity: 0.9; } .ds-btn-primary:active { transform: scale(0.97); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-ink, #111418); outline-offset: 2px; }"
+    },
+    {
+      "name": "Stations",
+      "kind": "custom",
+      "refersTo": "station-current",
+      "description": "The steps as stations on the line: done, current (you are here), ahead.",
+      "html": "<div class=\"ds-line\"><div class=\"ds-stop\"><span class=\"ds-st ds-done\">&#10003;</span>Prepare</div><div class=\"ds-stop\"><span class=\"ds-st ds-here\">2</span><b>Pick a root</b></div><div class=\"ds-stop\"><span class=\"ds-st ds-ahead\">3</span>Run</div></div>",
+      "css": ".ds-line { position: relative; background: #0b3d91; color: #fff; padding: 12px 16px; border-radius: 12px; font: 14px 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif; } .ds-line::before { content: ''; position: absolute; left: 25.5px; top: 24px; bottom: 24px; width: 3px; background: #c9d6ee; } .ds-stop { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 0; } .ds-st { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-weight: 600; } .ds-done { background: #fff; color: #0b3d91; } .ds-here { background: #d7263d; color: #fff; box-shadow: 0 0 0 2px #fff; } .ds-ahead { background: #0b3d91; color: #c9d6ee; border: 2px solid #8fa6d1; }"
+    },
+    {
+      "name": "View Tool",
+      "kind": "button",
+      "refersTo": "view-tool",
+      "description": "A labelled tool in the plot's view tools group; filled while on or open.",
+      "html": "<div class=\"ds-tools\"><button class=\"ds-tool\" aria-pressed=\"true\">Lasso</button><button class=\"ds-tool\">Display</button><button class=\"ds-tool\">Export</button></div>",
+      "css": ".ds-tools { display: flex; flex-direction: column; gap: 2px; width: 112px; padding: 4px; border-radius: 12px; background: var(--color-panel, #fff); } .ds-tool { height: 32px; text-align: left; padding: 0 10px 0 8px; border: none; border-radius: 6px; background: transparent; color: var(--color-ink, #111418); font: 14px 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif; } .ds-tool:hover, .ds-tool[aria-pressed=\"true\"] { background: var(--color-panel-raised, #f1f3f6); } .ds-tool:focus-visible { outline: 2px solid var(--color-ink, #111418); }"
+    },
+    {
+      "name": "Caution Mark",
+      "kind": "chip",
+      "refersTo": "caution-amber",
+      "description": "Experimental, provisional and weak results: amber border and icon, ink text.",
+      "html": "<span class=\"ds-mark\">&#9888; Not shown to be a tree</span>",
+      "css": ".ds-mark { display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; border: 1px solid var(--color-amber, #b07a00); border-radius: 4px; background: var(--color-amber-tint, rgb(176 122 0 / 0.12)); color: var(--color-ink, #111418); font: 13px 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif; }"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Selects and the gene search: raised tone, no border.",
+      "html": "<input class=\"ds-field\" placeholder=\"Colour by gene...\">",
+      "css": ".ds-field { height: 36px; width: 220px; padding: 0 10px; border: none; border-radius: 6px; background: var(--color-panel-raised, #f1f3f6); color: var(--color-ink, #111418); font: 14px 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif; } .ds-field::placeholder { color: var(--color-ink-muted, #5b6270); } .ds-field:focus-visible { outline: 2px solid var(--color-ink, #111418); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Lineage lines",
+    "overview": "A trajectory reads like a metro map. You are at one station, the line runs on to the next, and lines branch where lineages split. The sidebar is the line itself: a deep-blue band the four steps (Prepare, Pick a root, Run, Inspect) sit on as stations, with a red \"you are here\" on the step in hand. Everything else is a working screen in the transit authority's register: plain white or night-navy sheets, one legible sans, data set in a mono, and nothing decorative.",
+    "keyCharacteristics": [
+      "A coloured shell: the deep-blue sidebar carries the steps as stations on one line.",
+      "One red, \"you are here\", and only for where you are.",
+      "White or night-navy sheets on a quiet stage; depth from tone, not shadow.",
+      "Atkinson Hyperlegible throughout, mono for numbers, ids and data.",
+      "Scientific data colours, never restyled to match the world."
+    ],
+    "rules": [
+      { "name": "The You-Are-Here Rule", "body": "Red marks where you are and nothing else: the root, the focused lineage, the current step. It is never a button, a data colour, an error colour or decoration.", "section": "colors" },
+      { "name": "The One Lift Rule", "body": "There is one shadow and it means \"floats over the plot\". Nothing inside a sheet gets its own.", "section": "elevation" },
+      { "name": "The Line Rule", "body": "Inside the sidebar the usual tokens point at the shell's blues (.shell in web/src/index.css), so any control placed there takes the line's colours without its own styling. Never hand-colour a sidebar control.", "section": "colors" },
+      { "name": "The Data Stays Data Rule", "body": "Cells are coloured by viridis (continuous) and an Okabe-Ito-based categorical set, colour-blind-safe. The theme never restyles them; near-reds are ordered last so no category reads as the red.", "section": "colors" },
+      { "name": "The Mono Is Measurement Rule", "body": "Mono is for numbers, ids and data only, never as a \"technical\" costume for prose.", "section": "typography" }
+    ],
+    "dos": [
+      "Do put the red only where the user is: root, focused lineage, current step.",
+      "Do add sidebar controls with the ordinary tokens and let .shell re-point them.",
+      "Do keep numbers, ids and thresholds in the mono.",
+      "Do keep a failure visible when folding detail (state the count in the fold's summary).",
+      "Do check every new text pair for WCAG AA in both themes."
+    ],
+    "donts": [
+      "Don't use red for errors or failed checks; they keep their icon and words in ink.",
+      "Don't recolour cells to match the theme; data colours are scientific choices.",
+      "Don't use Ink Faint for text anyone has to read; it is for disabled controls.",
+      "Don't add a second shadow; inside sheets, use the raised tone.",
+      "Don't make a button red; primary buttons are ink."
+    ]
+  }
+}
