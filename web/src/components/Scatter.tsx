@@ -31,7 +31,7 @@ import { trajectoryLayers } from "@/components/scatter/trajectoryLayers";
 import { MORPH, type Pane, PANES, useStageMotion, VIEW_ID } from "@/components/scatter/useStageMotion";
 import { useStageSize } from "@/components/scatter/useStageSize";
 import { describeRoot } from "@/components/trajectory/RootPicker";
-import { fmt, Select } from "@/components/ui";
+import { fmt, Select, toolClass } from "@/components/ui";
 import { axesLabel, axesName, setAxis } from "@/lib/axes";
 import { clampTarget, FLAT, fitZoom as fitZoomFor, lerp, TILTED } from "@/lib/camera";
 import { cssColor } from "@/lib/colors";
@@ -825,7 +825,7 @@ export function Scatter() {
 
       {viewState && (
         <div className="absolute z-10 flex items-end gap-3" style={{ right, bottom: raised ? 316 : 120 }}>
-          <div className="relative flex flex-col gap-1.5">
+          <div role="group" aria-label="View tools" className="lift relative flex w-[112px] flex-col gap-0.5 rounded-xl bg-panel p-1">
             {optionsOpen && (
               <div
                 id="display-options"
@@ -910,9 +910,9 @@ export function Scatter() {
                 setLasso((on) => !on);
                 setDrawing(null);
               }}
-              className={`press grid size-8 place-items-center rounded-md text-ink ${lasso ? "bg-panel-raised" : "bg-panel"}`}
+              className={toolClass(lasso)}
             >
-              <Lasso size={16} />
+              <Lasso size={16} aria-hidden /> Lasso
             </button>
             <button
               type="button"
@@ -920,18 +920,18 @@ export function Scatter() {
               aria-expanded={optionsOpen}
               aria-controls="display-options"
               onClick={() => setOptionsOpen((o) => !o)}
-              className={`press grid size-8 place-items-center rounded-md text-ink ${optionsOpen ? "bg-panel-raised" : "bg-panel"}`}
+              className={toolClass(optionsOpen)}
             >
-              <SlidersHorizontal size={16} />
+              <SlidersHorizontal size={16} aria-hidden /> Display
             </button>
             <button
               type="button"
               aria-label="Export PNG"
               title="Save the plot as a PNG, with its legend and where it came from"
               onClick={() => void savePng()}
-              className="press grid size-8 place-items-center rounded-md bg-panel text-ink"
+              className={toolClass(false)}
             >
-              <ImageDown size={16} />
+              <ImageDown size={16} aria-hidden /> Export
             </button>
             {t === 1 && !paneStates && <CameraTour id={VIEW_ID} reduce={reduce} onStart={() => setSpinning(false)} />}
             {(paneStates || t === 1) && (
@@ -942,9 +942,9 @@ export function Scatter() {
                 disabled={reduce}
                 title={reduce ? "Off while your system asks for reduced motion" : undefined}
                 onClick={() => setSpinning((s) => !s)}
-                className={`press grid size-8 place-items-center rounded-md text-ink disabled:text-ink-faint ${spin ? "bg-panel-raised" : "bg-panel"}`}
+                className={toolClass(spin)}
               >
-                <Rotate3d size={16} />
+                <Rotate3d size={16} aria-hidden /> Rotate
               </button>
             )}
             <button
@@ -952,9 +952,9 @@ export function Scatter() {
               aria-label="Reset view"
               title="Reset view (R)"
               onClick={reset}
-              className="press grid size-8 place-items-center rounded-md bg-panel text-ink"
+              className={toolClass(false)}
             >
-              <RotateCcw size={16} />
+              <RotateCcw size={16} aria-hidden /> Reset
             </button>
           </div>
           {gimbalAt && <Gimbal m={gimbalAt.viewMatrix as unknown as number[]} names={axisNames} />}

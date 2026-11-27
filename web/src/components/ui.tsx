@@ -90,6 +90,13 @@ export function Button({
   );
 }
 
+/** A button in the plot's view tools: an icon and its word, filled while it is on or open. */
+export function toolClass(on: boolean): string {
+  return `press flex h-8 w-full items-center gap-2 rounded-md pr-2.5 pl-2 text-sm text-ink focus-visible:outline-2 focus-visible:outline-ink disabled:text-ink-faint ${
+    on ? "bg-panel-raised" : "hover:bg-panel-raised"
+  }`;
+}
+
 export function Select({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <div className={`relative ${className}`}>
@@ -115,8 +122,8 @@ export function Mark({ children, title }: { children: ReactNode; title?: string 
   );
 }
 
-export function Label({ children }: { children: ReactNode }) {
-  return <h3 className="mb-2 text-2xs font-semibold tracking-[0.06em] text-ink-muted uppercase">{children}</h3>;
+export function Label({ children, className = "mb-2" }: { children: ReactNode; className?: string }) {
+  return <h3 className={`text-2xs font-semibold tracking-[0.06em] text-ink-muted uppercase ${className}`}>{children}</h3>;
 }
 
 /** Key-value rows: a muted key, a mono value. */
