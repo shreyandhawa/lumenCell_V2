@@ -11,7 +11,6 @@ import type { Vec3 } from "@/lib/embedding";
 import type { PlacedMilestone } from "@/lib/trajectory";
 
 type RGBA = [number, number, number, number];
-export const ACCENT: RGBA = [224, 51, 143, 255];
 
 export interface TrajectoryLayersInput {
   paths: { lineage: number; path: Vec3[] }[];
@@ -20,6 +19,8 @@ export interface TrajectoryLayersInput {
   /** The focused lineage's curve up to the cursor, ending where its cells are at the cursor. */
   travelled: Vec3[] | null;
   ink: RGBA;
+  /** The focused lineage and the playhead. */
+  accent: RGBA;
   stage: readonly [number, number, number];
   /** Prepended to every layer id: the pane the layers belong to in the split view. */
   prefix?: string;
@@ -27,11 +28,11 @@ export interface TrajectoryLayersInput {
 
 const ON_TOP = { depthCompare: "always", depthWriteEnabled: false } as const;
 
-export function trajectoryLayers({ paths, milestones, focus, travelled, ink, stage, prefix = "" }: TrajectoryLayersInput): Layer[] {
+export function trajectoryLayers({ paths, milestones, focus, travelled, ink, accent, stage, prefix = "" }: TrajectoryLayersInput): Layer[] {
   const layers: Layer[] = [];
   const ordered = [...paths.filter((p) => p.lineage !== focus), ...paths.filter((p) => p.lineage === focus)];
   const color = (d: { lineage: number }, alpha: number): RGBA =>
-    d.lineage === focus ? [ACCENT[0], ACCENT[1], ACCENT[2], alpha] : [ink[0], ink[1], ink[2], Math.round((ink[3] * alpha) / 255)];
+    d.lineage === focus ? [accent[0], accent[1], accent[2], alpha] : [ink[0], ink[1], ink[2], Math.round((ink[3] * alpha) / 255)];
   const width = (d: { lineage: number }) => (d.lineage === focus ? 3 : 1.5);
   const common = {
     data: ordered,
@@ -49,13 +50,13 @@ export function trajectoryLayers({ paths, milestones, focus, travelled, ink, sta
         id: `${prefix}curves-behind`,
         getColor: (d) => color(d, d.lineage === focus ? 255 : 70),
         parameters: ON_TOP,
-        updateTriggers: { getColor: [focus, ink], getWidth: focus },
+        updateTriggers: { getColor: [focus, ink, accent], getWidth: focus },
       }),
       new PathLayer({
         ...common,
         id: `${prefix}curves`,
         getColor: (d) => color(d, 255),
-        updateTriggers: { getColor: [focus, ink], getWidth: focus },
+        updateTriggers: { getColor: [focus, ink, accent], getWidth: focus },
       }),
     );
   }
@@ -65,7 +66,7 @@ export function trajectoryLayers({ paths, milestones, focus, travelled, ink, sta
         id: `${prefix}travelled`,
         data: [travelled],
         getPath: (d: Vec3[]) => d,
-        getColor: ACCENT,
+        getColor: accent,
         getWidth: 5,
         widthUnits: "pixels",
         billboard: true,
@@ -77,7 +78,7 @@ export function trajectoryLayers({ paths, milestones, focus, travelled, ink, sta
         id: `${prefix}playhead`,
         data: [travelled[travelled.length - 1]!],
         getPosition: (d: Vec3) => d,
-        getFillColor: ACCENT,
+        getFillColor: accent,
         getLineColor: [...stage, 255],
         stroked: true,
         lineWidthUnits: "pixels",

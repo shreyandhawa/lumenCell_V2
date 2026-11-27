@@ -34,7 +34,7 @@ export interface UiState {
   focusLineage: number | null;
   /** Genes the user picked, shown first in the gene trends. */
   trendGenes: string[];
-  theme: "dark" | "light";
+  theme: Theme;
   /** One stage that morphs between the 2-D embedding and DC1-DC3, or both side by side. */
   view: View;
   /** The pseudotime cursor shared by the bar and the gene trends; null until the user plays or scrubs. */
@@ -55,7 +55,7 @@ export interface UiState {
   setRun: (id: string | null) => void;
   setFocusLineage: (id: number | null) => void;
   addTrendGene: (gene: string) => void;
-  setTheme: (t: "dark" | "light") => void;
+  setTheme: (t: Theme) => void;
   setView: (v: View) => void;
   setCursor: (t: number | null) => void;
   setPlaying: (on: boolean) => void;
@@ -68,13 +68,33 @@ export interface UiState {
 
 export const MAX_TREND_GENES = 4;
 
+export type Theme = "dark" | "light";
+const THEME_KEY = "lumencell-theme";
+
+/** The saved choice, else the system's, else dark. Storage can be blocked, so reads never throw. */
+export function initialTheme(): Theme {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "dark" || saved === "light") return saved;
+  } catch {
+    /* no storage: fall through */
+  }
+  return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+
+/** On <html> before the store changes, so the canvas reads the new tokens in the same render. */
+function applyTheme(theme: Theme): Theme {
+  document.documentElement.dataset.theme = theme;
+  return theme;
+}
+
 export const useUi = create<UiState>((set) => ({
   embedding: null,
   colorBy: null,
   runId: null,
   focusLineage: null,
   trendGenes: [],
-  theme: "dark",
+  theme: applyTheme(initialTheme()),
   view: "2d",
   cursor: null,
   playing: false,
@@ -90,7 +110,14 @@ export const useUi = create<UiState>((set) => ({
   setFocusLineage: (focusLineage) => set({ focusLineage }),
   addTrendGene: (gene) =>
     set((s) => (s.trendGenes.includes(gene) ? s : { trendGenes: [gene, ...s.trendGenes].slice(0, MAX_TREND_GENES) })),
-  setTheme: (theme) => set({ theme }),
+  setTheme: (theme) => {
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      /* no storage: the choice lasts this visit */
+    }
+    set({ theme: applyTheme(theme) });
+  },
   setView: (view) => set({ view }),
   setCursor: (cursor) => set({ cursor }),
   setPlaying: (playing) => set({ playing }),
